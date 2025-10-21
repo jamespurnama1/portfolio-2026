@@ -23,14 +23,24 @@ export async function sanityLoad() {
   role,
   color,
   content[] {
-    "media": {
-      "asset": media.asset->{
-        _id,
-        url,
-        originalFilename,
-        size
-      }
-    },
+      "image": image.asset->{
+    _id,
+    url,
+    originalFilename,
+    size
+  },
+  "imageLight": imageLight.asset->{
+    _id,
+    url,
+    originalFilename,
+    size
+  },
+  "video": video.asset->{
+    _id,
+    url,
+    originalFilename,
+    size
+  },
     headline,
     body,
     caption

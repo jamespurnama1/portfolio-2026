@@ -170,17 +170,18 @@
 	});
 
 	// Calculate Loading
+	let loadedVideos = new Set<number>();
+
 	$effect(() => {
 		videoEl.length;
 		untrack(() => {
-			if (
-				loadStore.loaded ||
-				!data.projectsLength ||
-				!videoEl.length ||
-				videoEl.length !== data.projectsLength - 2
-			)
-				return;
 			videoEl.forEach((x, i) => {
+				const onVideoLoadForIndex = () => {
+					if (loadedVideos.has(i)) return; // Prevent double counting
+					loadedVideos.add(i);
+					onVideoLoad(i);
+				};
+
 				try {
 					// make sures the video autoplays
 					x.play();
@@ -188,16 +189,20 @@
 					if (error instanceof Error) {
 						if (error.name === 'NotAllowedError') {
 							console.warn('Power Saver Mode');
-							onVideoLoad();
+							onVideoLoadForIndex();
 						}
 					}
 				}
-				x.addEventListener('timeupdate', onVideoLoad, { once: true });
+
+				// Use multiple events for better reliability
+				x.addEventListener('canplay', onVideoLoadForIndex, { once: true });
+				x.addEventListener('loadeddata', onVideoLoadForIndex, { once: true });
 				x.addEventListener(
 					'error',
 					(e) => {
-						//TODO: Store error and display it
-						console.error(e.message);
+						console.error('Video error:', e.message, 'for video', i);
+						// Still count as loaded to not block the UI
+						onVideoLoadForIndex();
 					},
 					{ once: true }
 				);
@@ -206,11 +211,13 @@
 	});
 
 	let videoCount = 0;
-	function onVideoLoad() {
+	function onVideoLoad(index: number) {
 		videoCount++;
-		if (videoCount <= data.projectsLength! - 2) {
+		const totalVideos = data.projectsLength! - 2;
+
+		if (videoCount <= totalVideos) {
 			//10% is fetched already
-			loadStore.load = (1 / (data.projectsLength - 2)) * 90 + loadStore.realLoad;
+			loadStore.load = (videoCount / totalVideos) * 90 + 10;
 		}
 		// SAFARI: can't pause here, video needs to play for a bit
 	}
@@ -251,7 +258,6 @@
 	function onScroll(event: WheelEvent) {
 		if (!loadStore.loaded || gptStore.opened) return;
 		activityStore.inactive = false;
-		gsap.killTweensOf(countStore);
 		// deprecated wheeldelta is more consistent than the new delta
 		let deltaY = -1 * event.wheelDeltaY;
 		// if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
@@ -283,7 +289,9 @@
 			scrollStore.scroll = document.documentElement.scrollTop;
 			//update count store on home page
 		} else {
-			countStore.inertiaIndex += mapper(deltaY);
+			// Apply smooth wheel input with dampening
+			const mappedDelta = mapper(deltaY) * 0.2; // Dampen for smoother feel
+			countStore.inertiaIndex += mappedDelta;
 			debouncedInertia.restart(true);
 		}
 	}

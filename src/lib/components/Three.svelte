@@ -299,16 +299,39 @@
 			const { load } = useLoader(TextureLoader);
 			const current = data.projects.find((x) => x.slug.current === $page.params.slug)!;
 			imageTextures = [];
+
+			const promises: Promise<Texture>[] = [];
+
 			current.content.forEach((x, i) => {
-				const url = x.media.asset.url;
-				if (/\.(mp4|webm)$/.test(url)) {
-					imageTextures.push(videoLoader(url, i));
+				// Determine the URL based on available properties
+				let url: string;
+				if (x.video?.url) {
+					url = x.video.url;
+				} else if (x.imageLight?.url && !optionsStore.dark) {
+					url = x.imageLight.url;
+				} else if (x.image?.url) {
+					url = x.image.url;
 				} else {
-					imageTextures.push(load(url));
+					console.warn('No valid media URL found for content item', i, x);
+					return;
+				}
+
+				if (/\.(mp4|webm)$/.test(url)) {
+					const texture = videoLoader(url, i);
+					imageTextures.push(texture);
+				} else {
+					const promise = load(url);
+					imageTextures.push(promise);
+					promises.push(promise);
 				}
 			});
-			// imageTextures = load([...q]) as Promise<THREE.Texture[]>;
-			// imageTextures.then(() => (loadStore.cardLoading = false));
+
+			// Wait for all image textures to load
+			if (promises.length > 0) {
+				await Promise.all(promises);
+			}
+
+			loadStore.cardLoading = false;
 		});
 	});
 

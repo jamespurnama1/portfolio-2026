@@ -18,21 +18,11 @@
 				on:click={() => gptStore.opened = true}>
 				<p class="uppercase">ask me anything</p></button
 			> -->
-			<span>
 				<a
 					transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 100 }}
 					class="block"
 					href="mailto:hello@jameshenry.site"><p>hello@jameshenry.site</p></a
 				>
-				<a
-					class="block"
-					target="_blank"
-					rel="noopener noreferrer"
-					href="https://wa.me/6285281790980"
-					transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 100 }}
-					><p>+6285281790980</p></a
-				>
-			</span>
 			<a href="/gallery"><p>gallery</p></a>
 			<a
 				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 200 }}

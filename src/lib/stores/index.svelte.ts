@@ -19,7 +19,7 @@ export const loadStore = {
 		tl.clear();
 		tl.to(animatedLoad, {
 			percent: load,
-			duration: (load - animatedLoad.percent) / 50
+			duration: (load - animatedLoad.percent) / 15
 		});
 	},
 	get cardLoading() {

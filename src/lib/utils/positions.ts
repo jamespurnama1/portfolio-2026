@@ -17,18 +17,55 @@ export const centerPos = (index: number) => {
 	};
 };
 
+// Add easing function for smoother transitions
+const easeOutQuart = (x: number): number => {
+	return 1 - Math.pow(1 - x, 4);
+};
+
+const easeOutCubic = (x: number): number => {
+	return 1 - Math.pow(1 - x, 3);
+};
+
+// Add easing function for smoother opacity transitions
+const easeOutQuad = (x: number): number => {
+	return 1 - (1 - x) * (1 - x);
+};
+
+// Add smooth interpolation for position changes
+const smoothStep = (x: number): number => {
+	return x * x * (3 - 2 * x);
+};
+
+// Apply smooth inertia to the difference value
+const applyInertia = (diff: number): number => {
+	const fractional = Math.abs(diff % 1);
+	const integer = diff - fractional * Math.sign(diff);
+
+	// Blend between smoothStep and easeOutCubic for balanced interpolation
+	const smoothed = smoothStep(fractional);
+	const eased = easeOutCubic(fractional);
+	const blended = smoothed * 0.6 + eased * 0.4;
+
+	return integer + blended * Math.sign(diff);
+};
+
 export const homePos = (index: number, imageGeo: PlaneGeometry, size: size) => {
 	// console.log('[POS] home pos', index);
+	const indexDiff = countStore.inertiaIndex - index - 1;
+	const activeDiff = index + 1 - countStore.activeIndex;
+
+	// Apply smooth inertia interpolation to the position difference
+	const smoothedIndexDiff = applyInertia(indexDiff);
+	const rawOpacity = Math.min(Math.max(0, activeDiff), 1);
+
 	return {
 		// center minus 10% of width
-		x: imageGeo.parameters.width * ((countStore.inertiaIndex - index - 1) * 0.1) - size.width * 0.1,
+		x: imageGeo.parameters.width * (smoothedIndexDiff * 0.1) - size.width * 0.1,
 		// 0.1 modifer + card height 0.05 modifier
-		y:
-			imageGeo.parameters.height * ((countStore.inertiaIndex - index - 1) * 0.1) +
-			imageGeo.parameters.height * 0.05,
-		z: 0.6 * (countStore.inertiaIndex - index - 1) - 10,
-		scale: (1 + (countStore.inertiaIndex - index - 1) / projectsStore.projectsLength) * 0.5,
-		opacity: gptStore.opened ? 0 : Math.min(Math.max(0, index + 1 - countStore.activeIndex), 1)
+		y: imageGeo.parameters.height * (smoothedIndexDiff * 0.1) + imageGeo.parameters.height * 0.05,
+		z: 0.6 * smoothedIndexDiff - 10,
+		scale: (1 + smoothedIndexDiff / projectsStore.projectsLength) * 0.5,
+		opacity: gptStore.opened ? 0 : easeOutQuad(rawOpacity)
 	};
 };
 

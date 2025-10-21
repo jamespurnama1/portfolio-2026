@@ -46,6 +46,16 @@
 	let mousePosition = { x: 0.5, y: 0.5 };
 	let targetMousePosition = { x: 0.5, y: 0.5 };
 	let prevPosition = { x: 0.5, y: 0.5 };
+
+	// Calculate texture aspect ratio
+	const textureAspect = $derived(() => {
+		if (texture && texture.image) {
+			const width = texture.image.videoWidth || texture.image.width;
+			const height = texture.image.videoHeight || texture.image.height;
+			return width && height ? width / height : 16 / 9;
+		}
+		return 16 / 9;
+	});
 	// let stopPropagation = $state(false);
 	const currentProject = $derived(!$page.params.slug || index === countStore.activeIndex || works);
 	let transform = $state(currentProject ? projectPage(index, $size, works) : centerPos(index));
@@ -311,7 +321,7 @@
 			u_prevMouse: { value: new Vector2() },
 			u_aberrationIntensity: { value: 0.0 },
 			u_texture: { value: texture },
-			textureAspect: { value: 16 / 9 },
+			textureAspect: { value: textureAspect() },
 			planeAspect: { value: 3 / 2 },
 			scale: { value: 1 },
 			inverted: { value: false },
