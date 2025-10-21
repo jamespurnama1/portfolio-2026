@@ -65,6 +65,7 @@
 	let postFXMeshMaterial: ShaderMaterial | undefined = $state();
 	let postFXMesh: Mesh | undefined = $state();
 	let postFXScene: Scene | undefined = $state();
+	let directScene: Scene | undefined = $state();
 
 	// Create a new framebuffer we will use to render to
 	// the video card memory
@@ -173,6 +174,11 @@
 
 		// Render the postFX mesh to the default framebuffer
 		renderer.render(postFXScene!, $camera);
+
+		// Render direct scene on top without clearing (bypasses shader)
+		if (directScene) {
+			renderer.render(directScene, $camera);
+		}
 
 		// Ping-pong our framebuffers by swapping them
 		// at the end of each frame render
@@ -320,7 +326,62 @@
 					const texture = videoLoader(url, i);
 					imageTextures.push(texture);
 				} else {
-					const promise = load(url);
+					const promise = load(url).then((texture) => {
+						// Preserve transparency for PNG/WEBP images
+						texture.colorSpace = SRGBColorSpace;
+						return texture;
+					});
+					imageTextures.push(promise);
+					promises.push(promise);
+				}
+			});
+
+			// Wait for all image textures to load
+			if (promises.length > 0) {
+				await Promise.all(promises);
+			}
+
+			loadStore.cardLoading = false;
+		});
+	});
+
+	// Update textures when theme changes
+	$effect(() => {
+		optionsStore.dark;
+		$page.params.slug;
+		untrack(async () => {
+			if (!loadStore.loaded || !data.projects || !$page.route.id?.includes('work')) return;
+
+			loadStore.cardLoading = true;
+			const { load } = useLoader(TextureLoader);
+			const current = data.projects.find((x) => x.slug.current === $page.params.slug)!;
+			imageTextures = [];
+
+			const promises: Promise<Texture>[] = [];
+
+			current.content.forEach((x, i) => {
+				// Determine the URL based on available properties and theme
+				let url: string;
+				if (x.video?.url) {
+					url = x.video.url;
+				} else if (x.imageLight?.url && !optionsStore.dark) {
+					url = x.imageLight.url;
+				} else if (x.image?.url) {
+					url = x.image.url;
+				} else {
+					console.warn('No valid media URL found for content item', i, x);
+					return;
+				}
+
+				if (/\.(mp4|webm)$/.test(url)) {
+					const texture = videoLoader(url, i);
+					imageTextures.push(texture);
+				} else {
+					const promise = load(url).then((texture) => {
+						// Preserve transparency for PNG/WEBP images
+						texture.colorSpace = SRGBColorSpace;
+						return texture;
+					});
 					imageTextures.push(promise);
 					promises.push(promise);
 				}
@@ -379,6 +440,16 @@
 			<Cards {texture} index={i} data={data as Required<PageData>} />
 		{/each}
 	{/if}
+</T.Scene>
+
+<!-- DIRECT RENDER SCENE (No shader effects) -->
+<T.Scene bind:ref={directScene}>
+	<T.OrthographicCamera
+		position.z={1}
+		on:create={({ ref }) => {
+			ref.lookAt(new Vector3(0, 0, 0));
+		}}
+	/>
 
 	{#if $page.params.slug && data}
 		{#each imageTextures as texture, i}

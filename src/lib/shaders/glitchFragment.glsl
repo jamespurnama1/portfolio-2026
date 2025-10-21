@@ -49,12 +49,15 @@ void main() {
     vec4 colorG = texture2D(u_texture, uv);
     vec4 colorB = texture2D(u_texture, uv - vec2(strength * u_aberrationIntensity * 0.01, 0.0));
 
+    // Use the texture's alpha channel, multiplied by the opacity uniform
+    float alpha = colorG.a * opacity;
+    
     // Correctly calculate the linear color
-    vec4 image = vec4(colorR.r, colorG.g, colorB.b, opacity);
+    vec4 image = vec4(colorR.r, colorG.g, colorB.b, alpha);
     // vec4 image = vec4(linearColor, opacity);
 
     if (inverted) {
-        image = vec4(1.0 - colorR.r, 1.0 - colorG.g, 1.0 - colorB.b, opacity);
+        image = vec4(1.0 - colorR.r, 1.0 - colorG.g, 1.0 - colorB.b, alpha);
     }
     gl_FragColor = image;
 }

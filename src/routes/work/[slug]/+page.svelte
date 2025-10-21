@@ -28,41 +28,41 @@
 	const mapper = gsap.utils.mapRange(0, 300, 0, 100);
 	const mapper2 = gsap.utils.mapRange(0, 300, 88, 15);
 
-	$effect(() => {
-		scrollStore.overScroll;
-		untrack(() => {
-			if (animating || delay) return;
-			// gsap.killTweensOf('section');
-			gsap.set('section', {
-				y: `-${(Math.log10(scrollStore.overScroll / 100) + 1.5) * 100}`,
-				onUpdate: () => {
-					// try to reset to 0 if not scrolling
-					if (scrollStore.overScroll < 4000) return;
-					// scrolled past 1000 pixels
-					// gsap.set('html', { overflowY: 'hidden' });
-					delay = true;
-					gsap.to('.gradient', {
-						opacity: 0,
-						duration: 0.5
-					});
-					gsap.to('section', {
-						y: '100%',
-						opacity: 0,
-						duration: 0.5,
-						onComplete: () => {
-							animating = true;
-							countStore.inertiaIndex = currIndex! + 1;
-							goto(`/work/${data.projects[currIndex! + 1].slug.current}`);
-						}
-					});
-				}
-			});
-			// on scroll
-			gsap.set('.gradient', {
-				opacity: mapper(Math.max(0, Math.log10(scrollStore.overScroll / 10)))
-			});
-		});
-	});
+	// $effect(() => {
+	// 	scrollStore.overScroll;
+	// 	untrack(() => {
+	// 		if (animating || delay) return;
+	// 		// gsap.killTweensOf('section');
+	// 		gsap.set('section', {
+	// 			y: `-${(Math.log10(scrollStore.overScroll / 100) + 1.5) * 100}`,
+	// 			onUpdate: () => {
+	// 				// try to reset to 0 if not scrolling
+	// 				if (scrollStore.overScroll < 4000) return;
+	// 				// scrolled past 1000 pixels
+	// 				// gsap.set('html', { overflowY: 'hidden' });
+	// 				delay = true;
+	// 				gsap.to('.gradient', {
+	// 					opacity: 0,
+	// 					duration: 0.5
+	// 				});
+	// 				gsap.to('section', {
+	// 					y: '100%',
+	// 					opacity: 0,
+	// 					duration: 0.5,
+	// 					onComplete: () => {
+	// 						animating = true;
+	// 						countStore.inertiaIndex = currIndex! + 1;
+	// 						goto(`/work/${data.projects[currIndex! + 1].slug.current}`);
+	// 					}
+	// 				});
+	// 			}
+	// 		});
+	// 		// on scroll
+	// 		gsap.set('.gradient', {
+	// 			opacity: mapper(Math.max(0, Math.log10(scrollStore.overScroll / 10)))
+	// 		});
+	// 	});
+	// });
 
 	let current = $state() as Post | undefined;
 
@@ -154,7 +154,7 @@
 	});
 
 	function animateIn() {
-		scrollStore.overScroll = 0;
+		// scrollStore.overScroll = 0;
 		document.documentElement.scrollTop = 0;
 		scrollStore.scroll = document.documentElement.scrollTop;
 
@@ -206,30 +206,31 @@
 			/>
 		{/each}
 	{/if}
-</article>
-<aside
-	style={`background-color: ${base}; background-image: radial-gradient(at 25% 0%, ${base} 0, transparent 30%),
-			radial-gradient(at 75% 0%, ${base} 0, transparent 75%),
-			radial-gradient(at 51.94% ${mapper2(scrollStore.overScroll)}%, ${nextColorScale[2]} 0, transparent 100%),
-			radial-gradient(at 87.56% 50%, ${nextColorScale[1]} 0, transparent 30%),
-			radial-gradient(at 15% 88%, ${nextColorScale[0]} 0, transparent 30%);`}
-	class="fixed bottom-0 h-[40vh] w-full gradient opacity-0 -z-30 flex text-center justify-center items-center flex-col dark:invert-0 invert"
->
-	<div
-		class="flex items-center justify-center text-white mix-blend-difference font-mono uppercase text-xs gap-5"
-	>
-		<p class="text-base">&gt;</p>
-		<div>
-			<p>Keep Scrolling</p>
-			<p>Next Project</p>
-		</div>
-		<p class="text-base">&gt;</p>
-	</div>
 	{#if typeof currIndex === 'number' && data.projects[currIndex + 1]}
-		<h4 class="text-4xl font-bold text-white mix-blend-difference">
-			{data.projects[currIndex + 1].title}
-		</h4>
+		<aside
+			style={`background-color: ${base}; 
+				background-image: radial-gradient(at 25% 0%, ${base} 0, transparent 30%),
+				radial-gradient(at 75% 0%, ${base} 0, transparent 75%),
+				radial-gradient(at 51.94% 0%, ${nextColorScale[2]} 0, transparent 100%),
+				radial-gradient(at 87.56% 50%, ${nextColorScale[1]} 0, transparent 30%),
+				radial-gradient(at 15% 88%, ${nextColorScale[0]} 0, transparent 30%);`}
+			class="h-[40vh] w-full gradient -z-30 flex text-center justify-center items-center flex-col dark:invert-0 invert [mask-image:linear-gradient(to_bottom,transparent_0%,white_40%)]"
+		>
+			<div
+				class="flex items-center justify-center text-white mix-blend-difference font-mono uppercase text-xs gap-5"
+			>
+				<p class="text-base">&gt;</p>
+				<div>
+					<!-- <p>Keep Scrolling</p> -->
+					<p>Next Project</p>
+				</div>
+				<p class="text-base">&gt;</p>
+			</div>
+			<h4 class="text-4xl font-bold text-white mix-blend-difference">
+				{data.projects[currIndex + 1].title}
+			</h4>
+		</aside>
 	{/if}
-</aside>
+</article>
 
 <svelte:window bind:innerWidth bind:innerHeight />

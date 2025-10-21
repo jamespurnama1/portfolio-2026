@@ -126,17 +126,17 @@
 			stateMachine.advance(delta!);
 			artboard.advance(delta!);
 			renderer.save();
-			renderer.align(
-				rive.Fit.contain,
-				rive.Alignment.topRight,
-				{
-					minX: 0,
-					minY: 0,
-					maxX: canvas.width,
-					maxY: canvas.height
-				},
-				artboard.bounds
-			);
+			// renderer.align(
+			// 	rive.Fit.contain,
+			// 	rive.Alignment.topRight,
+			// 	{
+			// 		minX: 0,
+			// 		minY: 0,
+			// 		maxX: canvas.width,
+			// 		maxY: canvas.height
+			// 	},
+			// 	artboard.bounds
+			// );
 			artboard.draw(renderer);
 			renderer.restore();
 			rive.resolveAnimationFrame();

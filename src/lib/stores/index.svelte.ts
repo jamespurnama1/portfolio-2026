@@ -115,7 +115,7 @@ export const cursorStore = {
 
 let scroll = $state(0);
 let offset = $state(0);
-let overScroll = $state(0);
+// let overScroll = $state(0);
 
 export const scrollStore = {
 	get scroll(): number {
@@ -130,18 +130,18 @@ export const scrollStore = {
 	set offset(newVal: number) {
 		offset = newVal;
 	},
-	get overScroll(): number {
-		return overScroll;
-	},
-	set overScroll(newVal: number) {
-		overScroll = newVal;
-		// gsap.to(scrollStore, {
-		// 	overScroll: 0,
-		// 	delay: 1,
-		// 	duration: 0.5,
-		// 	ease: 'power4.out'
-		// });
-	}
+	// get overScroll(): number {
+	// 	return overScroll;
+	// },
+	// set overScroll(newVal: number) {
+	// 	overScroll = newVal;
+	// 	// gsap.to(scrollStore, {
+	// 	// 	overScroll: 0,
+	// 	// 	delay: 1,
+	// 	// 	duration: 0.5,
+	// 	// 	ease: 'power4.out'
+	// 	// });
+	// }
 };
 
 let inactive = $state(false);

@@ -17,7 +17,7 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/stores';
-	import { homePos, centerPos, enlarged, projectPage } from '$lib/utils/positions';
+	import { homePos, centerPos, enlarged, projectPage, initialPos } from '$lib/utils/positions';
 	import { type PageData } from '../../routes/$types';
 
 	let easeFactor = 0.02;
@@ -40,6 +40,7 @@
 	const { size } = useThrelte();
 	let image: Mesh | null = $state(null);
 	let loadIn = $state(true);
+	let initialLoadComplete = $state(false);
 	let full = $state(false);
 	let prevParams = $state('');
 	let aberrationIntensity = 0.0;
@@ -58,7 +59,13 @@
 	});
 	// let stopPropagation = $state(false);
 	const currentProject = $derived(!$page.params.slug || index === countStore.activeIndex || works);
-	let transform = $state(currentProject ? projectPage(index, $size, works) : centerPos(index));
+	let transform = $state(
+		initialLoadComplete
+			? currentProject
+				? projectPage(index, $size, works)
+				: centerPos(index)
+			: initialPos(index)
+	);
 	const hidden = $derived(
 		!transform.opacity ||
 			!currentProject ||
@@ -70,11 +77,11 @@
 	// Update image on scroll or size changes
 	$effect(() => {
 		scrollStore.scroll;
-		scrollStore.overScroll;
+		// scrollStore.overScroll;
 		$size;
 		loadIn;
 		untrack(() => {
-			if (loadIn) return;
+			if (loadIn || !initialLoadComplete) return;
 			// on scroll, next project, afterloaded
 			// console.log('[ON SCROLL]', index);
 			updateImage(0);
@@ -88,6 +95,9 @@
 		$page.url.hash;
 		// optionsStore.fullscreen;
 		untrack(() => {
+			// Don't run during initial load animation
+			if (!initialLoadComplete && !works) return;
+
 			if ($page.url.hash === '#reels' && slug === 'reels') {
 				updateFullscreen(true);
 				// window.addEventListener('keydown', escapeListener);
@@ -111,7 +121,7 @@
 		countStore.inertiaIndex;
 		gptStore.opened;
 		untrack(() => {
-			if (loadIn) return;
+			if (loadIn || !initialLoadComplete) return;
 			// console.log('[HOMEPAGE UPDATE]', index);
 			updateImage(0, 0.5);
 		});
@@ -141,7 +151,10 @@
 			document.removeEventListener('click', escapeListener);
 			window.removeEventListener('keydown', escapeListener);
 		}
-		updateImage(0, 0.5);
+		// Don't update during initial load animation
+		if (initialLoadComplete) {
+			updateImage(0, 0.5);
+		}
 	}
 
 	function escapeListener(e: KeyboardEvent | MouseEvent) {
@@ -162,6 +175,25 @@
 
 	function handleClick(event: IntersectionEvent<'click'>, index: number) {
 		if (hidden) return;
+
+		// Don't handle click if it originated from an interactive element
+		// The pointer property contains normalized coordinates, we need screen coordinates
+		// Convert from normalized device coordinates (-1 to 1) to screen coordinates
+		if (event.pointer) {
+			const x = ((event.pointer.x + 1) / 2) * window.innerWidth;
+			const y = (-(event.pointer.y - 1) / 2) * window.innerHeight;
+			const domTarget = document.elementFromPoint(x, y) as HTMLElement;
+			if (
+				domTarget &&
+				(domTarget.tagName === 'BUTTON' ||
+					domTarget.tagName === 'A' ||
+					domTarget.closest('button') ||
+					domTarget.closest('a'))
+			) {
+				return;
+			}
+		}
+
 		event.stopPropagation();
 		// stopPropagation = true;
 		// If in enlarged mode, make it smaller
@@ -256,10 +288,39 @@
 		imageMat.uniforms.u_aberrationIntensity.value = aberrationIntensity;
 	});
 
+	// Initial load animation effect
+	$effect(() => {
+		loadStore.loaded;
+		imageGeo;
+		untrack(() => {
+			if (!loadStore.loaded || initialLoadComplete || works || !imageGeo) return;
+
+			// Stagger the animation based on index with longer delays
+			const delay = 0.5 + index * 0.1;
+
+			gsap.to(transform, {
+				...homePos(index, imageGeo, $size),
+				delay,
+				duration: 1.2,
+				ease: 'power3.out',
+				onComplete: () => {
+					initialLoadComplete = true;
+					loadIn = false;
+				}
+			});
+		});
+	});
+
 	onMount(() => {
 		texture.needsUpdate = true;
 		const html = document.documentElement;
 		scrollStore.scroll = html.scrollTop;
+
+		// If it's a work page image, skip the initial animation
+		if (works) {
+			initialLoadComplete = true;
+			loadIn = false;
+		}
 		// if ($page.params.slug) {
 		// 	console.log('[PROJECT TRANSITION]', index);
 		// 	projectTransition();

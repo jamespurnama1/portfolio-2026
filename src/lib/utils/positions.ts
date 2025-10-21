@@ -17,6 +17,17 @@ export const centerPos = (index: number) => {
 	};
 };
 
+export const initialPos = (index: number) => {
+	// Initial loading position - all cards start from center at scale 0
+	return {
+		x: 0,
+		y: 0,
+		z: 0,
+		scale: 0,
+		opacity: 0
+	};
+};
+
 // Add easing function for smoother transitions
 const easeOutQuart = (x: number): number => {
 	return 1 - Math.pow(1 - x, 4);
@@ -103,10 +114,10 @@ export const projectPage = (
 	const scale = imageGeo ? 0.6 : 0;
 	const scroll = Math.round(scrollStore.scroll);
 	const countIndex = countStore.inertiaIndex;
-	const over = (Math.log10(scrollStore.overScroll / 100) + 1.5) * 100;
-	const overcompute = scrollStore.overScroll < 10 ? 0 : over;
+	// const over = (Math.log10(scrollStore.overScroll / 100) + 1.5) * 100;
+	// const overcompute = scrollStore.overScroll < 10 ? 0 : over;
 	let x = 0;
-	const y = works ? scroll - ((index + 1) * size.height - overcompute) : scroll;
+	const y = works ? scroll - (index + 1) * size.height : scroll;
 	const opacity = works ? 1 : countIndex === index ? 1 : 0;
 	if (works && index % 2 === 0 && imageGeo) {
 		x = size.width / 2 - (imageGeo.parameters.width * scale) / 2 - 16;

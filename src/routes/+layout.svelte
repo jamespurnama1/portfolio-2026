@@ -241,18 +241,18 @@
 		};
 	});
 
-	let reset = gsap.timeline();
+	// let reset = gsap.timeline();
 
-	function overScroll() {
-		reset.to(scrollStore, {
-			overScroll: 0,
-			duration: 0.5,
-			ease: 'power4.out'
-		});
-	}
+	// function overScroll() {
+	// 	reset.to(scrollStore, {
+	// 		overScroll: 0,
+	// 		duration: 0.5,
+	// 		ease: 'power4.out'
+	// 	});
+	// }
 
 	//rate limit the reset function
-	const debouncedOverscroll = gsap.delayedCall(0.15, overScroll).pause();
+	// const debouncedOverscroll = gsap.delayedCall(0.15, overScroll).pause();
 	const mapper = gsap.utils.mapRange(-2000, 2000, -5, 5);
 
 	function onScroll(event: WheelEvent) {
@@ -273,17 +273,17 @@
 		// }
 
 		// if overscroll more than 0 or reached end of page (error margin of 5 pixels) & scrol speed less than 70 (in case user scrolled from 0 to end too fast)
-		if (
-			scrollStore.overScroll > 0 ||
-			Math.abs(document.documentElement.scrollHeight - (window.scrollY + window.innerHeight)) < 5
-		) {
-			reset.clear();
-			scrollStore.overScroll += deltaY;
-		}
+		// if (
+		// 	scrollStore.overScroll > 0 ||
+		// 	Math.abs(document.documentElement.scrollHeight - (window.scrollY + window.innerHeight)) < 5
+		// ) {
+		// 	reset.clear();
+		// 	scrollStore.overScroll += deltaY;
+		// }
 		// if not intended, return value to zero
-		if (scrollStore.overScroll < 4000 && scrollStore.overScroll !== 0) {
-			debouncedOverscroll.restart(true);
-		}
+		// if (scrollStore.overScroll < 4000 && scrollStore.overScroll !== 0) {
+		// 	debouncedOverscroll.restart(true);
+		// }
 		//update scroll store on project page
 		if ($page.params.slug) {
 			scrollStore.scroll = document.documentElement.scrollTop;
@@ -340,7 +340,7 @@
 
 	<!-- Main -->
 	<main
-		class="h-full w-full overscroll-none z-10 relative flex items-center justify-center mix-blend-difference"
+		class="h-full w-full overscroll-none z-10 relative flex row items-center justify-center mix-blend-difference"
 	>
 		{#if loadStore.load < 100}
 			<div
