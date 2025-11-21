@@ -60,15 +60,19 @@
 	// change transform based on page state
 	$effect(() => {
 		initialLoadComplete;
+		// this make sures the effect only runs when initialLoadComplete actually changes value.
+		let prevInitialLoad = initialLoadComplete;
 		works;
-		untrack(() => {
-			console.log('test')
-			transform = initialLoadComplete
-				? works
-					? projectPage(index, $size, works, imageGeo, $size.width)
-					: centerPos(index)
-				: initialPos(index);
-		});
+		return () => {
+			if (prevInitialLoad !== initialLoadComplete) {
+				transform = initialLoadComplete
+					? works
+						? projectPage(index, $size, works, imageGeo, $size.width)
+						: centerPos(index)
+					: initialPos(index);
+				prevInitialLoad = initialLoadComplete;
+			}
+		};
 	});
 
 	const hidden = $derived(
@@ -277,7 +281,7 @@
 			// if hidden
 		} else if (hidden) {
 			// pos = initialPos(index);
-			pos=transform;
+			pos = transform;
 			pos.opacity = 0;
 			// if fullscreen
 			// if work page & work card

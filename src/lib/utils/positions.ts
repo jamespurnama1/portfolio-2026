@@ -99,21 +99,21 @@ export const homePos = (index: number, imageGeo: PlaneGeometry, size: size) => {
 		// card on top
 		(smoothedIndexDiff - Math.sign(smoothedIndexDiff)) * cardHeight;
 
-	console.log(
-		smoothedIndexDiff,
-		'size: ',
-		cardHeight,
-		'offset: ',
-		Math.sign(smoothedIndexDiff) * topLeft(cardHeight),
-		'active: ',
-		Math.sign(smoothedIndexDiff) * (imageGeo.parameters.height / 2),
-		'spacing: ',
-		smoothedIndexDiff * spacing,
-		'card top: ',
-		(smoothedIndexDiff - Math.sign(smoothedIndexDiff)) * cardHeight,
-		'y: ',
-		y
-	);
+	// console.log(
+	// 	smoothedIndexDiff,
+	// 	'size: ',
+	// 	cardHeight,
+	// 	'offset: ',
+	// 	Math.sign(smoothedIndexDiff) * topLeft(cardHeight),
+	// 	'active: ',
+	// 	Math.sign(smoothedIndexDiff) * (imageGeo.parameters.height / 2),
+	// 	'spacing: ',
+	// 	smoothedIndexDiff * spacing,
+	// 	'card top: ',
+	// 	(smoothedIndexDiff - Math.sign(smoothedIndexDiff)) * cardHeight,
+	// 	'y: ',
+	// 	y
+	// );
 	// if (size.width < 768) {
 	// 	return {
 	// 		// center card on small screens
