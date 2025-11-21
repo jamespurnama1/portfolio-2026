@@ -34,57 +34,65 @@
 </script>
 
 {#if typeof item.content === 'string'}
-	<li
-		style={`transform: translateY(${offset}px)`}
-		class="font-mono uppercase absolute left-0 transition-transform duration-150"
-		class:animateText={item.content.toLowerCase() ===
-			animationStore.currentCat[0].toString().toLowerCase() && animationStore.isAnimating}
-		class:hidden={$page.params.slug}
-		in:fly={{
-			x: 200,
-			duration: 500,
-			easing: cubicInOut,
-			delay: index * 100 + delay
-		}}
-		out:fade
-	>
-		{item.content}
-	</li>
-{:else if (item as Post).title}
-	<li
-		style={`transform: translateY(${offset}px)`}
-		class="font-mono absolute w-full left-0 transition-transform duration-150"
-		class:selected={active}
-		class:hidden={!active && $page.params.slug}
-		in:fly={{
-			x: 200,
-			duration: 500,
-			easing: cubicInOut,
-			delay: index * 100 + delay
-		}}
-		out:fade
-	>
-		{#if active && (item as Post).awards}
-			<Awards item={item as Post} />
-		{/if}
-		<button
-			class="text-left"
-			onclick={(e) => {
-				if (countStore.activeIndex === (item as Post).index) {
-					if ((item as Post).slug.current !== 'reels') {
-						goto(`/work/${(item as Post).slug.current}`);
-					} else {
-						// if reels then open
-						goto('/#reels');
-					}
-				} else {
-					countStore.inertiaIndex = (item as Post).index as number;
-				}
+	{#if $page.url.pathname === '/'}
+		<li
+			style={`transform: translateY(${offset}px)`}
+			class="font-mono uppercase absolute left-0 transition-transform duration-150 opacity-30"
+			class:animateText={item.content.toLowerCase() ===
+				animationStore.currentCat[0].toString().toLowerCase() && animationStore.isAnimating}
+			in:fly={{
+				x: 200,
+				duration: 500,
+				easing: cubicInOut,
+				delay: index * 100 + delay
 			}}
+			out:fade={{ duration: 400 }}
 		>
-			{(item as Post).title}
-		</button>
-	</li>
+			{item.content}
+		</li>
+	{/if}
+{:else if (item as Post).title}
+	<!-- if page is the current work page or not gallery page -->
+	{#if !((!active && $page.params.slug) || $page.route.id?.includes('gallery'))}
+		<li
+			style={`transform: translateY(${offset}px)`}
+			class="font-mono absolute w-full left-0 transition-transform duration-150"
+			class:selected={active}
+			in:fly={{
+				x: 200,
+				duration: 500,
+				easing: cubicInOut,
+				delay: index * 100 + delay
+			}}
+			out:fade={{ duration: 400 }}
+		>
+			{#if active && (item as Post).awards}
+				<Awards item={item as Post} />
+			{/if}
+			<button
+				class="text-left"
+				onclick={(e) => {
+					if (countStore.activeIndex === (item as Post).index) {
+						if ((item as Post).slug.current !== 'reels') {
+							goto(`/work/${(item as Post).slug.current}`);
+						} else {
+							// if reels then open
+							goto('/#reels');
+						}
+					} else {
+						countStore.inertiaIndex = (item as Post).index as number;
+					}
+				}}
+			>
+				{(item as Post).title}
+			</button>
+			{#if $page.params.slug}
+				<p transition:fade class="font-mono text-xs font-normal text-white uppercase mt-8 absolute">
+					{(item as Post).type}&emsp;&emsp;{(item as Post).role[0]}&emsp;&emsp;{(item as Post).year}
+				</p>
+			{/if}
+		</li>
+	{/if}
 {/if}
 
 <style lang="scss">

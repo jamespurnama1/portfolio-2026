@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { T, useTask, useThrelte } from '@threlte/core';
 	import { type IntersectionEvent } from '@threlte/extras';
-	import { type Mesh, type ShaderMaterial, type PlaneGeometry, type Texture, Vector2 } from 'three';
+	import { type Mesh, type ShaderMaterial, PlaneGeometry, type Texture, Vector2 } from 'three';
 	import {
 		animationStore,
 		countStore,
@@ -16,7 +16,7 @@
 	import gsap from 'gsap';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { homePos, centerPos, enlarged, projectPage, initialPos } from '$lib/utils/positions';
 	import { type PageData } from '../../routes/$types';
 
@@ -26,17 +26,20 @@
 	let {
 		texture,
 		index,
-		works = false,
+		works,
+		home = false,
+		gallery = false,
 		data
 	}: {
 		texture: Texture;
 		index: number;
-		works?: boolean;
+		works: boolean;
+		gallery?: boolean;
+		home?: boolean;
 		data: Required<PageData>;
 	} = $props();
-	const slug = $derived(works ? $page.params.slug : data.projects[index].slug.current.toString());
+	const slug = $derived(works ? page.params.slug : data.projects[index].slug.current.toString());
 	const img = { scale: 1 };
-	const sizing = 1;
 	const { size } = useThrelte();
 	let image: Mesh | null = $state(null);
 	let loadIn = $state(true);
@@ -47,66 +50,72 @@
 	let mousePosition = { x: 0.5, y: 0.5 };
 	let targetMousePosition = { x: 0.5, y: 0.5 };
 	let prevPosition = { x: 0.5, y: 0.5 };
+	let transform = $state({ x: 0, y: 0, z: 0, scale: 1, opacity: 0 });
 
 	// Calculate texture aspect ratio
-	const textureAspect = $derived(() => {
-		if (texture && texture.image) {
-			const width = texture.image.videoWidth || texture.image.width;
-			const height = texture.image.videoHeight || texture.image.height;
-			return width && height ? width / height : 16 / 9;
-		}
-		return 16 / 9;
+	let geometryArgs = $state([1000, 1000 / (16 / 9)]);
+
+	// const currentProject = $derived(page.params.slug || index === countStore.activeIndex || works);
+
+	// change transform based on page state
+	$effect(() => {
+		initialLoadComplete;
+		works;
+		untrack(() => {
+			console.log('test')
+			transform = initialLoadComplete
+				? works
+					? projectPage(index, $size, works, imageGeo, $size.width)
+					: centerPos(index)
+				: initialPos(index);
+		});
 	});
-	// let stopPropagation = $state(false);
-	const currentProject = $derived(!$page.params.slug || index === countStore.activeIndex || works);
-	let transform = $state(
-		initialLoadComplete
-			? currentProject
-				? projectPage(index, $size, works)
-				: centerPos(index)
-			: initialPos(index)
-	);
+
 	const hidden = $derived(
-		!transform.opacity ||
-			!currentProject ||
-			(index < countStore.activeIndex && !$page.params.slug) ||
+		// not current project in the work page
+		(!works && page.url.pathname.includes('work')) ||
+			// on home but before current index
+			(index < countStore.activeIndex && !page.params.slug) ||
+			// in fullscreen but not this image
 			(optionsStore.fullscreen && !full) ||
-			gptStore.opened
+			// gpt modal opened
+			gptStore.opened ||
+			// during gallery transition
+			loadStore.galleryTransitioning ||
+			// in gallery page TODO: change this
+			page.route.id?.includes('gallery')
 	);
 
 	// Update image on scroll or size changes
 	$effect(() => {
 		scrollStore.scroll;
-		// scrollStore.overScroll;
 		$size;
 		loadIn;
 		untrack(() => {
 			if (loadIn || !initialLoadComplete) return;
-			// on scroll, next project, afterloaded
-			// console.log('[ON SCROLL]', index);
-			updateImage(0);
+			updateImage(0, 0.1);
 		});
 	});
 
 	// update image on transition & fullscreen status
 	$effect(() => {
 		prevParams;
-		$page.params.slug;
-		$page.url.hash;
+		page.params.slug;
+		page.url.hash;
 		// optionsStore.fullscreen;
 		untrack(() => {
 			// Don't run during initial load animation
 			if (!initialLoadComplete && !works) return;
 
-			if ($page.url.hash === '#reels' && slug === 'reels') {
+			if (page.url.hash === '#reels' && slug === 'reels') {
 				updateFullscreen(true);
 				// window.addEventListener('keydown', escapeListener);
 			} else {
 				updateFullscreen(false, full && slug === 'reels');
 				// if (full) window.removeEventListener('keydown', escapeListener);
 			}
-			if (full || prevParams === $page.params.slug) return;
-			prevParams = $page.params.slug;
+			if (full || prevParams === page.params.slug) return;
+			prevParams = page.params.slug || '';
 			// if (index === 0) console.log('[NEXT PR TRANSITION]', index);
 			// scrollStore.scroll = document.documentElement.scrollTop;
 			updateImage(0.2, 0.5, () => {
@@ -120,8 +129,17 @@
 	$effect(() => {
 		countStore.inertiaIndex;
 		gptStore.opened;
+		loadStore.galleryTransitioning;
 		untrack(() => {
 			if (loadIn || !initialLoadComplete) return;
+			// Fade out when transitioning to gallery
+			if (loadStore.galleryTransitioning && !works) {
+				gsap.to(transform, {
+					opacity: 0,
+					duration: 0.4
+				});
+				return;
+			}
 			// console.log('[HOMEPAGE UPDATE]', index);
 			updateImage(0, 0.5);
 		});
@@ -130,8 +148,8 @@
 	//theme
 	$effect(() => {
 		imageMat.uniforms.inverted.value = !optionsStore.dark;
+		// untrack(() => console.log(slug, works, 'inverted:', imageMat.uniforms.inverted.value));
 	});
-
 	function updateFullscreen(bool: boolean, updateStore = true) {
 		if (updateStore) optionsStore.fullscreen = bool;
 		const el = document.getElementById(`${slug}${works ? '-' + index : ''}`);
@@ -164,7 +182,7 @@
 		) {
 			// e.stopPropagation();
 			updateFullscreen(false);
-			if (slug === 'reels' && $page.url.hash === '#reels') {
+			if (slug === 'reels' && page.url.hash === '#reels') {
 				goto('/');
 			}
 		}
@@ -174,6 +192,7 @@
 	// if (index === 0) $inspect(transform.scale);
 
 	function handleClick(event: IntersectionEvent<'click'>, index: number) {
+		console.log('click');
 		if (hidden) return;
 
 		// Don't handle click if it originated from an interactive element
@@ -199,13 +218,13 @@
 		// If in enlarged mode, make it smaller
 		if (full && slug !== 'reels') {
 			updateFullscreen(false);
-		} else if (slug === 'reels' && $page.url.hash === '#reels') {
+		} else if (slug === 'reels' && page.url.hash === '#reels') {
 			goto('/');
 			// if in works or reels, make it large
-		} else if ($page.params.slug && !full) {
+		} else if (page.params.slug && !full) {
 			updateFullscreen(true);
 			// if index is same
-		} else if (countStore.activeIndex === index && !$page.params.slug) {
+		} else if (countStore.activeIndex === index && !page.params.slug) {
 			// if in home & selected
 			if (slug === 'reels') {
 				goto('/#reels');
@@ -213,20 +232,23 @@
 				goto(`/work/${slug}`);
 			}
 			// if in home make as selected
-		} else if (!$page.params.slug) {
+		} else if (!page.params.slug) {
 			countStore.inertiaIndex = index;
 		}
 	}
 
 	function handleEnter(event: IntersectionEvent<'pointerover'>) {
+		// disable hover effect when hidden or fullscreen
 		if (hidden || full) return;
 		gsap.to(img, {
-			scale: 1.5
+			scale: 1.15
 		});
 		cursorStore.cursorState = 'link';
 	}
 
 	function handleLeave(event: IntersectionEvent<'pointerleave'>) {
+		// disable hover effect when hidden or fullscreen
+		if (hidden || full) return;
 		gsap.to(img, {
 			scale: 1
 		});
@@ -236,7 +258,8 @@
 	}
 
 	function handleMove(event: IntersectionEvent<'pointermove'>) {
-		if (hidden) return;
+		// disable hover effect when hidden or fullscreen or in works page
+		if (hidden || full || works) return;
 		easeFactor = 0.02;
 		prevPosition = { ...targetMousePosition };
 		targetMousePosition.x = event.uv!.x;
@@ -244,20 +267,27 @@
 		aberrationIntensity = 1;
 	}
 
+	// Update image position and scale based on current state
 	function updateImage(delay = 0, duration = 0.01, callback?: () => void) {
+		if (!loadStore.loaded) return;
 		let pos;
-		if (full) {
-			pos = enlarged(index, 0);
-		} else if (($page.params.slug || $page.url.hash) && !optionsStore.fullscreen) {
-			pos = projectPage(index, $size, works, imageGeo);
-		} else if (loadStore.loaded && !optionsStore.fullscreen) {
+		// if homepage
+		if (home) {
 			pos = homePos(index, imageGeo, $size);
+			// if hidden
+		} else if (hidden) {
+			// pos = initialPos(index);
+			pos=transform;
+			pos.opacity = 0;
+			// if fullscreen
+			// if work page & work card
+		} else if (works) {
+			console.log('[WORK PAGE UPDATE]', index);
+			pos = projectPage(index, $size, works, imageGeo, $size.width);
+		} else if (optionsStore.fullscreen) {
+			pos = enlarged(index, 0);
 		}
-		if (hidden) {
-			transform.opacity = 0;
-		} else {
-			transform.opacity = 1;
-		}
+
 		if (!data.projectsLength) return;
 		gsap.to(transform, {
 			...pos,
@@ -284,7 +314,7 @@
 
 		imageMat.uniforms.u_prevMouse.value.set(prevPosition.x, prevPosition.y);
 
-		aberrationIntensity = Math.max(0.0, aberrationIntensity - 0.05);
+		aberrationIntensity = works ? 0.0 : Math.max(0.0, aberrationIntensity - 0.05);
 		imageMat.uniforms.u_aberrationIntensity.value = aberrationIntensity;
 	});
 
@@ -347,6 +377,47 @@
 	// 	});
 	// });
 
+	// Watch for texture dimension changes and update geometry
+	$effect(() => {
+		if (!texture || !texture.image) return;
+		const img = texture.image;
+		const width = img.videoWidth || img.width;
+		const height = img.videoHeight || img.height;
+		let expected;
+		//works page
+		if (works && width > 0 && height > 0) {
+			const aspect = width / height;
+			let w = $size.width * aspect * 0.25;
+			let h = $size.width * 0.25;
+			if (w > $size.width) {
+				h = ($size.width / aspect) * 0.25;
+				w = $size.width * 0.25;
+			}
+			expected = [w, h];
+			// landing page
+		} else if (width > 0 && height > 0) {
+			const aspect = width / height;
+			let w = $size.width * 0.5;
+			let h = ($size.width / aspect) * 0.5;
+			if (h > $size.width) {
+				w = $size.width * aspect * 0.5;
+				h = $size.width * 0.5;
+			}
+			expected = [w, h];
+		} else {
+			expected = [$size.width * 0.5, ($size.width / (16 / 9)) * 0.5];
+		}
+		if (geometryArgs[0] !== expected[0] || geometryArgs[1] !== expected[1]) {
+			geometryArgs = expected;
+			if (imageGeo && image) {
+				imageGeo.dispose();
+				const newGeo = new PlaneGeometry(...expected);
+				image.geometry = newGeo;
+				imageGeo = newGeo;
+			}
+		}
+	});
+
 	// exit transition to home
 	beforeNavigate(({ to, cancel }) => {
 		if (!to) return;
@@ -367,14 +438,15 @@
 	onclick={(e: IntersectionEvent<'click'>) => {
 		handleClick(e, index);
 	}}
+	userData={{
+		skipPostFX: works
+	}}
 	onpointerover={(e: IntersectionEvent<'pointerover'>) => handleEnter(e)}
 	onpointerleave={(e: IntersectionEvent<'pointerleave'>) => handleLeave(e)}
 	onpointermove={(e: IntersectionEvent<'pointermove'>) => handleMove(e)}
 >
-	<T.PlaneGeometry
-		bind:ref={imageGeo}
-		args={[$size.width * sizing, (($size.width * 2) / 3) * sizing]}
-	/>
+	<T.PlaneGeometry bind:ref={imageGeo} args={geometryArgs} />
+
 	<T.ShaderMaterial
 		bind:ref={imageMat}
 		uniforms={{
@@ -382,10 +454,26 @@
 			u_prevMouse: { value: new Vector2() },
 			u_aberrationIntensity: { value: 0.0 },
 			u_texture: { value: texture },
-			textureAspect: { value: textureAspect() },
-			planeAspect: { value: 3 / 2 },
+			textureAspect: {
+				value: (() => {
+					if (texture && texture.image) {
+						const width = texture.image.videoWidth || texture.image.width;
+						const height = texture.image.videoHeight || texture.image.height;
+						return width && height ? width / height : 16 / 9;
+					}
+					return 16 / 9;
+				})()
+			},
+			planeAspect: {
+				value: (() => {
+					if (geometryArgs && geometryArgs[0] && geometryArgs[1]) {
+						return geometryArgs[0] / geometryArgs[1];
+					}
+					return 16 / 9;
+				})()
+			},
 			scale: { value: 1 },
-			inverted: { value: false },
+			inverted: { value: !optionsStore.dark },
 			opacity: { value: 0.0 }
 		}}
 		transparent={true}

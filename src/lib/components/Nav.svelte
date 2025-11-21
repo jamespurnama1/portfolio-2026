@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { page } from '$app/stores';
-	import { gptStore, loadStore } from '$lib/stores/index.svelte';
+	import { page } from '$app/state';
+	import { loadStore } from '$lib/stores/index.svelte';
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
 </script>
@@ -27,7 +27,7 @@
 			<a
 				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 200 }}
 				class="goback"
-				class:invisible={$page.url.pathname === '/'}
+				class:invisible={page.url.pathname === '/'}
 				href="/"><p>go back</p></a
 			>
 		{/if}

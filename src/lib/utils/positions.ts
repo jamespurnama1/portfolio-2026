@@ -1,10 +1,18 @@
 import type { PlaneGeometry } from 'three';
-import { countStore, gptStore, projectsStore, scrollStore } from '$lib/stores/index.svelte';
+import {
+	countStore,
+	gptStore,
+	loadStore,
+	projectsStore,
+	scrollStore
+} from '$lib/stores/index.svelte';
 
 type size = {
 	width: number;
 	height: number;
 };
+
+const topLeft = (cardSize: number) => cardSize / 2;
 
 export const centerPos = (index: number) => {
 	// console.log('[POS] Center pos', index);
@@ -22,9 +30,9 @@ export const initialPos = (index: number) => {
 	return {
 		x: 0,
 		y: 0,
-		z: 0,
-		scale: 0,
-		opacity: 0
+		z: index,
+		scale: 2,
+		opacity: 1
 	};
 };
 
@@ -52,40 +60,89 @@ const applyInertia = (diff: number): number => {
 	const fractional = Math.abs(diff % 1);
 	const integer = diff - fractional * Math.sign(diff);
 
-	// Blend between smoothStep and easeOutCubic for balanced interpolation
+	// Blend between smoothStep and easeOutCubic for slower ramp-up
 	const smoothed = smoothStep(fractional);
 	const eased = easeOutCubic(fractional);
-	const blended = smoothed * 0.6 + eased * 0.4;
+	const blended = smoothed * 0.9 + eased * 0.1;
 
 	return integer + blended * Math.sign(diff);
 };
 
 export const homePos = (index: number, imageGeo: PlaneGeometry, size: size) => {
-	// console.log('[POS] home pos', index);
-	const indexDiff = countStore.inertiaIndex - index - 1;
+	const indexDiff = countStore.inertiaIndex - index;
 	const activeDiff = index + 1 - countStore.activeIndex;
-
+	const mobile = size.width <= 768;
 	// Apply smooth inertia interpolation to the position difference
 	const smoothedIndexDiff = applyInertia(indexDiff);
-	const rawOpacity = Math.min(Math.max(0, activeDiff), 1);
+	const rawOpacity = Math.min(Math.max(0, activeDiff * 1.8), 1);
+	const smallSize = mobile ? 0.5 : 0.3;
+	let baseScale = mobile ? 1.5 : 1;
 
+	let scale =
+		Math.abs(smoothedIndexDiff) < 1
+			? Math.max(smallSize, baseScale - Math.abs(smoothedIndexDiff))
+			: smallSize;
+
+	const cardWidth = imageGeo.parameters.width * scale;
+	const cardHeight = imageGeo.parameters.height * scale;
+
+	let spacing = 0;
+	let x = mobile ? 0 : topLeft(cardWidth) - size.width * 0.5;
+	// add y offset spacing except for active card
+	let y =
+		// offset depending on top or bottom of active card
+		Math.sign(smoothedIndexDiff) * topLeft(cardHeight) +
+		// active card
+		Math.sign(smoothedIndexDiff) * (imageGeo.parameters.height * baseScale / 2) +
+		//spacing on top (none for active card)
+		smoothedIndexDiff * spacing +
+		// card on top
+		(smoothedIndexDiff - Math.sign(smoothedIndexDiff)) * cardHeight;
+
+	console.log(
+		smoothedIndexDiff,
+		'size: ',
+		cardHeight,
+		'offset: ',
+		Math.sign(smoothedIndexDiff) * topLeft(cardHeight),
+		'active: ',
+		Math.sign(smoothedIndexDiff) * (imageGeo.parameters.height / 2),
+		'spacing: ',
+		smoothedIndexDiff * spacing,
+		'card top: ',
+		(smoothedIndexDiff - Math.sign(smoothedIndexDiff)) * cardHeight,
+		'y: ',
+		y
+	);
+	// if (size.width < 768) {
+	// 	return {
+	// 		// center card on small screens
+	// 		x: 0,
+	// 		y: spacing * -(index - countStore.activeIndex),
+	// 		z: 0.6 * smoothedIndexDiff - 10,
+	// 		scale: (1 + (smoothedIndexDiff * 3) / projectsStore.projectsLength) * 0.75,
+	// 		opacity: gptStore.opened || loadStore.galleryTransitioning ? 0 : rawOpacity
+	// 	};
+	// }
+	// console.log('[POS] home pos', x, y, Math.abs(smoothedIndexDiff));
 	return {
-		// center minus 10% of width
-		x: imageGeo.parameters.width * (smoothedIndexDiff * 0.1) - size.width * 0.1,
-		// 0.1 modifer + card height 0.05 modifier
-		y: imageGeo.parameters.height * (smoothedIndexDiff * 0.1) + imageGeo.parameters.height * 0.05,
+		x,
+		y,
 		z: 0.6 * smoothedIndexDiff - 10,
-		scale: (1 + smoothedIndexDiff / projectsStore.projectsLength) * 0.5,
-		opacity: gptStore.opened ? 0 : easeOutQuad(rawOpacity)
+		scale,
+		opacity: gptStore.opened || loadStore.galleryTransitioning ? 0 : rawOpacity
 	};
 };
 
 export const enlarged = (
 	index: number,
-	delay = (Math.max(index / projectsStore.projectsLength) - 0.1, 0)
+	delay = (Math.max(index / projectsStore.projectsLength) - 0.1, 0),
+	maxSize?: number
 ) => {
+	// Center horizontally if maxSize provided
+	const x = maxSize ? maxSize / 2 : 0;
 	return {
-		x: 0,
+		x,
 		y: 0,
 		z: -0.6 * (index - 1),
 		delay,
@@ -109,29 +166,48 @@ export const projectPage = (
 	index: number,
 	size: size,
 	works: boolean,
-	imageGeo?: PlaneGeometry
+	imageGeo: PlaneGeometry,
+	maxSize?: number
 ) => {
-	const scale = imageGeo ? 0.6 : 0;
+	let scale = 1;
 	const scroll = Math.round(scrollStore.scroll);
 	const countIndex = countStore.inertiaIndex;
-	// const over = (Math.log10(scrollStore.overScroll / 100) + 1.5) * 100;
-	// const overcompute = scrollStore.overScroll < 10 ? 0 : over;
 	let x = 0;
-	const y = works ? scroll - (index + 1) * size.height : scroll;
-	const opacity = works ? 1 : countIndex === index ? 1 : 0;
-	if (works && index % 2 === 0 && imageGeo) {
-		x = size.width / 2 - (imageGeo.parameters.width * scale) / 2 - 16;
-	} else if (imageGeo) {
-		x = -size.width / 2 + (imageGeo.parameters.width * scale) / 2 + 16;
+	let y = 0;
+	let opacity = 1;
+	const mobile = size.width <= 768;
+	const cardWidth = imageGeo.parameters.width * scale;
+
+	if (index === 0) {
+		return {
+			x: mobile ? 0 : topLeft(cardWidth) - size.width * 0.5,
+			y: scroll - index * size.height,
+			z: -0.6,
+			scale: 1.3,
+			opacity
+		};
 	}
-	// console.log('[POS] Project Page', index);
+	// Get actual media element position and convert to Three.js coordinates
+	const mediaEl = document.getElementById(`media-${index}`) as HTMLImageElement | HTMLVideoElement;
+	if (works && mediaEl) {
+		const rect = mediaEl.getBoundingClientRect();
+		// match scale to element size
+		scale = rect.width / cardWidth;
+		// Convert from screen coordinates (top-left origin) to Three.js coordinates (center origin)
+		x = rect.left + topLeft(rect.width) - size.width / 2;
+		y = -rect.top + size.height / 2 - topLeft(rect.height);
+		opacity = works ? 1 : countIndex === index ? 1 : 0;
+	} else {
+		console.warn(`[POS] projectPage: Media element not found for index ${index}`);
+	}
+
+	if (index === 1) console.log('[POS] projectPage', x, y, scale, works);
+
 	return {
-		// move left + offset image width origin + margin
 		x,
-		// if works child images, offset by viewport height. Starts at index = 2
 		y,
 		z: -0.6,
 		scale,
-		opacity: gptStore.opened ? 0 : opacity
+		opacity
 	};
 };

@@ -24,15 +24,18 @@ vec3 linearToSRGB(vec3 linear) {
 void main() {
     vec2 newUV = v_uv - vec2(0.5);
 
-    if (planeAspect < textureAspect) {
-        newUV = newUV * vec2(planeAspect / textureAspect, 1.0);
+    // Classic aspect ratio correction: fit shorter side, preserve proportions
+    if (planeAspect > textureAspect) {
+        // Plane is wider than texture: fit height
+        newUV = newUV * vec2(textureAspect / planeAspect, 1.0);
     } else {
-        newUV = newUV * vec2(1.0, textureAspect / planeAspect);
+        // Plane is taller than texture: fit width
+        newUV = newUV * vec2(1.0, planeAspect / textureAspect);
     }
-
     newUV /= scale;
     newUV += vec2(0.5);
 
+    // Use aspect ratio correction only, no clamping
     vec2 gridUV = floor(newUV * vec2(20.0, 20.0)) / vec2(20.0, 20.0);
     vec2 centerOfPixel = gridUV + vec2(1.0 / 20.0, 1.0 / 20.0);
     
@@ -53,11 +56,18 @@ void main() {
     float alpha = colorG.a * opacity;
     
     // Correctly calculate the linear color
-    vec4 image = vec4(colorR.r, colorG.g, colorB.b, alpha);
-    // vec4 image = vec4(linearColor, opacity);
-
+    vec4 image;
     if (inverted) {
         image = vec4(1.0 - colorR.r, 1.0 - colorG.g, 1.0 - colorB.b, alpha);
+    } else {
+        image = vec4(colorR.r, colorG.g, colorB.b, alpha);
     }
+
+    // Debug border: show red border if outside [-0.5,0.5] after aspect correction
+    // if (abs(newUV.x - 0.5) > 0.49 || abs(newUV.y - 0.5) > 0.49) {
+    //     image.rgb = vec3(1.0, 0.0, 0.0);
+    //     image.a = 1.0;
+    // }
+
     gl_FragColor = image;
 }

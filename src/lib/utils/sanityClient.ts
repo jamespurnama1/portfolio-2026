@@ -12,6 +12,16 @@ export const client = createClient({
 
 export async function sanityLoad() {
 	const data: Data = await client.fetch(`{
+  "gallery": *[_type == "gallery"][] {
+      media[] {
+      _key,
+      alt,
+      "url": asset->url,
+      "id": asset->_id,
+      "filename": asset->originalFilename,
+      "size": asset->size
+    }
+  },
   "category": *[_type == "landing"],
   "post":  *[_type == "post"]{
   _id,

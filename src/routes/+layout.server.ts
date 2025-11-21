@@ -17,11 +17,13 @@ export async function load() {
 
 	// Projects
 	catItems.forEach((cat) => {
-		const items: Array<SanityReference<Post> | Post> = [];
+		const items: Post[] = [];
 		cat.items.forEach((ref) => {
-			items.push(
-				...data.post.filter((project) => project._id === (ref as SanityReference<Post>)._ref)
+			const refId = (ref as SanityReference<Post>)._ref;
+			const matchedPosts = data.post.filter(
+				(project): project is Post => (project as Post)._id !== undefined && (project as Post)._id === refId
 			);
+			items.push(...matchedPosts);
 		});
 		cat.items = items;
 		projects.push(...items);
@@ -35,13 +37,18 @@ export async function load() {
 
 	// projectsLength
 	projectsLength = data.post.length;
+
+	// gallery
+	const gallery = data.gallery || [];
+
 	if (data) {
 		return {
 			projects,
 			projectsLength,
 			categories,
 			catItems,
-			categoriesLength
+			categoriesLength,
+			gallery
 		};
 	}
 	return {

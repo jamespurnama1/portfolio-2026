@@ -99,7 +99,7 @@
 				break;
 			case 'random_project':
 				const random = Math.floor(Math.random() * projectsStore.projectsLength) + 1;
-				goto(`/work/${data.projects[random].slug.current}`);
+				goto(`/work/${data.projects![random].slug.current}`);
 				notification();
 				break;
 			case 'to_project':
@@ -140,7 +140,7 @@
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ input: x })
 				});
-				if (res.status !== 200) throw error(res.status, res.body.message);
+				if (res.status !== 200) throw error(res.status, 'Unexpected error occurred');
 				let isFunc = false;
 				const data = await res;
 				if (!data.body) throw error(204, 'No Body Response');
@@ -177,7 +177,7 @@
 			} catch (err) {
 				if (err instanceof Error) {
 					notificationStore.message = err.message;
-					notificationStore.sub = err.status || '';
+					notificationStore.sub = (err as any)?.status || '';
 				} else {
 					notificationStore.message = 'Something went wrong. Please try again later.';
 					notificationStore.sub = '';

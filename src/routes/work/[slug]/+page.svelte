@@ -16,13 +16,13 @@
 	import type { Post } from '$lib/types';
 	import caret from '$lib/images/caret.svg';
 	import chroma from 'chroma-js';
+	import { cardDimensionsStore } from '$lib/stores/cardDimensions.svelte';
 
 	const { data }: { data: Required<PageData> } = $props();
 	let caretEl = $state() as HTMLImageElement;
 	let innerWidth = $state(0);
 	let scrollHeight = $state(0);
 	let innerHeight = $state(0);
-	let sectionComponent = $state([]) as Array<typeof Section>;
 	let animating = true;
 
 	const mapper = gsap.utils.mapRange(0, 300, 0, 100);
@@ -188,22 +188,35 @@
 	<img bind:this={caretEl} src={caret} alt="scroll caret" class="absolute w-3 right-0 -top-5" />
 </aside>
 <article
-	class="relative overflow-hidden self-start"
+	class="relative overflow-hidden self-start w-full"
 	class:opacity-0={optionsStore.fullscreen || gptStore.opened}
 >
-	{#if current}
+	{#if current && typeof currIndex === 'number'}
 		<Section
-			top="{current.type}&emsp;&emsp;{current.role[0]}&emsp;&emsp;{current.year}"
+			heading={data.projects[currIndex].title}
 			index={0}
 		/>
 		{#each current.content as item, index}
-			<Section
-				bind:this={sectionComponent[index]}
-				index={index + 1}
-				body={item.body}
-				heading={item.headline}
-				bottom={item.caption}
-			/>
+			{#if data.projects && data.projects[currIndex] && data.projects[currIndex].content && data.projects[currIndex].content[index]}
+				<!-- Calculate imageWidth and imageHeight inside the block -->
+				{@const contentItem = data.projects[currIndex].content[index]}
+				{@const imageWidth = $cardDimensionsStore[index]?.width ?? 0}
+				{@const imageHeight = $cardDimensionsStore[index]?.height ?? 0}
+				{@const maxSize = Math.min(innerWidth*0.6, 600)}
+				<Section
+					index={index + 1}
+					body={item.body}
+					heading={item.headline}
+					bottom={item.caption}
+					image={contentItem.image}
+					video={contentItem.video}
+					imageLight={contentItem.imageLight}
+					imageCaption={contentItem.caption}
+					{imageWidth}
+					{imageHeight}
+					{maxSize}
+				/>
+			{/if}
 		{/each}
 	{/if}
 	{#if typeof currIndex === 'number' && data.projects[currIndex + 1]}
@@ -216,19 +229,21 @@
 				radial-gradient(at 15% 88%, ${nextColorScale[0]} 0, transparent 30%);`}
 			class="h-[40vh] w-full gradient -z-30 flex text-center justify-center items-center flex-col dark:invert-0 invert [mask-image:linear-gradient(to_bottom,transparent_0%,white_40%)]"
 		>
-			<div
-				class="flex items-center justify-center text-white mix-blend-difference font-mono uppercase text-xs gap-5"
-			>
-				<p class="text-base">&gt;</p>
-				<div>
-					<!-- <p>Keep Scrolling</p> -->
-					<p>Next Project</p>
+			<a href={`/work/${data.projects[currIndex + 1].slug.current}`}>
+				<div
+					class="flex items-center justify-center text-white mix-blend-difference font-mono uppercase text-xs gap-5"
+				>
+					<p class="text-base">&gt;</p>
+					<div>
+						<!-- <p>Keep Scrolling</p> -->
+						<p>Next Project</p>
+					</div>
+					<p class="text-base">&gt;</p>
 				</div>
-				<p class="text-base">&gt;</p>
-			</div>
-			<h4 class="text-4xl font-bold text-white mix-blend-difference">
-				{data.projects[currIndex + 1].title}
-			</h4>
+				<h4 class="text-4xl font-bold text-white mix-blend-difference">
+					{data.projects[currIndex + 1].title}
+				</h4>
+			</a>
 		</aside>
 	{/if}
 </article>

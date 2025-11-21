@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { onDestroy, tick, untrack } from 'svelte';
+	import { page } from '$app/state';
 	import { countStore, cursorStore, animationStore, loadStore } from '$lib/stores/index.svelte';
 	import RiveCanvas, { type SMIInput } from '@rive-app/canvas-advanced';
 	import { onMount } from 'svelte';
 	import { gsap } from 'gsap';
 	import { useThrelte } from '@threlte/core';
 
-	const currentPath = $page.url.pathname;
+	const currentPath = page.url.pathname;
 
 	let link = $state() as SMIInput;
 	let scroll = $state() as SMIInput;
@@ -63,11 +63,11 @@
 	});
 
 	let {
-		canvas = $bindable(),
+		riveCanvas = $bindable(),
 		riveTask = $bindable(),
 		loadingAnim
 	}: {
-		canvas: HTMLCanvasElement;
+		riveCanvas: HTMLCanvasElement;
 		riveTask: (time?: number) => void;
 		loadingAnim: () => void;
 	} = $props();
@@ -95,20 +95,20 @@
 	});
 
 	$effect(() => {
-		if (!canvas) return;
-		canvas.width = $size.width;
-		canvas.height = $size.height;
+		if (!riveCanvas) return;
+		riveCanvas.width = $size.width;
+		riveCanvas.height = $size.height;
 	});
 
 	onMount(async () => {
-		canvas = document.createElement('canvas');
-		document.body.appendChild(canvas);
-		canvas.className = 'riveCanvas';
+		riveCanvas = document.createElement('canvas');
+		document.body.appendChild(riveCanvas);
+		riveCanvas.className = 'riveCanvas';
 		const rive = await RiveCanvas({
 			// Loads Wasm bundle
-			locateFile: () => `https://unpkg.com/@rive-app/canvas-advanced@2.20.1/rive.wasm`
+			locateFile: () => `https://unpkg.com/@rive-app/canvas-advanced@2.32.0/rive.wasm`
 		});
-		const renderer = rive.makeRenderer(canvas);
+		const renderer = rive.makeRenderer(riveCanvas);
 		const bytes = await (await fetch(new Request('/cursor.riv'))).arrayBuffer();
 		const file = await rive.load(new Uint8Array(bytes));
 		const artboard = file.artboardByName('Cursor');
@@ -126,23 +126,29 @@
 			stateMachine.advance(delta!);
 			artboard.advance(delta!);
 			renderer.save();
-			// renderer.align(
-			// 	rive.Fit.contain,
-			// 	rive.Alignment.topRight,
-			// 	{
-			// 		minX: 0,
-			// 		minY: 0,
-			// 		maxX: canvas.width,
-			// 		maxY: canvas.height
-			// 	},
-			// 	artboard.bounds
-			// );
+			renderer.align(
+				rive.Fit.contain,
+				rive.Alignment.topRight,
+				{
+					minX: 0,
+					minY: 0,
+					maxX: riveCanvas.width,
+					maxY: riveCanvas.height
+				},
+				artboard.bounds
+			);
 			artboard.draw(renderer);
 			renderer.restore();
 			rive.resolveAnimationFrame();
 		};
 
 		loadingAnim();
+	});
+
+	onDestroy(() => {
+		if (riveCanvas && riveCanvas.parentNode) {
+			riveCanvas.parentNode.removeChild(riveCanvas);
+		}
 	});
 </script>
 

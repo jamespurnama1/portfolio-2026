@@ -17,6 +17,7 @@
 		notificationStore,
 		gptStore
 	} from '$lib/stores/index.svelte';
+	import { galleryScrollStore } from '$lib/stores/galleryScroll';
 	import { gsap } from 'gsap';
 	import { checkSavedTheme } from '$lib/utils/theme';
 	import { onMount, untrack } from 'svelte';
@@ -34,8 +35,9 @@
 	let innerWidth = $state(0);
 	let innerHeight = $state(0);
 	let { children, data } = $props();
-	let webGLComponent: typeof Three = $state();
-	let gptEl: typeof GPT = $state();
+	import type { SvelteComponent } from 'svelte';
+	let webGLComponent: SvelteComponent | undefined = $state();
+	let gptEl: SvelteComponent | undefined = $state();
 	let navComponent: Nav;
 	let footerComponent: Footer;
 	let videoEl = $state([]) as HTMLVideoElement[];
@@ -255,42 +257,41 @@
 	// const debouncedOverscroll = gsap.delayedCall(0.15, overScroll).pause();
 	const mapper = gsap.utils.mapRange(-2000, 2000, -5, 5);
 
+	$effect(() => {
+		$page.url.pathname;
+		untrack(() => {
+			if ($page.url.pathname !== '/gallery') {
+				galleryScrollStore.set(0);
+			}
+		});
+	});
+
 	function onScroll(event: WheelEvent) {
 		if (!loadStore.loaded || gptStore.opened) return;
 		activityStore.inactive = false;
 		// deprecated wheeldelta is more consistent than the new delta
-		let deltaY = -1 * event.wheelDeltaY;
-		// if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
-		// 	// Convert pixel values to lines
-		// scrollStore.scroll = document.documentElement.scrollTop;
-		// 	deltaY *= 1;
-		// } else if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
-		// 	// Convert lines to pixels (approximation, typically 16 pixels per line)
-		// 	deltaY *= 17;
-		// } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-		// 	// Convert pages to pixels (e.g., 100 pixels per page)
-		// 	deltaY *= 53;
-		// }
+		let deltaY = event.deltaY;
+		if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
+			// Convert pixel values to lines
+			deltaY *= 1;
+		} else if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+			// Convert lines to pixels (approximation, typically 16 pixels per line)
+			deltaY *= 17;
+		} else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+			// Convert pages to pixels (e.g., 100 pixels per page)
+			deltaY *= 53;
+		}
 
-		// if overscroll more than 0 or reached end of page (error margin of 5 pixels) & scrol speed less than 70 (in case user scrolled from 0 to end too fast)
-		// if (
-		// 	scrollStore.overScroll > 0 ||
-		// 	Math.abs(document.documentElement.scrollHeight - (window.scrollY + window.innerHeight)) < 5
-		// ) {
-		// 	reset.clear();
-		// 	scrollStore.overScroll += deltaY;
-		// }
-		// if not intended, return value to zero
-		// if (scrollStore.overScroll < 4000 && scrollStore.overScroll !== 0) {
-		// 	debouncedOverscroll.restart(true);
-		// }
-		//update scroll store on project page
 		if ($page.params.slug) {
 			scrollStore.scroll = document.documentElement.scrollTop;
-			//update count store on home page
+		} else if ($page.url.pathname === '/gallery') {
+			const mappedDelta = mapper(deltaY);
+			countStore.inertiaIndex += mappedDelta;
+			galleryScrollStore.set(countStore.inertiaIndex);
+			scrollStore.scroll = countStore.inertiaIndex;
 		} else {
 			// Apply smooth wheel input with dampening
-			const mappedDelta = mapper(deltaY) * 0.2; // Dampen for smoother feel
+			const mappedDelta = mapper(deltaY) * 0.5; // Dampen for smoother feel
 			countStore.inertiaIndex += mappedDelta;
 			debouncedInertia.restart(true);
 		}
@@ -367,14 +368,12 @@
 	<Notifications />
 	<!-- BG -->
 	<div class="fixed w-screen h-screen z-0 top-0 left-0 canvas-container">
-		<Canvas>
-			<Three bind:this={webGLComponent} {data} />
-		</Canvas>
+		<Three bind:this={webGLComponent} {data} />
 	</div>
 	<GPT
 		bind:this={gptEl}
 		{data}
-		categoryAnim={webGLComponent ? webGLComponent.categoryAnim : null}
+		categoryAnim={webGLComponent ? webGLComponent.getRiveSceneInstance().categoryAnim : null}
 	/>
 	<!-- Footer -->
 	<Footer bind:this={footerComponent} />

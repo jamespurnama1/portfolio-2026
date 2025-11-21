@@ -61,7 +61,6 @@
 	bind:this={projectList}
 	class="absolute h-full w-[45%] right-0 text-white font-mono ml-auto transition-all duration-1000 mix-blend-difference flex items-center justify-center flex-col"
 	class:opacity-0={optionsStore.fullscreen || gptStore.opened}
-	class:slug={$page.params.slug}
 >
 	{#if posts}
 		{#each list as item, index}
@@ -77,10 +76,6 @@
 </ul>
 
 <style lang="postcss" scoped>
-	.slug {
-		@apply -translate-x-[20%] w-[28%];
-	}
-
 	ul {
 		mask-image: linear-gradient(
 			0deg,

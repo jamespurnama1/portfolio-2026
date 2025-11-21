@@ -1,6 +1,5 @@
 import adapter from '@sveltejs/adapter-vercel';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
-import { threeMinifier } from "@yushijinhun/three-minifier-rollup";
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -32,7 +31,7 @@ const config = {
 		}
 	},
 	plugins: [
-		{ ...threeMinifier(), enforce: "pre" }, // <=== Add plugin here
+		// { ...threeMinifier(), enforce: "pre" },
 	],
 	ssr: {
 		noExternal: ['three', 'troika-three-text']

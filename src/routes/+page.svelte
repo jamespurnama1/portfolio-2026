@@ -1,5 +1,4 @@
 <script lang="ts">
-	/** @type {import('./$types').LayoutData} */
 	import { animationStore, countStore, loadStore } from '$lib/stores/index.svelte';
 	import { scale } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
@@ -10,15 +9,53 @@
 	<meta name="description" content="Portfolio" />
 </svelte:head>
 
-<section class="w-screen h-screen overflow-hidden flex items-center justify-center p-24">
+<section class="landing-section">
 	{#if countStore.isNewCat}
-		<h2
-			class="text-white uppercase font-mono text-7xl absolute -translate-x-2/3 2xl:top-1/4 pointer-events-none text-center w-[30vw] {loadStore.loaded
-				? ' top-[20%]'
-				: 'top-[50%]'}"
-			transition:scale={{ duration: 500, start: 0.5, easing: quintOut }}
-		>
-			{animationStore.currentCat[0]}
-		</h2>
+		<div class="category-label" transition:scale={{ duration: 500, start: 0.5, easing: quintOut }}>
+			<h2>
+				{animationStore.currentCat[0]}
+			</h2>
+		</div>
 	{/if}
 </section>
+
+<style>
+	.landing-section {
+		width: 100vw;
+		height: 100vh;
+		overflow: hidden;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 6rem;
+		position: relative;
+	}
+
+	.category-label {
+		position: absolute;
+		transform: translateX(-66.666667%);
+		pointer-events: none;
+		text-align: center;
+		width: 30vw;
+		top: 20%;
+	}
+
+	.category-label h2 {
+		color: white;
+		text-transform: uppercase;
+		font-family: 'Source Code Pro Variable', monospace;
+		font-size: 3.75rem;
+		line-height: 1;
+		margin: 0;
+	}
+
+	@media (min-width: 1536px) {
+		.category-label {
+			top: 25%;
+		}
+	}
+
+	:global(body:not(.loaded)) .category-label {
+		top: 50%;
+	}
+</style>

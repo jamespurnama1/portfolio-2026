@@ -1,481 +1,182 @@
 <script lang="ts">
-	import { T, useTask, useThrelte, useLoader } from '@threlte/core';
-	import { useFBO } from '@threlte/extras';
-	import {
-		CanvasTexture,
-		VideoTexture,
-		type Texture,
-		TextureLoader,
-		type Mesh,
-		type MeshBasicMaterial,
-		type ShaderMaterial,
-		type Scene,
-		RGBFormat,
-		SRGBColorSpace,
-		Vector2,
-		Vector3
-	} from 'three';
-	import fragmentShader from '../shaders/fragment.glsl?raw';
-	import vertexShader from '../shaders/vertex.glsl?raw';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { animationStore, loadStore } from '$lib/stores/index.svelte';
-	import { interactivity } from '@threlte/extras';
-	import gsap from 'gsap';
-	import { onMount, untrack } from 'svelte';
-	import Cards from './Cards.svelte';
-	import Rive from '$lib/components/Rive.svelte';
-	import { page } from '$app/stores';
+	import GalleryScene from './GalleryScene.svelte';
+	import ThreeScene from './ThreeScene.svelte';
+	import RiveScene from './RiveScene.svelte';
 	import type { PageData } from '../../routes/$types';
-	import { beforeNavigate } from '$app/navigation';
-
 	let { data }: { data: PageData } = $props();
-	let caret = $state() as Texture;
-	let canvas = $state() as HTMLCanvasElement;
-	const textures: Texture[] = $state([]);
-	let imageTextures: Array<Texture | Promise<Texture>> = $state([]);
-	let riveTask = $state(() => {}) as (time?: number) => void;
-	const { camera, size, advance } = useThrelte();
-	const aspect = $size.width / $size.height;
+	import { Canvas } from '@threlte/core';
+	import { page } from '$app/state';
+	import { untrack, onMount, onDestroy, type SvelteComponent } from 'svelte';
+	import PostFXManager from '$lib/components/PostFXManager.svelte';
+	import PostFXScene from '$lib/components/PostFXScene.svelte';
+	import ThrelteSizeProvider from '$lib/components/ThrelteSizeProvider.svelte';
+	import { threlteSize } from '$lib/stores/threlteSize';
+	import { countStore, loadStore } from '$lib/stores/index.svelte';
+	import { gsap } from 'gsap';
 
-	const caretPos = $state({
-		x: -$size.width,
-		y: -$size.height,
-		scaleX: 0.8,
-		scaleY: 0.8,
-		rotation: 0
+	let riveSceneInstance: SvelteComponent | undefined = $state();
+	let showStudio = $state(import.meta.env.MODE === 'development');
+
+	const relativeMousePos = { pageX: 0, pageY: 0 };
+	const mouse = $state({ x: 0, y: 0 });
+	let size = { width: 0, height: 0 };
+	let galleryLoaded = $state(false);
+	let lastInertiaAnimation: 'home' | 'gallery' | null = $state(null);
+	const unsubscribeThrelteSize = threlteSize.subscribe((v) => {
+		size = v;
 	});
 
-	const mouse = $state({
-		x: 0,
-		y: 0
+	onDestroy(() => {
+		unsubscribeThrelteSize();
+		// 	window.removeEventListener('keydown', handleKey);
+		// document.removeEventListener('mousemove', onMouseMove);
 	});
 
-	const mouseEuler = $derived({ x: mouse.x / $size.width, y: mouse.y / $size.width });
-
-	const event = { pageX: 0, pageY: 0 };
-
-	advance();
-
-	//inits
-	const renderer = useThrelte().renderer;
-
-	// let bufferMesh: Mesh | undefined = $state();
-	let elementMesh: Mesh | undefined = $state();
-	let elementMaterial: MeshBasicMaterial | undefined = $state();
-	let postFXMeshMaterial: ShaderMaterial | undefined = $state();
-	let postFXMesh: Mesh | undefined = $state();
-	let postFXScene: Scene | undefined = $state();
-	let directScene: Scene | undefined = $state();
-
-	// Create a new framebuffer we will use to render to
-	// the video card memory
-	let renderBufferA = useFBO($size.width, $size.height);
-	// Create a second framebuffer
-	let renderBufferB = useFBO($size.width, $size.height);
-
-	// renderer.outputEncoding = THREE.sRGBEncoding
-	renderer.outputColorSpace = SRGBColorSpace;
-	// renderer.setClearColor(new THREE.Color(optionsStore.options.backgroundColor), 0);
-	renderer.setPixelRatio(devicePixelRatio || 1);
-
-	//mouse stuff
-	interactivity({
-		target: document.documentElement,
-		compute: (event, state) => {
-			// Update the pointer
-			state.pointer.update((p) => {
-				p.x = (event.clientX / $size.width) * 2 - 1;
-				p.y = -(event.clientY / $size.height) * 2 + 1;
-				return new Vector2(p.x, p.y);
-			});
-			// Update the raycaster
-			state.raycaster.setFromCamera(state.pointer.current, $camera);
+	function handleKey(e: KeyboardEvent) {
+		if (e.key === '`') {
+			showStudio = !showStudio;
 		}
-	});
+	}
 
-	$effect(() => {
-		return document.removeEventListener('mousemove', (e) => onMouseMove(e));
-	});
+	export function getRiveSceneInstance() {
+		return riveSceneInstance;
+	}
 
-	function onMouseMove(e = event) {
-		if (!caret) return;
-
-		event.pageX = e.pageX;
-		event.pageY = e.pageY - window.scrollY;
-
+	function onMouseMove(e: MouseEvent) {
+		relativeMousePos.pageX = e.pageX;
+		relativeMousePos.pageY = e.pageY - window.scrollY;
+		if (!riveSceneInstance || !size.height || !size.width) return;
 		mouse.y =
-			(1 - event.pageY / $size.height) * $size.height -
-			($size.height * caretPos.scaleY) / 2 -
-			$size.height / 2;
-
+			(1 - relativeMousePos.pageY / size.height) * size.height -
+			(size.height * riveSceneInstance.getCaretPos().scaleY) / 2 -
+			size.height / 2;
 		mouse.x =
-			(event.pageX / $size.width) * $size.width -
-			($size.width * caretPos.scaleX) / 2 -
-			$size.width / 2;
+			(relativeMousePos.pageX / size.width) * size.width -
+			(size.width * riveSceneInstance.getCaretPos().scaleX) / 2 -
+			size.width / 2;
 	}
 
-	// theme
-	$effect(() => {
-		optionsStore.dark;
-		untrack(() => {
-			const threeCanvas = document.querySelector('.canvas-container')?.querySelector('canvas');
-			if (!optionsStore.dark && threeCanvas) {
-				gsap.to(threeCanvas, {
-					filter: 'invert(100%)'
-				});
-			} else if (optionsStore.dark && threeCanvas) {
-				gsap.to(threeCanvas, {
-					filter: 'invert(0%)'
-				});
-			}
-		});
-	});
-
-	// canvas resize
-	$effect(() => {
-		$size;
-		untrack(() => {
-			if (!elementMaterial || !elementMaterial.map || !canvas) return;
-			caret = new CanvasTexture(canvas);
-			elementMaterial.map.needsUpdate = true;
-		});
-	});
-
-	// animation loop
-	useTask((delta) => {
-		// time += delta * 1000;
-		if (loadStore.loaded && caret && !animationStore.isAnimating) {
-			const mouseSpeed = delta * 10;
-			caretPos.x += (mouse.x - caretPos.x) * mouseSpeed;
-			caretPos.y += (mouse.y - caretPos.y) * mouseSpeed;
-		}
-		riveTask(delta);
-		// Do not clear the contents of the canvas on each render
-		// In order to achieve our effect, we must draw the new frame
-		// on top of the previous one!
-		renderer.autoClearColor = false;
-
-		// Explicitly set renderBufferA as the framebuffer to render to
-		renderer.setRenderTarget(renderBufferA);
-		// On each new frame, render the scene to renderBufferA
-		renderer.render(postFXScene!, $camera);
-		if (elementMaterial && caret) {
-			caret.needsUpdate = true;
-			elementMaterial!.map = caret;
-			renderer.render(elementMesh!, $camera);
-		}
-
-		// Set the device screen as the framebuffer to render to
-		// In WebGL, framebuffer "null" corresponds to the default framebuffer!
-		renderer.setRenderTarget(null);
-		// Assign the generated texture to the sampler variable used
-		// in the postFXMesh that covers the device screen
-		postFXMeshMaterial!.uniforms.sampler.value = renderBufferA.texture;
-
-		// Render the postFX mesh to the default framebuffer
-		renderer.render(postFXScene!, $camera);
-
-		// Render direct scene on top without clearing (bypasses shader)
-		if (directScene) {
-			renderer.render(directScene, $camera);
-		}
-
-		// Ping-pong our framebuffers by swapping them
-		// at the end of each frame render
-		const temp = renderBufferA;
-		renderBufferA = renderBufferB;
-		renderBufferB = temp;
-	});
-
-	function loadingAnim() {
-		animationStore.isAnimating = true;
-		const animTL = gsap.timeline();
-		animTL.to(caretPos, {
-			duration: 3,
-			x: $size.width / 2,
-			y: $size.height / 2,
-			repeat: -1,
-			repeatDelay: 0.25,
-			onRepeat: () => {
-				if (loadStore.load >= 100) {
-					animTL.kill();
-					loadStore.loaded = true;
-					gsap.set(caretPos, {
-						x: -$size.width,
-						y: -$size.height
-					});
-					reset();
-				}
-			}
-		});
-	}
-
-	export function categoryAnim(direction: 'up' | 'down') {
-		animationStore.isAnimating = true;
-		gsap.to(optionsStore, {
-			rgbPersistFactor: 0.9
-		});
-		const animTL = gsap.timeline();
-		animTL.to(caretPos, {
-			x: $size.width * 0.3,
-			y: direction === 'down' ? $size.height * 2 : -$size.height * 2,
-			scaleX: 0.8,
-			scaleY: 0.8,
-			rotation: ((direction === 'down' ? 225 : 45) * Math.PI) / 180,
-			duration: 0.5
-		});
-
-		animTL.to(caretPos, {
-			duration: 0.8,
-			x: $size.width * 0.3,
-			y: direction === 'down' ? -$size.height : $size.height,
-			onComplete: () => {
-				reset();
-				gsap.to(optionsStore, {
-					rgbPersistFactor: 0.85
-				});
-			}
-		});
-	}
-
-	function reset(duration = 0.5) {
-		animationStore.isAnimating = false;
-		gsap.to(caretPos, {
-			duration,
-			scaleX: 0.05,
-			scaleY: 0.05,
-			rotation: 0,
-			ease: 'none',
-			onUpdate: () => {
-				onMouseMove();
-			},
-			onComplete: () => {
-				gsap.to(optionsStore, {
-					rgbPersistFactor: 0.85
-				});
-			}
-		});
-	}
-
-	const videoBank: Array<HTMLVideoElement> = [];
-
-	function videoLoader(str: string, index: number, id = false) {
-		let video;
-		if (id) {
-			video = document.getElementById(str) as HTMLVideoElement;
-		} else {
-			video = document.createElement('video');
-			video.id = `${$page.params.slug}-${index}`;
-			video.src = str;
-			video.autoplay = true;
-			video.muted = true;
-			video.playsInline = true;
-			video.crossOrigin = 'anonymous';
-			video.loop = true;
-			document.body.appendChild(video);
-			video.play();
-			video.style.visibility = 'hidden';
-			videoBank.push(video);
-		}
-		const texture = new VideoTexture(video);
-		texture.format = RGBFormat;
-		return texture;
-	}
-
-	beforeNavigate(() => {
-		videoBank.forEach((v) => {
-			if (v.parentNode) v.parentNode.removeChild(v);
-		});
-	});
-
-	// textures
-	$effect(() => {
-		if (!loadStore.loaded || !data.projects) return;
-		untrack(() => {
-			data.projects.forEach((y, i) => {
-				textures.push(videoLoader(y.slug.current, i, true));
-			});
-		});
-	});
-
-	$effect(() => {
-		if (!loadStore.loaded || !data.projects || !$page.route.id?.includes('work')) return;
-		untrack(async () => {
-			loadStore.cardLoading = true;
-			const { load } = useLoader(TextureLoader);
-			const current = data.projects.find((x) => x.slug.current === $page.params.slug)!;
-			imageTextures = [];
-
-			const promises: Promise<Texture>[] = [];
-
-			current.content.forEach((x, i) => {
-				// Determine the URL based on available properties
-				let url: string;
-				if (x.video?.url) {
-					url = x.video.url;
-				} else if (x.imageLight?.url && !optionsStore.dark) {
-					url = x.imageLight.url;
-				} else if (x.image?.url) {
-					url = x.image.url;
-				} else {
-					console.warn('No valid media URL found for content item', i, x);
-					return;
-				}
-
-				if (/\.(mp4|webm)$/.test(url)) {
-					const texture = videoLoader(url, i);
-					imageTextures.push(texture);
-				} else {
-					const promise = load(url).then((texture) => {
-						// Preserve transparency for PNG/WEBP images
-						texture.colorSpace = SRGBColorSpace;
-						return texture;
-					});
-					imageTextures.push(promise);
-					promises.push(promise);
-				}
-			});
-
-			// Wait for all image textures to load
-			if (promises.length > 0) {
-				await Promise.all(promises);
-			}
-
-			loadStore.cardLoading = false;
-		});
-	});
-
-	// Update textures when theme changes
-	$effect(() => {
-		optionsStore.dark;
-		$page.params.slug;
-		untrack(async () => {
-			if (!loadStore.loaded || !data.projects || !$page.route.id?.includes('work')) return;
-
-			loadStore.cardLoading = true;
-			const { load } = useLoader(TextureLoader);
-			const current = data.projects.find((x) => x.slug.current === $page.params.slug)!;
-			imageTextures = [];
-
-			const promises: Promise<Texture>[] = [];
-
-			current.content.forEach((x, i) => {
-				// Determine the URL based on available properties and theme
-				let url: string;
-				if (x.video?.url) {
-					url = x.video.url;
-				} else if (x.imageLight?.url && !optionsStore.dark) {
-					url = x.imageLight.url;
-				} else if (x.image?.url) {
-					url = x.image.url;
-				} else {
-					console.warn('No valid media URL found for content item', i, x);
-					return;
-				}
-
-				if (/\.(mp4|webm)$/.test(url)) {
-					const texture = videoLoader(url, i);
-					imageTextures.push(texture);
-				} else {
-					const promise = load(url).then((texture) => {
-						// Preserve transparency for PNG/WEBP images
-						texture.colorSpace = SRGBColorSpace;
-						return texture;
-					});
-					imageTextures.push(promise);
-					promises.push(promise);
-				}
-			});
-
-			// Wait for all image textures to load
-			if (promises.length > 0) {
-				await Promise.all(promises);
-			}
-
-			loadStore.cardLoading = false;
-		});
-	});
+	// $inspect(mouse)
 
 	onMount(() => {
-		document.addEventListener('mousemove', (e) => onMouseMove(e));
-		caret = new CanvasTexture(canvas);
+		window.addEventListener('keydown', handleKey);
+		document.addEventListener('mousemove', onMouseMove);
 	});
+
+	// Track which scene is currently rendered
+	let showGallery = $state(page.url.pathname.includes('gallery') && data.gallery);
+	let showCanvas = $state(!page.url.pathname.includes('gallery'));
+
+	// $inspect(showGallery, showCanvas);
+
+	let transitionTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		// Watch for route changes
+		page.route.id;
+		untrack(() => {
+			// If switching between gallery and non-gallery, delay the transition
+			const isGallery = page.route.id?.includes('gallery') && data.gallery;
+			if (isGallery !== showGallery) {
+				// Optionally trigger transition-out animation here
+				showGallery = false;
+				showCanvas = false;
+				galleryLoaded = false;
+				if (transitionTimeout) clearTimeout(transitionTimeout);
+				transitionTimeout = setTimeout(() => {
+					showGallery = isGallery;
+					showCanvas = !isGallery;
+				}, 1000); // 1 second delay
+			}
+		});
+	});
+
+	// function animateInertiaIndex(routeKey: 'home' | 'gallery') {
+	// 	if (!data.projectsLength || data.projectsLength <= 0) return;
+	// 	const maxIndex = Math.max(0, data.projectsLength - 1);
+	// 	gsap.killTweensOf(countStore);
+	// 	countStore.inertiaIndex = maxIndex;
+	// 	gsap.to(countStore, {
+	// 		inertiaIndex: 0,
+	// 		duration: 3,
+	// 		ease: 'power3.out',
+	// 		delay: 0.3,
+	// 		overwrite: true
+	// 	});
+	// }
+
+	// $effect(() => {
+	// 	showGallery;
+	// 	galleryLoaded;
+	// 	loadStore.loaded;
+	// 	untrack(() => {
+	// 		if (showGallery && galleryLoaded && loadStore.loaded && lastInertiaAnimation !== 'gallery') {
+	// 			lastInertiaAnimation = 'gallery';
+	// 			requestAnimationFrame(() => animateInertiaIndex('gallery'));
+	// 		}
+	// 	});
+	// });
+
+	// $effect(() => {
+	// 	showCanvas;
+	// 	loadStore.loaded;
+	// 	untrack(() => {
+	// 		const isHomeRoute = !page.route.id?.includes('gallery');
+	// 		if (showCanvas && loadStore.loaded && isHomeRoute && lastInertiaAnimation !== 'home') {
+	// 			lastInertiaAnimation = 'home';
+	// 			requestAnimationFrame(() => animateInertiaIndex('home'));
+	// 		}
+	// 	});
+	// });
 </script>
 
-<!-- POSTFX -->
-<T.Scene bind:ref={postFXScene}>
-	<T.OrthographicCamera
-		makeDefault
-		position.z={1}
-		on:create={({ ref }) => {
-			ref.lookAt(new Vector3(0, 0, 0));
-		}}
-	/>
-	<T.Mesh bind:ref={postFXMesh} position={[0, 0, -50]}>
-		<T.PlaneGeometry args={[$size.width, $size.height]} />
-		<T.ShaderMaterial
-			bind:ref={postFXMeshMaterial}
-			uniforms={{
-				sampler: { value: null },
-				time: { value: 0 },
-				aspect: { value: aspect },
-				mousePos: { value: new Vector2(-1, -1) },
-				noiseFactor: { value: 0.1 },
-				noiseScale: { value: 0.005 },
-				rgbPersistFactor: { value: 0.9 },
-				alphaPersistFactor: { value: 0.9 }
-			}}
-			uniforms.mousePos.value={[mouseEuler.x, mouseEuler.y]}
-			uniforms.noiseFactor.value={optionsStore.noiseFactor}
-			uniforms.noiseScale.value={optionsStore.noiseScale}
-			uniforms.rgbPersistFactor.value={optionsStore.rgbPersistFactor}
-			uniforms.alphaPersistFactor.value={optionsStore.alphaPersistFactor}
-			{vertexShader}
-			{fragmentShader}
-		/>
-	</T.Mesh>
-
-	{#if textures.length && data}
-		{#each textures as texture, i}
-			<Cards {texture} index={i} data={data as Required<PageData>} />
-		{/each}
-	{/if}
-</T.Scene>
-
-<!-- DIRECT RENDER SCENE (No shader effects) -->
-<T.Scene bind:ref={directScene}>
-	<T.OrthographicCamera
-		position.z={1}
-		on:create={({ ref }) => {
-			ref.lookAt(new Vector3(0, 0, 0));
-		}}
-	/>
-
-	{#if $page.params.slug && data}
-		{#each imageTextures as texture, i}
-			{#if texture instanceof Promise}
-				{#await texture then x}
-					<Cards texture={x} index={i} works={true} data={data as Required<PageData>} />
-				{/await}
-			{:else}
-				<Cards {texture} index={i} works={true} data={data as Required<PageData>} />
+<Canvas>
+	<ThrelteSizeProvider />
+	{#if showStudio}
+		{#await import('@threlte/studio') then { Studio }}
+			<Studio>
+				<PostFXManager {mouse}>
+					{#if showGallery}
+						<PostFXScene enabled={true}>
+							<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
+						</PostFXScene>
+					{:else if showCanvas}
+						<PostFXScene enabled={true}>
+							<ThreeScene {data} />
+						</PostFXScene>
+						<PostFXScene
+							enabled={true}
+							beforeRender={(delta: number) => {
+								// Custom rendering logic for this scene
+								riveSceneInstance!.beforeRender(delta);
+							}}
+						>
+							<RiveScene {mouse} bind:this={riveSceneInstance} />
+						</PostFXScene>
+					{/if}
+				</PostFXManager>
+			</Studio>
+		{/await}
+	{:else}
+		<PostFXManager {mouse}>
+			{#if showGallery}
+				<PostFXScene enabled={true}>
+					<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
+				</PostFXScene>
+			{:else if showCanvas}
+				<PostFXScene enabled={true}>
+					<ThreeScene {data} />
+				</PostFXScene>
 			{/if}
-		{/each}
+			<PostFXScene
+				enabled={true}
+				beforeRender={(delta: number) => {
+					// Custom rendering logic for this scene
+					riveSceneInstance!.beforeRender(delta);
+				}}
+			>
+				<RiveScene {mouse} bind:this={riveSceneInstance} />
+			</PostFXScene>
+		</PostFXManager>
 	{/if}
-</T.Scene>
-
-<!-- BUFFER PLANE -->
-{#if canvas}
-	<T.Mesh
-		bind:ref={elementMesh}
-		position={[caretPos.x, caretPos.y, 0]}
-		scale={caretPos.scaleX}
-		rotation.z={caretPos.rotation}
-	>
-		<T.PlaneGeometry args={[$size.width, $size.height]} />
-		<T.MeshBasicMaterial bind:ref={elementMaterial} map={caret} transparent={true} />
-	</T.Mesh>
-{/if}
-
-<!-- RIVE -->
-<Rive bind:canvas {loadingAnim} bind:riveTask />
+</Canvas>

@@ -6,6 +6,7 @@ const animatedLoad = $state({
 });
 let loaded = $state(false);
 let cardLoading = $state(false);
+let galleryTransitioning = $state(false);
 const tl = gsap.timeline({ paused: false });
 export const loadStore = {
 	get load() {
@@ -33,6 +34,12 @@ export const loadStore = {
 	},
 	set loaded(val: boolean) {
 		loaded = val;
+	},
+	get galleryTransitioning() {
+		return galleryTransitioning;
+	},
+	set galleryTransitioning(val: boolean) {
+		galleryTransitioning = val;
 	}
 };
 
@@ -129,7 +136,7 @@ export const scrollStore = {
 	},
 	set offset(newVal: number) {
 		offset = newVal;
-	},
+	}
 	// get overScroll(): number {
 	// 	return overScroll;
 	// },
