@@ -527,7 +527,8 @@
 
 	<!-- Main -->
 	<main
-		class="w-full overscroll-none z-10 relative flex flex-col items-center justify-center mix-blend-difference transition-opacity duration-500"
+		class="w-full overscroll-none z-10 relative flex flex-col items-center justify-center transition-opacity duration-500"
+		class:mix-blend-difference={page.url.pathname !== '/branch'}
 		class:pointer-events-none={page.url.pathname === '/'}
 		class:opacity-0={gptStore.opened}
 	>
