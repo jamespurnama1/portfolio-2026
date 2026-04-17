@@ -80,6 +80,7 @@ export interface Post extends SanityDocument {
 	year: number;
 	slug: SanitySlug;
 	thumbnail: SanityFileAsset;
+	thumbnailImage?: SanityFileAsset;
 	awards: ArrayMember<Award>[] | null;
 	content: Content[];
 	catIndex?: number;

@@ -3,23 +3,43 @@
 	import type { Post } from '$lib/types';
 	import { cubicInOut } from 'svelte/easing';
 	import { fade, fly } from 'svelte/transition';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import Awards from '$lib/components/Awards.svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 
 	const {
 		item,
 		index,
 		activeIndex,
 		selHeight,
-		active
+		active,
+		extraDelay
 	}: {
 		item: { content: string; catIndex: number } | Post;
 		index: number;
 		activeIndex: number;
 		selHeight: number;
 		active?: boolean;
+		extraDelay: number;
 	} = $props();
+
+	let hidden = $state(false);
+
+	beforeNavigate(({ to }) => {
+		if (to && to.url.pathname === '/' && countStore.activeIndex === (item as Post).index) {
+			hidden = true;
+		}
+	});
+
+	afterNavigate(() => {
+		if (!hidden) return;
+		setTimeout(
+			() => {
+				hidden = false;
+			},
+			index * 100 + delay + extraDelay * 1000
+		);
+	});
 
 	const delay = $derived(loadStore.loaded ? 500 : 3000);
 	//+= active element / 2 + (active pos - item pos) * item height
@@ -34,17 +54,17 @@
 </script>
 
 {#if typeof item.content === 'string'}
-	{#if $page.url.pathname === '/'}
+	{#if page.url.pathname === '/'}
 		<li
 			style={`transform: translateY(${offset}px)`}
-			class="font-mono uppercase absolute left-0 transition-transform duration-150 opacity-30"
+			class="font-mono uppercase absolute md:left-0 max-md:text-center transition-transform duration-150 opacity-30 max-md:text-xs"
 			class:animateText={item.content.toLowerCase() ===
 				animationStore.currentCat[0].toString().toLowerCase() && animationStore.isAnimating}
 			in:fly={{
 				x: 200,
 				duration: 500,
 				easing: cubicInOut,
-				delay: index * 100 + delay
+				delay: index * 100 + delay + extraDelay * 1000
 			}}
 			out:fade={{ duration: 400 }}
 		>
@@ -53,24 +73,27 @@
 	{/if}
 {:else if (item as Post).title}
 	<!-- if page is the current work page or not gallery page -->
-	{#if !((!active && $page.params.slug) || $page.route.id?.includes('gallery'))}
+	{#if !((!active && page.url.pathname.includes('work')) || page.route.id?.includes('gallery'))}
 		<li
 			style={`transform: translateY(${offset}px)`}
-			class="font-mono absolute w-full left-0 transition-transform duration-150"
+			class="font-mono max-md:text-xs absolute max-md:text-center md:left-0 transition-transform duration-150"
 			class:selected={active}
 			in:fly={{
-				x: 200,
+				x: '100vw',
 				duration: 500,
 				easing: cubicInOut,
-				delay: index * 100 + delay
+				delay: index * 100 + delay + extraDelay * 1000
 			}}
 			out:fade={{ duration: 400 }}
 		>
 			{#if active && (item as Post).awards}
-				<Awards item={item as Post} />
+				<Awards class={hidden ? 'opacity-0' : ''} item={item as Post} />
 			{/if}
 			<button
-				class="text-left"
+				class:opacity-0={hidden}
+				class="md:text-left text-center group {active && page.url.pathname === '/'
+					? 'hover:translate-x-12 transition duration-300'
+					: 'opacity-0'}"
 				onclick={(e) => {
 					if (countStore.activeIndex === (item as Post).index) {
 						if ((item as Post).slug.current !== 'reels') {
@@ -84,10 +107,14 @@
 					}
 				}}
 			>
-				{(item as Post).title}
+				<span class="absolute transition -left-12 duration-300 mr-2 opacity-0 {active && page.url.pathname === '/' ? 'group-hover:opacity-100' : ''}">→</span>{(item as Post).title}
 			</button>
-			{#if $page.params.slug}
-				<p transition:fade class="font-mono text-xs font-normal text-white uppercase mt-8 absolute">
+			{#if page.url.pathname.includes('work') && (item as Post).role.length}
+				<p
+					class:opacity-0={hidden}
+					transition:fade
+					class="font-mono text-xs font-normal text-white uppercase mt-8 absolute max-md:text-center max-md:w-full"
+				>
 					{(item as Post).type}&emsp;&emsp;{(item as Post).role[0]}&emsp;&emsp;{(item as Post).year}
 				</p>
 			{/if}
@@ -100,7 +127,7 @@
 		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 		transition-duration: 0ms;
 		transition-property: font-family, font-size, font-weight, line-height;
-		@apply font-sans text-3xl sm:text-4xl md:text-5xl 2xl:text-7xl  font-bold;
+		@apply font-sans text-2xl sm:text-4xl md:text-5xl 2xl:text-7xl  font-bold;
 	}
 
 	.animateText {

@@ -3,12 +3,12 @@
 	import { fade, fly } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 
 	let currAward = $state('');
 	let mounted = $state(false);
 	let awardsEl = $state([]) as HTMLDivElement[];
-	let { item }: { item: Post } = $props();
+	let { item, class: className = '' }: { item: Post; class?: string } = $props();
 	const awards = [...(item.awards as Award[])]!.sort((a, b) => a.index - b.index);
 
 	onMount(() => {
@@ -21,8 +21,8 @@
 		bind:this={awardsEl[0]}
 		in:fly={{ x: 200, duration: 500, easing: cubicInOut }}
 		out:fade
-		class:scale-[75%]={$page.params.slug}
-		class="flex gap-5 relative z-10 origin-left transition-transform duration-1000 md:scale-100"
+		class:scale-[75%]={page.params.slug}
+		class="flex gap-5 relative z-10 max-md:justify-center md:origin-left scale-75 md:scale-100 {className}"
 	>
 		{#each awards as award}
 			<div class="flex flex-col items-start gap-1 w-min">
@@ -36,7 +36,7 @@
 					{#if award.gold}
 						{#each award.gold as gold}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-gold"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:duration-1000 hover:scale-150 bg-gold"
 								aria-label={gold}
 								onmouseenter={() => (currAward = gold)}
 								onmouseleave={() => (currAward = '')}
@@ -46,7 +46,7 @@
 					{#if award.silver}
 						{#each award.silver as silver}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-silver"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:duration-1000 hover:scale-150 bg-silver"
 								aria-label={silver}
 								onmouseenter={() => (currAward = silver)}
 								onmouseleave={() => (currAward = '')}
@@ -56,7 +56,7 @@
 					{#if award.bronze}
 						{#each award.bronze as bronze}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-bronze"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:duration-1000 hover:scale-150 bg-bronze"
 								aria-label={bronze}
 								onmouseenter={() => (currAward = bronze)}
 								onmouseleave={() => (currAward = '')}
@@ -66,7 +66,7 @@
 					{#if award.crystal}
 						{#each award.crystal as crystal}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-crystal"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:duration-1000 hover:scale-150 bg-crystal"
 								aria-label={crystal}
 								onmouseenter={() => (currAward = crystal)}
 								onmouseleave={() => (currAward = '')}
@@ -79,9 +79,19 @@
 	</div>
 	<p
 		bind:this={awardsEl[1]}
-		class="text-xs h-6 my-2 w-[70%] font-mono font-light"
+		class="no-touch text-[0.45em] max-md:text-center max-md:w-full md:text-xs md:h-6 md:my-2 w-[70%] font-mono font-light {className}"
 		transition:fly={{ x: 200, duration: 500, easing: cubicInOut, delay: 100 }}
 	>
 		{currAward ? currAward : 'Hover to see each awards'}
 	</p>
 {/if}
+
+<style lang="scss" scoped>
+	:global {
+		@media (hover: none) and (pointer: coarse) {
+			.no-touch {
+				@apply hidden;
+			}
+		}
+	}
+</style>

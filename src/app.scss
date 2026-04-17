@@ -52,16 +52,14 @@ body {
 		0 0 10px rgb(255, 255, 255, 0.3),
 		-10px 0 40px rgb(255, 0, 255, 0.3),
 		10px 0 40px rgb(0, 255, 255, 0.3);
-	@apply bg-white invert mix-blend-difference;
+	@apply bg-white;
 
 	* {
 		@apply text-black;
 	}
 
-	&:hover {
-		&::after {
-			opacity: 1;
-		}
+	&::after {
+		@apply hover:opacity-100;
 	}
 
 	&.show {
@@ -88,7 +86,7 @@ html[data-theme='dark'] div.glow {
 		0 0 10px rgb(255, 255, 255, 0.3),
 		-10px 0 40px rgb(255, 0, 255, 0.3),
 		10px 0 40px rgb(0, 255, 255, 0.3);
-	@apply bg-black invert-0 mix-blend-difference;
+	@apply bg-black;
 
 	* {
 		@apply text-white;

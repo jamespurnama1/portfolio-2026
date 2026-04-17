@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { useThrelte, useLoader } from '@threlte/core';
+	import { useThrelte, useLoader, T } from '@threlte/core';
 	import { pointerInteractivity } from '$lib/utils/interactivity';
 	import {
 		VideoTexture,
 		type Texture,
 		TextureLoader,
 		type Mesh,
+		CanvasTexture,
 		RGBFormat,
 		SRGBColorSpace,
 		PerspectiveCamera
@@ -14,23 +15,33 @@
 	import { countStore, loadStore } from '$lib/stores/index.svelte';
 	import { cardDimensionsStore } from '$lib/stores/cardDimensions.svelte';
 	import gsap from 'gsap';
-	import { untrack, onDestroy } from 'svelte';
+	import { untrack, onDestroy, onMount } from 'svelte';
 	import Cards from './Cards.svelte';
 	import { page } from '$app/state';
 	import type { PageData } from '../../routes/$types';
 	import { beforeNavigate } from '$app/navigation';
 
-	let { data }: { data: PageData } = $props();
+	let { data, preferImageThumbnails = false }: { data: PageData; preferImageThumbnails?: boolean } =
+		$props();
 	const textures: Texture[] = $state([]);
 	let imageTextures: Array<Texture | Promise<Texture>> = $state([]);
 	const { camera, canvas, renderer, size } = useThrelte();
-
+	const { load: loadTexture } = useLoader(TextureLoader);
+	let perspectiveCamera: PerspectiveCamera | undefined = $state();
 	let postFXMesh: Mesh | undefined = $state();
+	let gradientMesh: Mesh | undefined = $state();
+	let gradientTexture = $state<CanvasTexture>();
+
+	const GRADIENT_HEIGHT_RATIO = 0.15;
 
 	renderer.outputColorSpace = SRGBColorSpace;
 	renderer.setPixelRatio(devicePixelRatio || 1);
 
-	pointerInteractivity($camera);
+	$effect(() => {
+		if (perspectiveCamera) {
+			pointerInteractivity(perspectiveCamera);
+		}
+	});
 
 	// theme
 	$effect(() => {
@@ -50,9 +61,114 @@
 	});
 
 	const videoBank: Array<HTMLVideoElement> = [];
+	let sanityImageParams = $state('auto=format&fit=max&q=85&w=1920');
 
-	function videoLoader(str: string, index: number, id = false) {
-		let video;
+	function disposeTextureList(items: Texture[]) {
+		items.forEach((tex) => {
+			if (tex && typeof tex.dispose === 'function') {
+				tex.dispose();
+			}
+		});
+	}
+
+	$effect(() => {
+		const fallbackWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+		const baseWidth = $size.width || fallbackWidth;
+		const targetWidth = Math.min(Math.max(Math.round(baseWidth || 1920), 480), 2560);
+		sanityImageParams = `auto=format&fit=max&q=85&w=${targetWidth}`;
+	});
+
+	function withSanityImageParams(url: string) {
+		if (!url || /\.(mp4|webm)$/i.test(url) || !url.includes('cdn.sanity.io')) {
+			return url;
+		}
+		return `${url}${url.includes('?') ? '&' : '?'}${sanityImageParams}`;
+	}
+
+	function initGradientTexture() {
+		if (gradientTexture || typeof document === 'undefined') return;
+		const canvas = document.createElement('canvas');
+		canvas.width = 2;
+		canvas.height = 256;
+		const texture = new CanvasTexture(canvas);
+		texture.needsUpdate = true;
+		gradientTexture = texture;
+		updateGradientTexture();
+	}
+
+	function updateGradientTexture() {
+		if (!gradientTexture) return;
+		const canvas = gradientTexture.image as HTMLCanvasElement | undefined;
+		const ctx = canvas?.getContext('2d');
+		if (!canvas || !ctx) return;
+		const color = '0,0,0';
+		const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+		gradient.addColorStop(0.5, `rgba(${color}, 1)`);
+		gradient.addColorStop(1, `rgba(${color}, 0)`);
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		ctx.fillStyle = gradient;
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		gradientTexture.needsUpdate = true;
+	}
+
+	function updateGradientPlaneTransform() {
+		if (!gradientMesh) return;
+		const fallbackWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+		const fallbackHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
+		const width = $size.width || fallbackWidth;
+		const height = $size.height || fallbackHeight;
+		const gradientHeight = Math.max(height * GRADIENT_HEIGHT_RATIO, 1);
+		gradientMesh.scale.set(width, gradientHeight, 1);
+		gradientMesh.position.set(0, -height / 2 + gradientHeight / 2, 5);
+		gradientMesh.renderOrder = 999;
+	}
+
+	function updateGradientRenderMode() {
+		if (!gradientMesh) return;
+		gradientMesh.userData = gradientMesh.userData ?? {};
+		gradientMesh.userData.skipPostFX = page.url.pathname.includes('work');
+	}
+
+	function waitForVideoData(video: HTMLVideoElement) {
+		if (
+			video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+			video.videoWidth > 0 &&
+			video.videoHeight > 0
+		) {
+			return Promise.resolve();
+		}
+
+		return new Promise<void>((resolve) => {
+			const finalize = () => {
+				video.removeEventListener('loadeddata', onReady);
+				video.removeEventListener('canplay', onReady);
+				video.removeEventListener('error', onReady);
+				resolve();
+			};
+
+			const onReady = () => finalize();
+
+			video.addEventListener('loadeddata', onReady, { once: true });
+			video.addEventListener('canplay', onReady, { once: true });
+			video.addEventListener('error', onReady, { once: true });
+
+			const playPromise = video.play();
+			if (playPromise?.catch) {
+				playPromise.catch(() => {});
+			}
+		});
+	}
+
+	async function createVideoTexture(video: HTMLVideoElement) {
+		await waitForVideoData(video);
+		const texture = new VideoTexture(video);
+		texture.format = RGBFormat;
+		texture.colorSpace = SRGBColorSpace;
+		return texture;
+	}
+
+	async function videoLoader(str: string, index: number, id = false) {
+		let video: HTMLVideoElement | null;
 		if (id) {
 			video = document.getElementById(str) as HTMLVideoElement;
 		} else {
@@ -61,17 +177,20 @@
 			video.src = str;
 			video.autoplay = true;
 			video.muted = true;
+			video.preload = 'auto';
 			video.playsInline = true;
 			video.crossOrigin = 'anonymous';
 			video.loop = true;
 			document.body.appendChild(video);
-			video.play();
 			video.style.visibility = 'hidden';
 			videoBank.push(video);
 		}
-		const texture = new VideoTexture(video);
-		texture.format = RGBFormat;
-		return texture;
+
+		if (!video) {
+			throw new Error(`Video element not found for ${str}`);
+		}
+
+		return createVideoTexture(video);
 	}
 
 	beforeNavigate(() => {
@@ -80,12 +199,28 @@
 		});
 	});
 
+	// Calculate camera to match orthographic viewport
+	const cameraZ = $derived.by(() => {
+		// Fixed distance that works well with the orthographic plane
+		return 600;
+	});
+
+	// Calculate FOV to match orthographic frustum at cameraZ distance
+	const fov = $derived.by(() => {
+		// tan(fov/2) = (height/2) / distance
+		// fov = 2 * atan((height/2) / distance)
+		const vFOV = 2 * Math.atan($size.height / (2 * cameraZ)) * (180 / Math.PI);
+		return vFOV;
+	});
+
 	$effect(() => {
 		$size;
 		untrack(() => {
-			if (!$camera || !renderer) return;
+			if (!$camera || !renderer || !$size.width || !$size.height) return;
 			if ($camera instanceof PerspectiveCamera) {
 				$camera.aspect = ($size.width || 1) / ($size.height || 1);
+				$camera.fov = fov;
+				$camera.position.z = cameraZ;
 				$camera.updateProjectionMatrix();
 			}
 			renderer.setSize($size.width, $size.height, false);
@@ -93,12 +228,47 @@
 	});
 
 	// textures
+	let textureLoadGeneration = 0;
+
 	$effect(() => {
-		if (!loadStore.loaded || !data.projects) return;
-		untrack(() => {
-			data.projects.forEach((y, i) => {
-				textures.push(videoLoader(y.slug.current, i, true));
-			});
+		loadStore.loaded;
+		data.projects;
+		preferImageThumbnails;
+		untrack(async () => {
+			if (!loadStore.loaded || !data.projects) return;
+			const generation = ++textureLoadGeneration;
+			const nextTextures: Texture[] = [];
+
+			for (let i = 0; i < data.projects.length; i++) {
+				const project = data.projects[i];
+				const thumbnailUrl = project.thumbnailImage?.asset?.url
+					? withSanityImageParams(project.thumbnailImage.asset.url)
+					: null;
+				if (preferImageThumbnails && thumbnailUrl) {
+					try {
+						const texture = await loadTexture(thumbnailUrl);
+						texture.colorSpace = SRGBColorSpace;
+						nextTextures[i] = texture;
+						continue;
+					} catch (error) {
+						console.error(
+							'Thumbnail image texture load failed, falling back to video',
+							project.slug?.current,
+							error
+						);
+					}
+				}
+				nextTextures[i] = await videoLoader(project.slug.current, i, true);
+			}
+
+			if (generation !== textureLoadGeneration) {
+				disposeTextureList(nextTextures);
+				return;
+			}
+
+			disposeTextureList(textures);
+			textures.length = 0;
+			nextTextures.forEach((tex) => textures.push(tex));
 		});
 	});
 
@@ -111,12 +281,11 @@
 		} else if (x.image?.url) {
 			url = x.image.url;
 		}
-		return url;
+		return withSanityImageParams(url);
 	}
 
 	async function handleWorkCards() {
 		loadStore.cardLoading = true;
-		const { load } = useLoader(TextureLoader);
 		const current = data!.projects!.find((x) => x.slug.current === page.params.slug)!;
 		imageTextures = [];
 		const promises: Promise<Texture>[] = [];
@@ -128,16 +297,21 @@
 				return;
 			}
 			if (/\.(mp4|webm)$/.test(url)) {
-				const texture = videoLoader(url, i);
-				imageTextures.push(texture);
-				const video = document.getElementById(`${page.params.slug}-${i}`) as HTMLVideoElement;
-				if (video) {
-					dimensions[i] = { width: video.videoWidth, height: video.videoHeight };
-				} else {
-					dimensions[i] = { width: 0, height: 0 };
-				}
+				const promise = videoLoader(url, i).then((texture) => {
+					const video = document.getElementById(
+						`${page.params.slug}-${i}`
+					) as HTMLVideoElement | null;
+					if (video) {
+						dimensions[i] = { width: video.videoWidth, height: video.videoHeight };
+					} else {
+						dimensions[i] = { width: 0, height: 0 };
+					}
+					return texture;
+				});
+				imageTextures.push(promise);
+				promises.push(promise);
 			} else {
-				const promise = load(url).then((texture) => {
+				const promise = loadTexture(url).then((texture) => {
 					texture.colorSpace = SRGBColorSpace;
 					if (texture.image) {
 						dimensions[i] = {
@@ -160,10 +334,33 @@
 		loadStore.cardLoading = false;
 	}
 
+	onMount(() => {
+		initGradientTexture();
+		updateGradientPlaneTransform();
+		updateGradientRenderMode();
+	});
+
 	$effect(() => {
 		optionsStore.dark;
 		if (!loadStore.loaded || !data.projects || !page.route.id?.includes('work')) return;
 		untrack(() => handleWorkCards());
+	});
+
+	$effect(() => {
+		optionsStore.dark;
+		untrack(() => updateGradientTexture());
+	});
+
+	$effect(() => {
+		$size;
+		gradientMesh;
+		untrack(() => updateGradientPlaneTransform());
+	});
+
+	$effect(() => {
+		page.url.pathname;
+		gradientMesh;
+		untrack(() => updateGradientRenderMode());
 	});
 
 	// Update textures on theme change
@@ -225,19 +422,23 @@
 	});
 </script>
 
+<T.PerspectiveCamera bind:ref={perspectiveCamera} makeDefault position={[0, 0, cameraZ]} {fov} />
 {#if textures.length && data}
 	{#each textures as texture, i}
-		<Cards
-			{texture}
-			index={page.url.pathname.includes('work') ? 0 : i}
-			data={data as Required<PageData>}
-			home={page.url.pathname === '/'}
-			works={page.url.pathname.includes('work') && i === countStore.activeIndex}
-		/>
+		{#if page.url.pathname === '/' || (page.url.pathname.includes('work') && i === countStore.activeIndex)}
+			<Cards
+				{texture}
+				index={page.url.pathname.includes('work') ? 0 : i}
+				data={data as Required<PageData>}
+				home={page.url.pathname === '/'}
+				works={page.url.pathname.includes('work') && i === countStore.activeIndex}
+				homeAspectRatio={preferImageThumbnails ? 16 / 9 : undefined}
+			/>
+		{/if}
 	{/each}
 {/if}
 
-{#if page.params.slug && data}
+{#if page.url.pathname.includes('work') && data}
 	{#each imageTextures as texture, i}
 		{#if texture instanceof Promise}
 			{#await texture then x}
@@ -247,4 +448,16 @@
 			<Cards {texture} index={i + 1} works={true} data={data as Required<PageData>} />
 		{/if}
 	{/each}
+{/if}
+
+{#if gradientTexture}
+	<T.Mesh bind:ref={gradientMesh} position={[0, 0, 5]} renderOrder={999}>
+		<T.PlaneGeometry args={[1, 1]} />
+		<T.MeshBasicMaterial
+			map={gradientTexture}
+			transparent={true}
+			depthWrite={false}
+			depthTest={false}
+		/>
+	</T.Mesh>
 {/if}

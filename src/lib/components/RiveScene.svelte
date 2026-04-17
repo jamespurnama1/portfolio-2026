@@ -7,15 +7,29 @@
 	import { optionsStore } from '$lib/stores/options.svelte';
 	import gsap from 'gsap';
 
-	let {
-		mouse
-	}: { mouse: { x: number; y: number } } = $props();
+	let { mouse, showCursor = true }: { mouse: { x: number; y: number }; showCursor?: boolean } =
+		$props();
 
-	const { size, camera, renderer } = useThrelte();
+	const { size } = useThrelte();
 	let caret = $state() as Texture;
 	let elementMaterial: MeshBasicMaterial | undefined = $state();
 	let elementMesh: Mesh | undefined = $state();
 	let riveCanvas = $state() as HTMLCanvasElement;
+
+	function ensureCaretTexture() {
+		if (!riveCanvas || riveCanvas.width <= 0 || riveCanvas.height <= 0) return;
+		if (!caret) {
+			caret = new CanvasTexture(riveCanvas);
+			caret.needsUpdate = true;
+			return;
+		}
+		caret.image = riveCanvas;
+		caret.needsUpdate = true;
+	}
+
+	onMount(() => {
+		ensureCaretTexture();
+	});
 	const caretPos = $state({
 		x: -$size.width,
 		y: -$size.height,
@@ -23,6 +37,8 @@
 		scaleY: 0.8,
 		rotation: 0
 	});
+
+	let meshOpacity = $derived(showCursor ? 1 : 0);
 	let riveTask = $state(() => {}) as (time?: number) => void;
 
 	export function getCaretPos() {
@@ -33,10 +49,12 @@
 	$effect(() => {
 		$size;
 		untrack(() => {
-			// renderer.clear();
-			if (!elementMaterial || !elementMaterial.map || !riveCanvas) return;
-			caret = new CanvasTexture(riveCanvas);
-			elementMaterial.map.needsUpdate = true;
+			if (!riveCanvas) return;
+			ensureCaretTexture();
+			if (elementMaterial && caret) {
+				elementMaterial.map = caret;
+				elementMaterial.needsUpdate = true;
+			}
 		});
 	});
 
@@ -83,16 +101,19 @@
 	}
 
 	export function beforeRender(delta: number) {
+		// Update Rive animation first
+		riveTask(delta);
+
 		if (loadStore.loaded && caret && !animationStore.isAnimating) {
 			const mouseSpeed = delta * 10;
 			caretPos.x += (mouse.x - caretPos.x) * mouseSpeed;
 			caretPos.y += (mouse.y - caretPos.y) * mouseSpeed;
 		}
-		riveTask(delta);
-		if (elementMaterial && caret) {
+
+		// Update texture after Rive renders
+		if (elementMaterial && caret && riveCanvas.width > 0 && riveCanvas.height > 0) {
 			caret.needsUpdate = true;
 			elementMaterial!.map = caret;
-			renderer.render(elementMesh!, $camera);
 		}
 	}
 
@@ -124,13 +145,12 @@
 	}
 
 	$effect(() => {
-		if (!elementMaterial || !elementMaterial.map || !riveCanvas) return;
-		caret = new CanvasTexture(riveCanvas);
-		elementMaterial.map.needsUpdate = true;
-	});
-
-	onMount(() => {
-		caret = new CanvasTexture(riveCanvas);
+		if (!riveCanvas) return;
+		ensureCaretTexture();
+		if (elementMaterial && caret) {
+			elementMaterial.map = caret;
+			elementMaterial.needsUpdate = true;
+		}
 	});
 </script>
 
@@ -142,9 +162,14 @@
 		rotation.z={caretPos.rotation}
 	>
 		<T.PlaneGeometry args={[$size.width, $size.height]} />
-		<T.MeshBasicMaterial bind:ref={elementMaterial} map={caret} transparent={true} />
+		<T.MeshBasicMaterial
+			bind:ref={elementMaterial}
+			map={caret}
+			transparent={true}
+			opacity={meshOpacity}
+		/>
 	</T.Mesh>
 {/if}
 
 <!-- RIVE -->
-<Rive bind:riveCanvas {loadingAnim} bind:riveTask />
+<Rive bind:riveCanvas {loadingAnim} bind:riveTask {caretPos} />

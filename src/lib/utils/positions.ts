@@ -1,4 +1,5 @@
 import type { PlaneGeometry } from 'three';
+import { get } from 'svelte/store';
 import {
 	countStore,
 	gptStore,
@@ -6,6 +7,7 @@ import {
 	projectsStore,
 	scrollStore
 } from '$lib/stores/index.svelte';
+import { projectSectionStore } from '$lib/stores/projectSection';
 
 type size = {
 	width: number;
@@ -30,8 +32,8 @@ export const initialPos = (index: number) => {
 	return {
 		x: 0,
 		y: 0,
-		z: index,
-		scale: 2,
+		z: -index,
+		scale: 1,
 		opacity: 1
 	};
 };
@@ -71,6 +73,7 @@ const applyInertia = (diff: number): number => {
 export const homePos = (index: number, imageGeo: PlaneGeometry, size: size) => {
 	const indexDiff = countStore.inertiaIndex - index;
 	const activeDiff = index + 1 - countStore.activeIndex;
+	const sectionViewportTop = get(projectSectionStore).viewportTop;
 	const mobile = size.width <= 768;
 	// Apply smooth inertia interpolation to the position difference
 	const smoothedIndexDiff = applyInertia(indexDiff);
@@ -86,18 +89,20 @@ export const homePos = (index: number, imageGeo: PlaneGeometry, size: size) => {
 	const cardWidth = imageGeo.parameters.width * scale;
 	const cardHeight = imageGeo.parameters.height * scale;
 
-	let spacing = 0;
+	let spacing = size.height / 50;
 	let x = mobile ? 0 : topLeft(cardWidth) - size.width * 0.5;
 	// add y offset spacing except for active card
 	let y =
 		// offset depending on top or bottom of active card
 		Math.sign(smoothedIndexDiff) * topLeft(cardHeight) +
 		// active card
-		Math.sign(smoothedIndexDiff) * (imageGeo.parameters.height * baseScale / 2) +
+		Math.sign(smoothedIndexDiff) * ((imageGeo.parameters.height * baseScale) / 2) +
 		//spacing on top (none for active card)
 		smoothedIndexDiff * spacing +
 		// card on top
 		(smoothedIndexDiff - Math.sign(smoothedIndexDiff)) * cardHeight;
+
+	y -= sectionViewportTop;
 
 	// console.log(
 	// 	smoothedIndexDiff,
@@ -151,13 +156,13 @@ export const enlarged = (
 	};
 };
 
-export const fullscreen = (index: number) => {
+export const fullscreen = (index: number, imageGeo: PlaneGeometry, size: size) => {
 	// console.log('[POS] fullscreen', index);
 	return {
 		x: 0,
 		y: 0,
 		z: -0.6 * (index - 1),
-		scale: 1,
+		scale: (size.width * 0.85) / imageGeo.parameters.width,
 		opacity: gptStore.opened ? 0 : 1
 	};
 };
@@ -201,7 +206,7 @@ export const projectPage = (
 		console.warn(`[POS] projectPage: Media element not found for index ${index}`);
 	}
 
-	if (index === 1) console.log('[POS] projectPage', x, y, scale, works);
+	// if (index === 1) console.log('[POS] projectPage', x, y, scale, works);
 
 	return {
 		x,

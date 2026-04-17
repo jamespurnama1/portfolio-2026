@@ -24,7 +24,7 @@
 				src={logo}
 			/>
 		</a>
-		<span class="flex flex-col">
+		<span class="flex flex-col max-md:hidden">
 			<button
 				onclick={() => theme(!optionsStore.dark, true)}
 				transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 800 }}

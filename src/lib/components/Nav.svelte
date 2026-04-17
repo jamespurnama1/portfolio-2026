@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { loadStore } from '$lib/stores/index.svelte';
+	import { gptStore, loadStore } from '$lib/stores/index.svelte';
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
 </script>
@@ -20,10 +20,11 @@
 			> -->
 				<a
 					transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 100 }}
-					class="block"
+					class="block max-md:hidden"
 					href="mailto:hello@jameshenry.site"><p>hello@jameshenry.site</p></a
 				>
-			<a href="/gallery"><p>gallery</p></a>
+				<!-- temporarily disabled gallery -->
+			<!-- <a href="/gallery"><p>gallery</p></a> -->
 			<a
 				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 200 }}
 				class="goback"
@@ -32,7 +33,7 @@
 			>
 		{/if}
 	</nav>
-	<aside class="fixed top-0 right-4 h-full flex flex-col justify-center text-right -z-0">
+	<aside class="fixed top-0 right-4 max-md:gap-4 h-full flex flex-col justify-center text-right -z-0 transition-opacity delay-300 {gptStore.opened ? 'max-md:opacity-0 max-md:pointer-events-none' : ''}">
 		{#if loadStore.loaded}
 			<a
 				href="https://instagram.com/jamespurnama1"

@@ -7,6 +7,7 @@ uniform float noiseFactor;
 uniform float noiseScale;
 uniform float rgbPersistFactor;
 uniform float alphaPersistFactor;
+uniform bool inverted;
 float gamma = 2.2;
 
 varying vec2 v_uv;
@@ -90,8 +91,12 @@ void main () {
   float a = snoise(vec3(v_uv * noiseFactor, time * 0.1)) * noiseScale;
   float b = snoise(vec3(v_uv * noiseFactor, time * 0.1 + 100.0)) * noiseScale;
 
-  // Sample the correct color from the generated texture
-  // vec4 inputColor = texture2D(sampler, v_uv + vec2(a, b) + mousePos * 0.005);
-  vec4 t0 = texture2D(sampler, v_uv + vec2(a, b) + mousePos * 0.005);
-  gl_FragColor = vec4(t0.xyz * rgbPersistFactor, alphaPersistFactor);
+  // Sample ghost trails from ping-pong buffer
+  vec4 trails = texture2D(sampler, v_uv + vec2(a, b) + mousePos * 0.005);
+  
+  // Apply persistence to ghost trails
+  vec3 trailColor = trails.rgb * rgbPersistFactor;
+  float trailAlpha = trails.a * alphaPersistFactor;
+
+  gl_FragColor = vec4(trailColor, trailAlpha);
 }

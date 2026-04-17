@@ -8,6 +8,9 @@ uniform float planeAspect;
 uniform float scale;
 uniform float opacity;
 uniform bool inverted;
+uniform float uTextureZoom;
+uniform float uTextureRotation;
+uniform bool uCoverTexture;
 
 vec3 linearToSRGB(vec3 linear) {
     // Create a boolean condition based on component-wise comparison
@@ -24,19 +27,42 @@ vec3 linearToSRGB(vec3 linear) {
 void main() {
     vec2 newUV = v_uv - vec2(0.5);
 
+    // Apply texture rotation first
+    float cosRot = cos(uTextureRotation);
+    float sinRot = sin(uTextureRotation);
+    vec2 rotatedUV = vec2(
+        newUV.x * cosRot - newUV.y * sinRot,
+        newUV.x * sinRot + newUV.y * cosRot
+    );
+
+    // Apply texture zoom
+    rotatedUV /= uTextureZoom;
+
     // Classic aspect ratio correction: fit shorter side, preserve proportions
-    if (planeAspect > textureAspect) {
-        // Plane is wider than texture: fit height
-        newUV = newUV * vec2(textureAspect / planeAspect, 1.0);
+    if (uCoverTexture) {
+        vec2 cropScale = vec2(1.0);
+        if (planeAspect > textureAspect) {
+            // Plane wider than texture: shrink vertical range to crop top/bottom
+            cropScale.y = textureAspect / planeAspect;
+        } else if (planeAspect < textureAspect) {
+            // Plane taller than texture: shrink horizontal range to crop sides
+            cropScale.x = planeAspect / textureAspect;
+        }
+        rotatedUV *= cropScale;
     } else {
-        // Plane is taller than texture: fit width
-        newUV = newUV * vec2(1.0, planeAspect / textureAspect);
+        if (planeAspect > textureAspect) {
+            // Plane is wider than texture: fit height (letterbox)
+            rotatedUV = rotatedUV * vec2(textureAspect / planeAspect, 1.0);
+        } else {
+            // Plane is taller than texture: fit width
+            rotatedUV = rotatedUV * vec2(1.0, planeAspect / textureAspect);
+        }
     }
-    newUV /= scale;
-    newUV += vec2(0.5);
+    rotatedUV /= scale;
+    rotatedUV += vec2(0.5);
 
     // Use aspect ratio correction only, no clamping
-    vec2 gridUV = floor(newUV * vec2(20.0, 20.0)) / vec2(20.0, 20.0);
+    vec2 gridUV = floor(rotatedUV * vec2(20.0, 20.0)) / vec2(20.0, 20.0);
     vec2 centerOfPixel = gridUV + vec2(1.0 / 20.0, 1.0 / 20.0);
     
     vec2 mouseDirection = u_mouse - u_prevMouse;
@@ -46,7 +72,7 @@ void main() {
     float strength = smoothstep(0.3, 0.0, pixelDistanceToMouse);
 
     vec2 uvOffset = strength * -mouseDirection * 0.2;
-    vec2 uv = newUV - uvOffset;
+    vec2 uv = rotatedUV - uvOffset;
 
     vec4 colorR = texture2D(u_texture, uv + vec2(strength * u_aberrationIntensity * 0.01, 0.0));
     vec4 colorG = texture2D(u_texture, uv);
@@ -55,7 +81,6 @@ void main() {
     // Use the texture's alpha channel, multiplied by the opacity uniform
     float alpha = colorG.a * opacity;
     
-    // Correctly calculate the linear color
     vec4 image;
     if (inverted) {
         image = vec4(1.0 - colorR.r, 1.0 - colorG.g, 1.0 - colorB.b, alpha);

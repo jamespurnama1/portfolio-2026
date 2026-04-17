@@ -6,6 +6,8 @@
 	import { onMount, tick, untrack } from 'svelte';
 	import ListItem from './ListItem.svelte';
 	import { countStore, gptStore } from '$lib/stores/index.svelte';
+	import { gsap } from 'gsap';
+	import { afterNavigate, beforeNavigate } from '$app/navigation';
 
 	const { data }: { data: Required<PageData> } = $props();
 	let projectList = $state() as HTMLUListElement;
@@ -18,9 +20,17 @@
 	);
 	let sel = $state() as HTMLLIElement;
 	let selHeight = $state(44);
+	let extraDelay = $state(0);
 	// let selHeight = $derived(sel ? sel.getBoundingClientRect().height : 44);
 
 	onMount(() => {
+		gsap.to(projectList, {
+			duration: 1,
+			x: 0,
+			opacity: 1,
+			ease: 'power3.out',
+			delay: data.projectsLength * 0.25
+		});
 		data.catItems.forEach((category, catIndex) => {
 			list.push({ content: `> ${category.title} >`, catIndex: catIndex });
 			category.items.forEach((item: Post | SanityReference<Post>, postIndex: number): void => {
@@ -54,18 +64,55 @@
 		});
 	});
 
+	beforeNavigate(({ to }) => {
+		if (to && to.url.pathname === '/') {
+			extraDelay = data.projectsLength * 0.15;
+		}
+	});
+
+	afterNavigate(() => {
+		if (extraDelay === 0) return;
+		setTimeout(
+			() => {
+				extraDelay = 0;
+			},
+			// revert back extraDelay after animation
+			(0.5 + extraDelay + data.projectsLength * 0.25) * 1000
+		);
+	});
+
+	$effect(() => {
+		gptStore.opened;
+		optionsStore.fullscreen;
+		untrack(() => {
+			if (gptStore.opened || optionsStore.fullscreen) {
+				gsap.to(projectList, {
+					duration: 0.3,
+					opacity: 0,
+					ease: 'power3.in',
+				});
+			} else {
+				gsap.to(projectList, {
+					duration: 0.3,
+					opacity: 1,
+					ease: 'power3.out'
+				});
+			}
+		});
+	});
+
 	// {animationStore.isTransitioning ? 'translate-x-1/2': ''}
 </script>
 
 <ul
 	bind:this={projectList}
-	class="absolute h-full w-[45%] right-0 text-white font-mono ml-auto transition-all duration-1000 mix-blend-difference flex items-center justify-center flex-col"
-	class:opacity-0={optionsStore.fullscreen || gptStore.opened}
+	class="absolute md:h-full h-[40vh] w-full md:w-[45%] max-md:top-0 md:right-0 text-white font-mono ml-auto mix-blend-difference flex items-center justify-center flex-col opacity-0 -translate-x-10"
 >
 	{#if posts}
 		{#each list as item, index}
 			<ListItem
 				{index}
+				{extraDelay}
 				{item}
 				{selHeight}
 				{activeIndex}

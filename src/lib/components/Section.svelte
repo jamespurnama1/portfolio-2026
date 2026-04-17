@@ -58,7 +58,7 @@
 		: 'md:flex-row'} p-4 items-start justify-end gap-8 translate-y-full opacity-0 relative min-h-screen"
 >
 	<!-- Match position with <ul> from layout -->
-	<div class="min-h-0 {index === 0 ? 'mr-0 absolute right-0' : index % 2 === 0 ? 'mr-4' : 'ml-4'}">
+	<div class="min-h-0 min-w-[25vw] flex flex-col gap-2 {index === 0 ? 'mr-0 absolute right-0' : index % 2 === 0 ? 'mr-4' : 'ml-4'}">
 		{#if !index && heading}
 			<h1
 				class="text-white mix-blend-difference font-sans text-3xl sm:text-4xl md:text-5xl 2xl:text-7xl font-bold whitespace-pre-wrap invisible"

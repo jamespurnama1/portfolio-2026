@@ -122,6 +122,10 @@ export const cursorStore = {
 
 let scroll = $state(0);
 let offset = $state(0);
+let velocity = $state(0);
+let lastScroll = $state(0);
+let lastTime = $state(Date.now());
+let velocityDecayTimer: number | null = null;
 // let overScroll = $state(0);
 
 export const scrollStore = {
@@ -129,13 +133,43 @@ export const scrollStore = {
 		return scroll + offset;
 	},
 	set scroll(newVal: number) {
+		const now = Date.now();
+		const deltaTime = (now - lastTime) / 1000; // Convert to seconds
+		const deltaScroll = newVal - lastScroll;
+
+		if (deltaTime > 0) {
+			velocity = deltaScroll / deltaTime;
+			// console.log('[SCROLL] velocity', velocity);
+		}
+
 		scroll = newVal;
+		lastScroll = newVal;
+		lastTime = now;
+
+		// Clear existing decay timer
+		if (velocityDecayTimer !== null) {
+			clearTimeout(velocityDecayTimer);
+		}
+
+		// Start decay after 100ms of no scroll updates
+		velocityDecayTimer = window.setTimeout(() => {
+			const decayInterval = setInterval(() => {
+				velocity *= 0.9; // Decay by 10% each frame
+				if (Math.abs(velocity) < 0.1) {
+					velocity = 0;
+					clearInterval(decayInterval);
+				}
+			}, 16); // ~60fps
+		}, 100);
 	},
 	get offset(): number {
 		return offset;
 	},
 	set offset(newVal: number) {
 		offset = newVal;
+	},
+	get velocity(): number {
+		return velocity;
 	}
 	// get overScroll(): number {
 	// 	return overScroll;

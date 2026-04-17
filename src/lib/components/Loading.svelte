@@ -53,7 +53,7 @@
 
 <div class="flex items-center h-full w-full">
 	{#if error === 200}
-		<div class="relative text-4xl sm:text-6xl md:text-8xl 2xl:text-9xl">
+		<div class="relative text-3xl sm:text-4xl md:text-6xl 2xl:text-7xl">
 			<h1
 				bind:this={loadingText}
 				class="text-white font-sans mix-blend-difference"
@@ -66,7 +66,7 @@
 	{:else}
 		<h1 bind:this={errorText} class="text-white text-9xl font-sans mix-blend-difference">Error</h1>
 	{/if}
-	<div class="relative text-4xl sm:text-6xl md:text-8xl 2xl:text-9xl flex-1">
+	<div class="relative text-3xl sm:text-4xl md:text-6xl 2xl:text-7xl flex-1">
 		<p class="text-white font-mono mix-blend-difference">
 			&gt;{parseInt(loadStore.load.toString())}%
 		</p>

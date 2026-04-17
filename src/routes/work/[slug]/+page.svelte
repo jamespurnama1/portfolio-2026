@@ -1,15 +1,10 @@
 <script lang="ts">
-	import { afterNavigate, goto } from '$app/navigation';
-	import { page } from '$app/stores';
-	import {
-		countStore,
-		animationStore,
-		gptStore,
-		scrollStore,
-		loadStore
-	} from '$lib/stores/index.svelte';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { countStore, gptStore, scrollStore } from '$lib/stores/index.svelte';
 	import Section from '$lib/components/Section.svelte';
 	import { gsap } from 'gsap';
+	import { ScrollTrigger } from 'gsap/ScrollTrigger';
 	import { onMount, tick, untrack } from 'svelte';
 	import { type PageData } from './$types';
 	import { optionsStore } from '$lib/stores/options.svelte';
@@ -24,10 +19,11 @@
 	let scrollHeight = $state(0);
 	let innerHeight = $state(0);
 	let animating = true;
+	let tl = gsap.timeline();
 
-	const mapper = gsap.utils.mapRange(0, 300, 0, 100);
-	const mapper2 = gsap.utils.mapRange(0, 300, 88, 15);
-
+	// const mapper = gsap.utils.mapRange(0, 300, 0, 100);
+	// const mapper2 = gsap.utils.mapRange(0, 300, 88, 15);
+	//
 	// $effect(() => {
 	// 	scrollStore.overScroll;
 	// 	untrack(() => {
@@ -67,7 +63,7 @@
 	let current = $state() as Post | undefined;
 
 	function updateCurrent() {
-		current = data.projects.find((x) => x.slug.current === $page.params.slug);
+		current = data.projects.find((x) => x.slug.current === page.params.slug);
 		if (!current) {
 			goto('/404');
 			throw new Error('not found');
@@ -103,11 +99,26 @@
 	);
 
 	onMount(async () => {
+		gsap.registerPlugin(ScrollTrigger);
 		animateIn();
 		updateCurrent();
-		scrollStore.scroll = document.body.scrollTop;
+		scrollStore.scroll = document.querySelector('.app') ? document.querySelector('.app')!.scrollTop : 0;
 		await tick();
 		scrollHeight = document.documentElement.scrollHeight;
+		setTimeout(() => {
+			ScrollTrigger.refresh();
+			tl.to('ul > li > *', {
+				scrollTrigger: {
+					id: 'trigger1',
+					trigger: 'section:first-child',
+					start: 'bottom bottom',
+					end: 'bottom top',
+					scrub: 1
+				},
+				stagger: 0.1,
+				y: -300
+			});
+		}, 500);
 	});
 
 	const progress = $derived(
@@ -154,9 +165,7 @@
 	});
 
 	function animateIn() {
-		// scrollStore.overScroll = 0;
-		document.documentElement.scrollTop = 0;
-		scrollStore.scroll = document.documentElement.scrollTop;
+		scrollStore.scroll = document.querySelector('.app') ? document.querySelector('.app')!.scrollTop : 0;
 
 		gsap.to('.gradient-top', {
 			opacity: 1,
@@ -167,10 +176,16 @@
 			delay: 4,
 			onComplete: () => {
 				animating = false;
-				// gsap.set('html', { overflowY: 'auto' });
 			}
 		});
 	}
+
+	beforeNavigate(() => {
+		scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+		tl.time(0).kill();
+		const trigger1 = ScrollTrigger.getById('trigger1');
+		if (trigger1) trigger1.kill(true);
+	});
 </script>
 
 <aside
@@ -188,21 +203,18 @@
 	<img bind:this={caretEl} src={caret} alt="scroll caret" class="absolute w-3 right-0 -top-5" />
 </aside>
 <article
-	class="relative overflow-hidden self-start w-full"
+	class="relative overflow-hidden self-start w-full transition-opacity duration-300"
 	class:opacity-0={optionsStore.fullscreen || gptStore.opened}
 >
 	{#if current && typeof currIndex === 'number'}
-		<Section
-			heading={data.projects[currIndex].title}
-			index={0}
-		/>
+		<Section heading={data.projects[currIndex].title} index={0} />
 		{#each current.content as item, index}
 			{#if data.projects && data.projects[currIndex] && data.projects[currIndex].content && data.projects[currIndex].content[index]}
 				<!-- Calculate imageWidth and imageHeight inside the block -->
 				{@const contentItem = data.projects[currIndex].content[index]}
 				{@const imageWidth = $cardDimensionsStore[index]?.width ?? 0}
 				{@const imageHeight = $cardDimensionsStore[index]?.height ?? 0}
-				{@const maxSize = Math.min(innerWidth*0.6, 600)}
+				{@const maxSize = Math.min(innerWidth * 0.6, 600)}
 				<Section
 					index={index + 1}
 					body={item.body}

@@ -83,6 +83,14 @@ export async function sanityLoad() {
       size
     }
   },
+  "thumbnailImage": {
+    "asset": thumbnailImage.asset->{
+      _id,
+      url,
+      originalFilename,
+      size
+    }
+  },
   _createdAt,
   _updatedAt
 }

@@ -36,7 +36,7 @@
 		tabindex="0"
 		role="button"
 		transition:fly={{ y: 200, duration: 500, easing: cubicInOut }}
-		class="notification fixed w-[60vw] top-full -translate-y-[3.5rem] hover:-translate-y-[5rem] transition-transform left-1/2 -translate-x-1/2 z-50 glow h-1/2 show flex justify-start duration-500"
+		class="notification fixed w-[75vw] md:w-[70vw] lg:w-[60vw] top-full -translate-y-[3.5rem] hover:-translate-y-[5rem] transition-transform md:left-1/2 max-md:right-0 max-md:left-auto max-md:-translate-x-0 md:-translate-x-1/2 z-50 glow h-1/2 show flex justify-start duration-500"
 	>
 		<NotificationsEl message={notificationStore.message} sub={notificationStore.sub} />
 	</div>

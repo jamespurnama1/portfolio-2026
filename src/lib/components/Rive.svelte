@@ -11,8 +11,10 @@
 
 	let link = $state() as SMIInput;
 	let scroll = $state() as SMIInput;
+	let isTouchDevice = $state(false);
 
 	function onHover() {
+		if (!link) return;
 		if (animationStore.isAnimating) {
 			scroll.value = false;
 			link.value = false;
@@ -21,7 +23,7 @@
 		}
 	}
 	function onLeave() {
-		link.value = false;
+		if (link) link.value = false;
 	}
 
 	const { size } = useThrelte();
@@ -65,12 +67,16 @@
 	let {
 		riveCanvas = $bindable(),
 		riveTask = $bindable(),
-		loadingAnim
+		loadingAnim,
+		caretPos
 	}: {
 		riveCanvas: HTMLCanvasElement;
 		riveTask: (time?: number) => void;
 		loadingAnim: () => void;
+		caretPos?: { x: number; y: number; scaleX: number; scaleY: number; rotation: number };
 	} = $props();
+
+	let canvasContainer: HTMLDivElement | undefined = $state();
 
 	function toNormal() {
 		setTimeout(() => {
@@ -94,16 +100,32 @@
 		});
 	});
 
+	// Handle canvas resize
 	$effect(() => {
 		if (!riveCanvas) return;
-		riveCanvas.width = $size.width;
-		riveCanvas.height = $size.height;
+		$size.width;
+		$size.height;
+		untrack(() => {
+			if (riveCanvas.width !== $size.width || riveCanvas.height !== $size.height) {
+				riveCanvas.width = $size.width;
+				riveCanvas.height = $size.height;
+			}
+		});
 	});
 
 	onMount(async () => {
+		isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+		canvasContainer = document.createElement('div');
+		canvasContainer.className = 'riveCanvasContainer';
+		canvasContainer.setAttribute('aria-hidden', 'true');
+		document.body.appendChild(canvasContainer);
+
 		riveCanvas = document.createElement('canvas');
-		document.body.appendChild(riveCanvas);
+		riveCanvas.width = $size.width;
+		riveCanvas.height = $size.height;
 		riveCanvas.className = 'riveCanvas';
+		canvasContainer.appendChild(riveCanvas);
 		const rive = await RiveCanvas({
 			// Loads Wasm bundle
 			locateFile: () => `https://unpkg.com/@rive-app/canvas-advanced@2.32.0/rive.wasm`
@@ -146,17 +168,25 @@
 	});
 
 	onDestroy(() => {
-		if (riveCanvas && riveCanvas.parentNode) {
-			riveCanvas.parentNode.removeChild(riveCanvas);
+		if (canvasContainer && canvasContainer.parentNode) {
+			canvasContainer.parentNode.removeChild(canvasContainer);
 		}
 	});
 </script>
 
 <style>
-	:global(.riveCanvas) {
-		position: absolute;
+	:global(.riveCanvasContainer) {
+		position: fixed;
 		top: 0;
-		opacity: 0%;
+		left: -10000px;
+		opacity: 0;
 		pointer-events: none;
+		width: 0;
+		height: 0;
+		overflow: hidden;
+	}
+
+	:global(.riveCanvas) {
+		display: block;
 	}
 </style>

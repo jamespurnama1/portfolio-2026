@@ -3,7 +3,7 @@
 	import { scale } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 	import '../app.scss';
-	import { Canvas } from '@threlte/core';
+	// import { Canvas } from '@threlte/core';
 	import Three from '$lib/components/Three.svelte';
 	import Nav from '$lib/components/Nav.svelte';
 	import Footer from '$lib/components/Footer.svelte';
@@ -17,11 +17,13 @@
 		notificationStore,
 		gptStore
 	} from '$lib/stores/index.svelte';
+	import { projectSectionStore } from '$lib/stores/projectSection';
+	import { projectListHost } from '$lib/stores/projectListHost';
 	import { galleryScrollStore } from '$lib/stores/galleryScroll';
 	import { gsap } from 'gsap';
 	import { checkSavedTheme } from '$lib/utils/theme';
 	import { onMount, untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { namnam } from '$lib/utils/easterEggs';
 	import ProjectList from '$lib/components/ProjectList.svelte';
@@ -30,9 +32,11 @@
 	import Notifications from '$lib/components/Notifications.svelte';
 	import GPT from '$lib/components/gpt.svelte';
 	import { browser, dev } from '$app/environment';
+	import { isSafariUserAgent } from '$lib/utils/device';
 
 	let prev = 0;
 	let innerWidth = $state(0);
+	let app = $state() as HTMLDivElement | undefined;
 	let innerHeight = $state(0);
 	let { children, data } = $props();
 	import type { SvelteComponent } from 'svelte';
@@ -40,10 +44,37 @@
 	let gptEl: SvelteComponent | undefined = $state();
 	let navComponent: Nav;
 	let footerComponent: Footer;
-	let videoEl = $state([]) as HTMLVideoElement[];
+	let mediaEl = $state([]) as HTMLVideoElement[];
+	let thumbnailEls = $state([]) as HTMLImageElement[];
 	let timer: ReturnType<typeof setTimeout>;
+	let touchStartY = $state(0);
+	let preferImageThumbnails = $state(false);
+	let projectListWrapper = $state() as HTMLDivElement | undefined;
+	let projectListFallback = $state() as HTMLDivElement | undefined;
+	let currentProjectListHost: HTMLElement | null = null;
 	const showSource = $derived(optionsStore.showSources ? 'opacity-100 z-50' : 'opacity-0 -z-10');
 	const slug = $derived(data.projects ? data.projects[countStore.activeIndex].slug.current : '');
+	function withOptimizedThumbnail(url?: string) {
+		if (!url) return '';
+		const fallback = typeof window !== 'undefined' ? window.innerWidth : 1920;
+		const width = innerWidth || fallback;
+		const targetWidth = Math.min(Math.max(Math.round(width || 1920), 480), 2560);
+		const optimizedThumbParams = `auto=format&fit=max&q=85&w=${targetWidth}`;
+		return `${url}${url.includes('?') ? '&' : '?'}${optimizedThumbParams}`;
+	}
+	function relocateProjectList(target: HTMLElement | null) {
+		if (!projectListWrapper) return;
+		const desiredParent = target ?? projectListFallback;
+		if (!desiredParent || projectListWrapper.parentElement === desiredParent) return;
+		desiredParent.appendChild(projectListWrapper);
+	}
+
+	$effect(() => {
+		projectListWrapper;
+		projectListFallback;
+		untrack(() => relocateProjectList(currentProjectListHost));
+	});
+
 	/* 
 	--------
 	KEYBOARD
@@ -54,9 +85,13 @@
 		if (!loadStore.loaded) return;
 		// shortcut to open GPT
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+			e.preventDefault();
 			gptStore.opened = !gptStore.opened;
+			return;
 		} else if (e.key.toLowerCase() === 'escape') {
+			e.preventDefault();
 			gptStore.opened = false;
+			return;
 		}
 
 		// add stuff here if requires keyboard input
@@ -64,7 +99,7 @@
 		e.preventDefault();
 		// Easter egg
 		namnam(e.key);
-		if ($page.params.slug || $page.url.hash) return;
+		if (page.params.slug || page.url.hash) return;
 		if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
 			countStore.activeIndex = false;
 			debouncedInertia.restart(true);
@@ -104,9 +139,9 @@
 	beforeNavigate(({ to }) => {
 		if (to?.url.pathname.includes('work')) {
 			animationStore.isTransitioning = true;
-			document.documentElement.classList.remove('overflow-hidden');
+			// document.documentElement.classList.remove('overflow-hidden');
 		} else {
-			document.documentElement.classList.add('overflow-hidden');
+			// document.documentElement.classList.add('overflow-hidden');
 		}
 	});
 
@@ -114,7 +149,7 @@
 
 	const update = () => {
 		if (!data.projectsLength || !data.categoriesLength) return;
-		// if (videoEl[prev]) videoEl[prev].pause();
+		// if (mediaEl[prev]) mediaEl[prev]?.pause?.();
 		let goTo = countStore.activeIndex;
 
 		// smooth snapping
@@ -137,9 +172,16 @@
 		});
 
 		// play video
-		if (videoEl[goTo] && loadStore.loaded) {
-			videoEl.forEach((vid) => vid.pause());
-			videoEl[goTo].play();
+		if (mediaEl[goTo] && loadStore.loaded) {
+			mediaEl.forEach((el) => {
+				if (el instanceof HTMLVideoElement) {
+					el.pause();
+				}
+			});
+			const targetEl = mediaEl[goTo];
+			if (targetEl instanceof HTMLVideoElement) {
+				targetEl.play();
+			}
 		}
 
 		// check dir from prev value
@@ -157,8 +199,11 @@
 		if (!loadStore.loaded) return;
 		untrack(() => {
 			//safari needs video to play for a few more seconds, so we pause here instead
-			for (let i = 1; i < videoEl.length; i++) {
-				videoEl[i].pause();
+			for (let i = 1; i < mediaEl.length; i++) {
+				const el = mediaEl[i];
+				if (el instanceof HTMLVideoElement) {
+					el.pause();
+				}
 			}
 			// navComponent.afterLoad();
 			// footerComponent.afterLoad();
@@ -172,55 +217,123 @@
 	});
 
 	// Calculate Loading
-	let loadedVideos = new Set<number>();
+	let loadedMediaIndices = new Set<number>();
+	const expectedMediaCount = $derived.by(() => {
+		if (!data.projects?.length) return 0;
+		return data.projects.reduce((count, project) => {
+			const usesImageThumbnail = preferImageThumbnails && !!project.thumbnailImage?.asset?.url;
+			const hasRenderableMedia = usesImageThumbnail || !!project.thumbnail?.asset?.url;
+			return count + (hasRenderableMedia ? 1 : 0);
+		}, 0);
+	});
 
 	$effect(() => {
-		videoEl.length;
+		mediaEl.length;
+		thumbnailEls.length;
+		preferImageThumbnails;
+		expectedMediaCount;
 		untrack(() => {
-			videoEl.forEach((x, i) => {
-				const onVideoLoadForIndex = () => {
-					if (loadedVideos.has(i)) return; // Prevent double counting
-					loadedVideos.add(i);
-					onVideoLoad(i);
+			if (expectedMediaCount === 0) {
+				loadStore.load = 100;
+				return;
+			}
+
+			const attachVideoListeners = (el: HTMLVideoElement, i: number) => {
+				const onMediaLoadForIndex = () => {
+					if (loadedMediaIndices.has(i)) return;
+					loadedMediaIndices.add(i);
+					onMediaLoad();
 				};
 
-				try {
-					// make sures the video autoplays
-					x.play();
-				} catch (error) {
-					if (error instanceof Error) {
-						if (error.name === 'NotAllowedError') {
+				const playPromise = el.play();
+				if (playPromise?.catch) {
+					playPromise.catch((error: unknown) => {
+						if (error instanceof Error && error.name === 'NotAllowedError') {
 							console.warn('Power Saver Mode');
-							onVideoLoadForIndex();
+							onMediaLoadForIndex();
 						}
-					}
+					});
 				}
 
-				// Use multiple events for better reliability
-				x.addEventListener('canplay', onVideoLoadForIndex, { once: true });
-				x.addEventListener('loadeddata', onVideoLoadForIndex, { once: true });
-				x.addEventListener(
+				if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+					onMediaLoadForIndex();
+					return;
+				}
+
+				el.addEventListener('canplay', onMediaLoadForIndex, { once: true });
+				el.addEventListener('loadeddata', onMediaLoadForIndex, { once: true });
+				el.addEventListener(
 					'error',
-					(e) => {
-						console.error('Video error:', e.message, 'for video', i);
-						// Still count as loaded to not block the UI
-						onVideoLoadForIndex();
+					() => {
+						console.error('Video error for media index', i);
+						onMediaLoadForIndex();
 					},
 					{ once: true }
 				);
+			};
+
+			const attachImageListeners = (el: HTMLImageElement, i: number) => {
+				const onMediaLoadForIndex = () => {
+					if (loadedMediaIndices.has(i)) return;
+					loadedMediaIndices.add(i);
+					onMediaLoad();
+				};
+
+				if (el.complete) {
+					onMediaLoadForIndex();
+				} else {
+					el.addEventListener('load', onMediaLoadForIndex, { once: true });
+				}
+				el.addEventListener(
+					'error',
+					() => {
+						console.error('Image error for media index', i);
+						onMediaLoadForIndex();
+					},
+					{ once: true }
+				);
+			};
+
+			mediaEl.forEach((el, i) => {
+				if (!el) return;
+				attachVideoListeners(el, i);
+			});
+
+			thumbnailEls.forEach((el, i) => {
+				if (!el) return;
+				attachImageListeners(el, i);
 			});
 		});
 	});
 
-	let videoCount = 0;
-	function onVideoLoad(index: number) {
-		videoCount++;
-		const totalVideos = data.projectsLength! - 2;
+	$effect(() => {
+		countStore.activeIndex;
+		mediaEl.length;
+		loadStore.loaded;
+		untrack(() => {
+			if (!loadStore.loaded || !mediaEl.length) return;
+			mediaEl.forEach((el, i) => {
+				if (!(el instanceof HTMLVideoElement)) return;
+				if (i === countStore.activeIndex) {
+					const playPromise = el.play();
+					if (playPromise?.catch) {
+						playPromise.catch(() => {});
+					}
+				} else {
+					el.pause();
+				}
+			});
+		});
+	});
 
-		if (videoCount <= totalVideos) {
-			//10% is fetched already
-			loadStore.load = (videoCount / totalVideos) * 90 + 10;
+	function onMediaLoad() {
+		if (expectedMediaCount <= 0) {
+			loadStore.load = 100;
+			return;
 		}
+
+		const percentLoaded = Math.min(loadedMediaIndices.size / expectedMediaCount, 1);
+		loadStore.load = percentLoaded * 90 + 10;
 		// SAFARI: can't pause here, video needs to play for a bit
 	}
 
@@ -258,43 +371,81 @@
 	const mapper = gsap.utils.mapRange(-2000, 2000, -5, 5);
 
 	$effect(() => {
-		$page.url.pathname;
+		page.url.pathname;
 		untrack(() => {
-			if ($page.url.pathname !== '/gallery') {
+			if (page.url.pathname !== '/gallery') {
 				galleryScrollStore.set(0);
 			}
 		});
 	});
 
-	function onScroll(event: WheelEvent) {
-		if (!loadStore.loaded || gptStore.opened) return;
-		activityStore.inactive = false;
-		// deprecated wheeldelta is more consistent than the new delta
-		let deltaY = event.deltaY;
-		if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
-			// Convert pixel values to lines
-			deltaY *= 1;
-		} else if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
-			// Convert lines to pixels (approximation, typically 16 pixels per line)
-			deltaY *= 17;
-		} else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-			// Convert pages to pixels (e.g., 100 pixels per page)
-			deltaY *= 53;
+	function handleVirtualScroll(deltaY: number) {
+		if (page.url.pathname === '/') {
+			return;
 		}
-
-		if ($page.params.slug) {
-			scrollStore.scroll = document.documentElement.scrollTop;
-		} else if ($page.url.pathname === '/gallery') {
+		if (page.url.pathname === '/gallery') {
 			const mappedDelta = mapper(deltaY);
 			countStore.inertiaIndex += mappedDelta;
 			galleryScrollStore.set(countStore.inertiaIndex);
 			scrollStore.scroll = countStore.inertiaIndex;
 		} else {
-			// Apply smooth wheel input with dampening
-			const mappedDelta = mapper(deltaY) * 0.5; // Dampen for smoother feel
+			const mappedDelta = mapper(deltaY) * 0.5;
 			countStore.inertiaIndex += mappedDelta;
 			debouncedInertia.restart(true);
 		}
+	}
+
+	function syncWorkScroll() {
+		const currentScroll =
+			page.url.pathname === '/'
+				? window.scrollY
+				: ((app ?? document.scrollingElement ?? document.documentElement)?.scrollTop ??
+					window.scrollY);
+		scrollStore.scroll = currentScroll;
+		return currentScroll;
+	}
+
+	function onScroll(event: WheelEvent) {
+		if (!loadStore.loaded || gptStore.opened) return;
+		activityStore.inactive = false;
+		let deltaY = event.deltaY;
+		if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
+			deltaY *= 1;
+		} else if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+			deltaY *= 17;
+		} else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+			deltaY *= 53;
+		}
+
+		if (page.url.pathname.includes('work')) {
+			syncWorkScroll();
+			return;
+		}
+
+		handleVirtualScroll(deltaY);
+	}
+
+	function onTouchStart(event: TouchEvent) {
+		if (!event.touches.length) return;
+		touchStartY = event.touches[0].clientY;
+	}
+
+	function onTouchMove(event: TouchEvent) {
+		if (!loadStore.loaded || gptStore.opened || !event.touches.length) return;
+		const currentY = event.touches[0].clientY;
+		const deltaY = touchStartY - currentY;
+		if (Math.abs(deltaY) < 1) return;
+		activityStore.inactive = false;
+		touchStartY = currentY;
+		if (page.url.pathname.includes('work')) {
+			syncWorkScroll();
+			return;
+		}
+		const scaledDelta = Math.max(Math.min(deltaY * 10, 2000), -2000);
+		if (!page.url.pathname.includes('work')) {
+			// event.preventDefault();
+		}
+		handleVirtualScroll(scaledDelta);
 	}
 
 	function disableScroll(e: Event) {
@@ -304,57 +455,99 @@
 	$effect(() => {
 		optionsStore.fullscreen;
 		// 	loadStore.cardLoading;
-		// 	$page.params.slug;
+		// 	page.params.slug;
 		untrack(() => {
 			if (optionsStore.fullscreen) {
 				window.addEventListener('wheel', disableScroll, { passive: false });
+				window.addEventListener('touchmove', disableScroll, { passive: false });
 			} else {
 				window.removeEventListener('wheel', disableScroll);
+				window.removeEventListener('touchmove', disableScroll);
 			}
 		});
 	});
 
 	onMount(() => {
-		if ($page.params.slug) animationStore.isTransitioning = true;
+		const unsubscribeProjectListHost = projectListHost.subscribe((host) => {
+			currentProjectListHost = host;
+			relocateProjectList(host);
+		});
+		if (browser && typeof navigator !== 'undefined' && isSafariUserAgent(navigator.userAgent)) {
+			preferImageThumbnails = true;
+		}
 
-		// wheel listener
-		document.addEventListener('wheel', (event) => onScroll(event), { passive: true });
+		if (page.params.slug) animationStore.isTransitioning = true;
+
+		app = document.querySelector('.app') as HTMLDivElement;
+
+		const wheelHandler = (event: WheelEvent) => onScroll(event);
+		const touchStartHandler = (event: TouchEvent) => onTouchStart(event);
+		const touchMoveHandler = (event: TouchEvent) => onTouchMove(event);
+		const workScrollHandler = () => {
+			if (page.url.pathname.includes('work') || page.url.pathname === '/') {
+				syncWorkScroll();
+			}
+		};
+
+		document.addEventListener('wheel', wheelHandler, { passive: true });
+		document.addEventListener('touchstart', touchStartHandler, { passive: true });
+		document.addEventListener('touchmove', touchMoveHandler, { passive: false });
+		window.addEventListener('scroll', workScrollHandler, { passive: true });
+		app?.addEventListener('scroll', workScrollHandler, { passive: true });
 
 		//disable overflow
-		if (!$page.params.slug) {
+		// document.documentElement.classList.add('overflow-hidden');
+		if (page.url.pathname === '/') {
 			animationStore.isTransitioning = true;
-			document.documentElement.classList.add('overflow-hidden');
-		} else {
-			document.documentElement.classList.remove('overflow-hidden');
+			// } else {
+			// document.documentElement.classList.remove('overflow-hidden');
 		}
 
 		//check light Mode
 		checkSavedTheme();
+
+		return () => {
+			unsubscribeProjectListHost();
+			relocateProjectList(null);
+			document.removeEventListener('wheel', wheelHandler);
+			document.removeEventListener('touchstart', touchStartHandler);
+			document.removeEventListener('touchmove', touchMoveHandler);
+			window.removeEventListener('scroll', workScrollHandler);
+			app?.removeEventListener('scroll', workScrollHandler);
+		};
 	});
 </script>
 
 <svelte:window bind:innerWidth bind:innerHeight on:keydown={onKeyDown} />
 
-<div class="app h-screen w-screen">
+<div class="app min-h-screen w-screen overflow-x-hidden">
 	<!-- Header -->
 	<Nav bind:this={navComponent} />
 
 	<!-- Main -->
 	<main
-		class="h-full w-full overscroll-none z-10 relative flex row items-center justify-center mix-blend-difference"
+		class="w-full overscroll-none z-10 relative flex flex-col items-center justify-center mix-blend-difference"
 	>
 		{#if loadStore.load < 100}
 			<div
-				class="w-full h-full flex items-center justify-center p-24 absolute top-0 left-0"
+				class="w-full h-screen flex items-center justify-center p-24 absolute top-0 left-0"
 				transition:scale={{ duration: 500, delay: 500, start: 0.5, easing: quintOut }}
 			>
 				<Loading />
 			</div>
 		{:else if data.projectsLength}
 			{@render children()}
-			<ProjectList data={data as Required<PageData>} />
+			<div
+				class="project-list-fallback relative w-full h-full"
+				class:pointer-events-none={page.url.pathname === '/' && !$projectSectionStore.pinned}
+				bind:this={projectListFallback}
+			>
+				<div bind:this={projectListWrapper}>
+					<ProjectList data={data as Required<PageData>} />
+				</div>
+			</div>
 			<!-- inactivity -->
-			<!-- {#if !$page.params.slug && activityStore.inactive}
+			<!-- {#if !page.params.slug && activityStore.inactive}
 				<p
 					transition:scale={{ duration: 500, start: 0.5, easing: quintOut }}
 					class="text-white text-center text-xs leading-none mix-blend-difference fixed bottom-10"
@@ -368,7 +561,7 @@
 	<Notifications />
 	<!-- BG -->
 	<div class="fixed w-screen h-screen z-0 top-0 left-0 canvas-container">
-		<Three bind:this={webGLComponent} {data} />
+		<Three bind:this={webGLComponent} {data} {preferImageThumbnails} />
 	</div>
 	<GPT
 		bind:this={gptEl}
@@ -382,29 +575,44 @@
 	<div class="absolute top-0 w-52 pointer-events-none {showSource}">
 		{#if data.projects}
 			{#each data.projects as project, i}
-				<video
-					class="absolute w-full h-auto"
-					style="transform: translateY({i}0%);"
-					bind:this={videoEl[i]}
-					muted
-					playsinline={true}
-					autoplay
-					controls={false}
-					src={process.env.NODE_ENV === 'production'
-						? project.thumbnail.asset.url
-						: project.thumbnail.asset.url.replace(
-								'https://cdn.sanity.io/files/rdnxsacz/production/',
-								'/dev/'
-							)}
-					id={project.slug!.current}
-					crossorigin="anonymous"
-					loop
-				></video>
+				{#if project.thumbnail?.asset?.url}
+					<video
+						class="absolute w-full h-auto"
+						style="transform: translateY({i}0%);"
+						bind:this={mediaEl[i]}
+						muted
+						playsinline={true}
+						autoplay
+						controls={false}
+						src={process.env.NODE_ENV === 'production'
+							? project.thumbnail.asset.url
+							: project.thumbnail.asset.url.replace(
+									'https://cdn.sanity.io/files/rdnxsacz/production/',
+									'/dev/'
+								)}
+						id={project.slug!.current}
+						crossorigin="anonymous"
+						loop
+					></video>
+				{/if}
+				{#if preferImageThumbnails && project.thumbnailImage?.asset?.url}
+					<img
+						class="absolute w-full h-auto opacity-0"
+						style="transform: translateY({i}0%);"
+						bind:this={thumbnailEls[i]}
+						src={withOptimizedThumbnail(project.thumbnailImage.asset.url)}
+						id={`${project.slug!.current}-thumb`}
+						alt=""
+						loading="lazy"
+						decoding="async"
+						crossorigin="anonymous"
+					/>
+				{/if}
 			{/each}
 		{/if}
 	</div>
 </div>
 
 {#if browser && dev}
-	<Debug pushMessage={gptEl.pushMessage} />
+	<!-- <Debug pushMessage={gptEl.pushMessage} /> -->
 {/if}

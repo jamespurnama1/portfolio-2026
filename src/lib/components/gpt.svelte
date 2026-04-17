@@ -27,12 +27,15 @@
 		categoryAnim,
 		data
 	}: { data: LayoutData; categoryAnim: ((direction: 'up' | 'down') => void) | null } = $props();
+	const CONVERSATION_STORAGE_KEY = 'gptConversationId';
 	let fetching = $state(false);
 	let scroller = $state() as HTMLSpanElement;
 	let input = $state() as HTMLDivElement;
 	let prompt = $state('');
 	const logs = $state([]) as Array<{ speaker: string; message: string }>;
 	let prevRandom = $state() as number;
+	let conversationId = $state('');
+	let historyLoadedFor = $state('');
 
 	function getSample() {
 		let random = Math.floor(Math.random() * 10);
@@ -87,11 +90,91 @@
 		});
 	}
 
+	function persistConversation(id: string) {
+		// console.log('[Client] Persisting conversation ID:', id);
+		conversationId = id;
+		try {
+			if (typeof localStorage !== 'undefined') {
+				localStorage.setItem(CONVERSATION_STORAGE_KEY, id);
+				// console.log(
+				// 	'[Client] Stored in localStorage:',
+				// 	localStorage.getItem(CONVERSATION_STORAGE_KEY)
+				// );
+			}
+		} catch (err) {
+			console.warn('Unable to persist conversation ID in localStorage', err);
+		}
+	}
+
+	function clearConversation() {
+		// console.log('[Client] Clearing conversation ID');
+		conversationId = '';
+		historyLoadedFor = '';
+		try {
+			if (typeof localStorage !== 'undefined') {
+				localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+			}
+		} catch (err) {
+			console.warn('Unable to clear conversation ID in localStorage', err);
+		}
+	}
+
+	function hydrateConversationId() {
+		if (typeof window === 'undefined') return '';
+		let stored = '';
+		try {
+			stored = localStorage.getItem(CONVERSATION_STORAGE_KEY) ?? '';
+		} catch (err) {
+			console.warn('Unable to read conversation ID from localStorage', err);
+		}
+		if (stored) {
+			// console.log('[Client] Hydrated conversation ID from localStorage:', stored);
+			conversationId = stored;
+			return stored;
+		}
+		// console.log('[Client] No stored conversation ID found');
+		return '';
+	}
+
+	async function loadConversationHistory(id: string) {
+		if (!id || historyLoadedFor === id) return;
+		try {
+			const res = await fetch(`/api/chat?conversationId=${encodeURIComponent(id)}`);
+			if (!res.ok) {
+				const errorText = await res.text();
+				console.warn('[Client] Failed to fetch conversation history:', res.status, errorText);
+				return;
+			}
+			const payload = await res.json();
+			const history = Array.isArray(payload?.messages) ? payload.messages : [];
+			if (!history.length) {
+				historyLoadedFor = id;
+				return;
+			}
+			logs.length = 0;
+			const orderedHistory = history.slice().reverse();
+			for (const entry of orderedHistory) {
+				if (entry?.speaker && entry?.message) {
+					await pushMessage(entry.speaker, entry.message);
+				}
+			}
+			historyLoadedFor = id;
+		} catch (err) {
+			console.error('[Client] Unable to load conversation history:', err);
+		}
+	}
+
 	// TODO: args Type Safety
 	function handleRun(funcName: string, args: any) {
 		switch (funcName) {
 			case 'download_resume':
-				window.open('/Resume_James Henry.pdf', '_blank');
+				const link = document.createElement('a');
+				link.download = 'Resume_James Henry.pdf';
+				link.href = '/Resume_James Henry.pdf';
+				document.body.appendChild(link);
+				link.click();
+				document.body.removeChild(link);
+				// window.open('/Resume_James Henry.pdf', '_blank');
 				break;
 			case 'go_to_about':
 				goto('/about');
@@ -107,7 +190,7 @@
 				notification();
 				break;
 			case 'send_a_message':
-				console.log('message', args.contact_info, args.user_message);
+				// console.log('message', args.contact_info, args.user_message);
 				break;
 		}
 	}
@@ -121,7 +204,7 @@
 			logs.push({ speaker, message });
 		}
 		await tick();
-		scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
+		if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
 	}
 
 	async function onkeydown(e?: KeyboardEvent) {
@@ -138,40 +221,71 @@
 				const res = await fetch('/api/chat', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ input: x })
+					body: JSON.stringify({ input: x, conversationId })
 				});
-				if (res.status !== 200) throw error(res.status, 'Unexpected error occurred');
+
+				if (!res.ok) {
+					const errorText = await res.text();
+					console.error('API Error:', res.status, errorText);
+					throw new Error(
+						`API returned ${res.status}: ${errorText || 'Unexpected error occurred'}`
+					);
+				}
+
 				let isFunc = false;
-				const data = await res;
-				if (!data.body) throw error(204, 'No Body Response');
+				const data = res;
+				if (!data.body) {
+					console.error('No response body from API');
+					throw new Error('No response from server');
+				}
 				const reader = data.body.getReader();
 				pushMessage('James Henry', '', false);
 
 				let func = '';
-				let message = '';
+				let capturingFunc = false;
 				while (true) {
 					const { done, value } = await reader.read();
 					if (done) break;
-					const textChunk = new TextDecoder().decode(value);
-					if (textChunk.includes('func_run')) {
-						func += textChunk;
-						isFunc = true;
-					} else if (func.includes('end_run') || !isFunc) {
-						pushMessage('James Henry', textChunk, true);
-					} else {
-						message += textChunk;
+					let textChunk = new TextDecoder().decode(value);
+					const convRegex = /conv_run\s+(\S+)\s+end_conv/g;
+					let match;
+					while ((match = convRegex.exec(textChunk)) !== null) {
+						const convId = match[1];
+						// console.log('[Client] Received conversation signal:', convId);
+						if (convId === 'clear') {
+							clearConversation();
+						} else if (convId) {
+							persistConversation(convId);
+						}
 					}
+					textChunk = textChunk.replace(convRegex, '');
+					if (!textChunk) {
+						continue;
+					}
+					if (textChunk.includes('func_run') || capturingFunc) {
+						func += textChunk;
+						capturingFunc = !textChunk.includes('end_run');
+						isFunc = true;
+						continue;
+					}
+					pushMessage('James Henry', textChunk, true);
 				}
 				if (func !== '') {
-					const parts = func.split(' ');
-					const argIndex = parts.findIndex((part) => part.startsWith('{'));
-					const args = JSON.parse(parts.slice(argIndex, parts.length - 1).join(' '));
-					handleRun(parts[1], args);
+					const funcPattern = /func_run\s+(\w+)\s+({[\s\S]*?})\s+end_run/g;
+					let match;
+					while ((match = funcPattern.exec(func)) !== null) {
+						const [, fnName, jsonChunk] = match;
+						try {
+							handleRun(fnName, JSON.parse(jsonChunk));
+						} catch (err) {
+							console.error('[Client] Failed to parse tool output:', err, jsonChunk);
+						}
+					}
+					func = '';
+					capturingFunc = false;
+					isFunc = false;
 				}
-				//push message after run is complete
-				if (isFunc && message !== '') {
-					pushMessage('James Henry', message, false);
-				}
+				// no-op: follow-up responses stream after tool runs will push new deltas
 				fetching = false;
 				input.focus();
 			} catch (err) {
@@ -222,11 +336,29 @@
 	$effect(() => {
 		if (!gptStore.opened) return;
 		untrack(() => {
-			input.focus();
+			setTimeout(() => {
+				input.focus();
+				if (input.hasChildNodes()) {
+					const selection = window.getSelection();
+					const range = document.createRange();
+					const lastChild = input.lastChild;
+					if (!lastChild || !lastChild.textContent || !selection) return;
+					// Set the range to the end of the last child node's content
+					range.setStart(lastChild, lastChild.textContent.length);
+					range.setEnd(lastChild, lastChild.textContent.length);
+
+					selection.removeAllRanges();
+					selection.addRange(range);
+				}
+			}, 500);
 		});
 	});
 
 	onMount(() => {
+		const restoredId = hydrateConversationId();
+		if (restoredId) {
+			loadConversationHistory(restoredId);
+		}
 		changePlaceholder();
 	});
 </script>
@@ -241,11 +373,12 @@
 	transition:fly={{ y: '46vh', duration: 500, easing: quintOut }}
 	id="gpt"
 	class:opacity-0={!loadStore.loaded || (notificationStore.opened && !gptStore.opened)}
-	class:show={gptStore.opened}
-	class="fixed min-h-24 left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex flex-col p-5 pt-0 w-[60vw] duration-500 bg-black z-30 transition-[transform opacity] glow"
+	class="{gptStore.opened
+		? '!-translate-y-1/2 md:!-translate-x-1/2 max-md:w-[90vw]'
+		: 'max-md:-translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh_-_3.5rem)] w-[75vw]'} fixed min-h-24 top-1/2 max-md:left-auto flex flex-col p-3 pt-0 md:left-1/2 max-md:right-0 hover:translate-y-[calc(50svh_-_5rem)] md:w-[70vw] lg:w-[60vw] duration-500 bg-black z-30 transition-[transform opacity] glow"
 >
 	<div class="flex flex-col w-full justify-center items-center">
-		<div class="w-full p-5 flex justify-between items-center">
+		<div class="w-full p-5 max-md:text-xs flex justify-between items-center">
 			<p class="font-mono text-white">Ask me anything</p>
 			<button
 				class="relative z-30"
@@ -254,10 +387,9 @@
 					gptStore.opened = false;
 				}}
 				><img
-					src={x_img}
-					alt="Close Modal"
-					class:invisible={!gptStore.opened}
-					class="w-4 h-auto pointer-events-none invert dark:invert-0"
+					src={gptStore.opened ? x_img : caret}
+					alt={gptStore.opened ? 'Close Modal' : 'Open Modal'}
+					class="w-4 h-auto pointer-events-none invert dark:invert-0 rotate-180"
 				/></button
 			>
 		</div>
@@ -268,18 +400,30 @@
 			class:mask-top={chatScrolledBottom}
 			class:mask-bottom={chatScrolledTop}
 			onscroll={onChatScroll}
-			class="mask flex flex-col items-start max-h-[65vh] w-full overflow-y-scroll px-12"
+			class="mask flex flex-col items-start max-h-[65vh] w-full overflow-y-scroll px-3 sm:px-6 md:px-12"
 		>
 			{#each logs as log}
-				<p class="font-mono text-white font-bold">{log.speaker}</p>
-				<p class="font-mono text-white pb-5">{@html marked.parse(log.message)}</p>
+				<p
+					class="font-mono text-white font-bold max-md:text-sm {log.speaker === 'James Henry'
+						? 'text-left'
+						: 'text-right self-end'}"
+				>
+					{log.speaker}
+				</p>
+				<p
+					class="font-mono text-white pb-5 max-md:text-xs {log.speaker === 'James Henry'
+						? 'text-left'
+						: 'text-right self-end'}"
+				>
+					{@html marked.parse(log.message)}
+				</p>
 			{/each}
 		</span>
 	</div>
-	<div class="flex w-full relative items-center p-5 gap-3">
+	<div class="flex w-full relative items-center p-3 sm:p-5 gap-2 sm:gap-3">
 		<div
 			class:invisible={prompt !== ''}
-			class="absolute pointer-events-none flex-grow text-3xl opacity-10 text-white"
+			class="absolute pointer-events-none flex-grow text-xl sm:text-2xl md:text-3xl opacity-10 text-white"
 		>
 			{placeholder.toString().replaceAll(',', '')}
 		</div>
@@ -293,14 +437,14 @@
 			class:mask-left={inputScrolledRight}
 			class:mask-right={inputScrolledLeft}
 			onscroll={onInputScroll}
-			class="gpt overflow-x-scroll text-nowrap flex-grow mx-auto text-3xl bg-transparent focus:outline-none active:outline-none placeholder:opacity-50 text-white placeholder:transition-opacity {fetching
+			class="gpt overflow-x-scroll text-nowrap flex-grow mx-auto text-xl sm:text-2xl md:text-3xl bg-transparent focus:outline-none active:outline-none placeholder:opacity-50 text-white placeholder:transition-opacity {fetching
 				? 'placeholder:opacity-10'
 				: ''}"
 			{onkeydown}
 		></div>
 		<button
 			disabled={prompt === '' || prompt.charCodeAt(0) === 10}
-			class="right-0 w-8 h-auto disabled:opacity-10 disabled:hover:scale-100 hover:scale-150 flex-shrink-0 transition-[transform_opacity] duration-500"
+			class="right-0 w-4 md:w-8 h-auto disabled:opacity-10 disabled:hover:scale-100 hover:scale-150 flex-shrink-0 transition-[transform_opacity] duration-500"
 			onclick={() => onkeydown()}
 			><img src={caret} alt="Send Message Button" class="w-full h-auto -rotate-90" /></button
 		>
@@ -317,23 +461,13 @@
 		e.stopPropagation();
 		gptStore.opened = false;
 	}}
-	onkeydown={(e) => console.log('button clicked')}
+	onkeydown={(e) => {}}
 ></div>
 
 <!-- {/key} -->
 
 <style lang="scss" scoped>
 	#gpt {
-		transform: translate(-50%, calc(50vh - 3.5rem));
-
-		&:hover {
-			transform: translate(-50%, calc(50vh - 5rem));
-		}
-
-		&.show {
-			transform: translate(-50%, -50%);
-		}
-
 		:global(a) {
 			@apply underline;
 		}

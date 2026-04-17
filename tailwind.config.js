@@ -23,5 +23,8 @@ export default {
 		}
 	},
 	plugins: [],
-	safelist: ['bg-gold', 'bg-silver', 'bg-bronze', 'bg-crystal']
+	safelist: ['bg-gold', 'bg-silver', 'bg-bronze', 'bg-crystal'],
+	future: {
+		hoverOnlyWhenSupported: true
+	}
 };
