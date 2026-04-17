@@ -26,6 +26,7 @@
 		fullscreen
 	} from '$lib/utils/positions';
 	import { type PageData } from '../../routes/$types';
+	import { introSectionStore } from '$lib/stores/introSection';
 
 	let easeFactor = 0.02;
 	let imageMat = $state() as ShaderMaterial;
@@ -108,6 +109,8 @@
 	const hidden = $derived(
 		// gpt modal opened
 		gptStore.opened ||
+			// intro section owns the homepage hero before the cards take over
+			(home && ($introSectionStore.active || $introSectionStore.progress < 1)) ||
 			// not current project in the work page - hide ALL home cards on work pages
 			(!works && page.url.pathname.includes('work')) ||
 			// on home but before current index

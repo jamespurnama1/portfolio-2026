@@ -1,5 +1,6 @@
 <script lang="ts">
 	import logo from '$lib/images/logo.svg';
+	import ScrambleText from '$lib/components/ScrambleText.svelte';
 	import { theme } from '$lib/utils/theme';
 	import { optionsStore } from '$lib/stores/options.svelte';
 	import { dev } from '$app/environment';
@@ -29,7 +30,7 @@
 				onclick={() => theme(!optionsStore.dark, true)}
 				transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 800 }}
 				><p class="text-right leading-none uppercase">
-					{optionsStore.dark ? 'Dark' : 'Light'}
+					<ScrambleText text={optionsStore.dark ? 'DARK' : 'LIGHT'} />
 				</p></button
 			>
 			<a
@@ -37,10 +38,10 @@
 				target="_blank"
 				rel="noopener noreferrer"
 				transition:fly={{ y: 200, duration: 700, easing: cubicInOut, delay: 700 }}
-				><p class="text-right leading-none">{dev ? 'dev' : 'prod'}</p>
+				><p class="text-right leading-none"><ScrambleText text={dev ? 'DEV' : 'PROD'} /></p>
 			</a>
 			<a href="/branch" transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 800 }}
-				><p class="text-right leading-none">v4.0.0</p></a
+				><p class="text-right leading-none"><ScrambleText text="v4.0.0" /></p></a
 			>
 		</span>
 	{/if}

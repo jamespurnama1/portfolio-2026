@@ -36,7 +36,7 @@
 					{#if award.gold}
 						{#each award.gold as gold}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:duration-1000 hover:scale-150 bg-gold"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-gold"
 								aria-label={gold}
 								onmouseenter={() => (currAward = gold)}
 								onmouseleave={() => (currAward = '')}
@@ -46,7 +46,7 @@
 					{#if award.silver}
 						{#each award.silver as silver}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:duration-1000 hover:scale-150 bg-silver"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-silver"
 								aria-label={silver}
 								onmouseenter={() => (currAward = silver)}
 								onmouseleave={() => (currAward = '')}
@@ -56,7 +56,7 @@
 					{#if award.bronze}
 						{#each award.bronze as bronze}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:duration-1000 hover:scale-150 bg-bronze"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-bronze"
 								aria-label={bronze}
 								onmouseenter={() => (currAward = bronze)}
 								onmouseleave={() => (currAward = '')}
@@ -66,7 +66,7 @@
 					{#if award.crystal}
 						{#each award.crystal as crystal}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:duration-1000 hover:scale-150 bg-crystal"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-crystal"
 								aria-label={crystal}
 								onmouseenter={() => (currAward = crystal)}
 								onmouseleave={() => (currAward = '')}

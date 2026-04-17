@@ -2,6 +2,7 @@
 	import { fly } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 	import { gptStore, loadStore, notificationStore, projectsStore } from '$lib/stores/index.svelte';
+	import { optionsStore } from '$lib/stores/options.svelte';
 	import { onMount, tick, untrack } from 'svelte';
 	import { gsap } from 'gsap';
 	import caret from '$lib/images/caret.svg';
@@ -354,6 +355,43 @@
 		});
 	});
 
+	$effect(() => {
+		gptStore.opened;
+		if (typeof document === 'undefined') return;
+		const html = document.documentElement;
+		const body = document.body;
+		const app = document.querySelector('.app') as HTMLDivElement | null;
+		const prevHtmlOverflow = html.style.overflow;
+		const prevBodyOverflow = body.style.overflow;
+		const prevBodyTouchAction = body.style.touchAction;
+		const prevAppOverflow = app?.style.overflow ?? '';
+		const prevAppTouchAction = app?.style.touchAction ?? '';
+		const lockScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
+
+		if (gptStore.opened) {
+			html.style.overflow = 'hidden';
+			body.style.overflow = 'hidden';
+			body.style.touchAction = 'none';
+			if (app) {
+				app.style.overflow = 'hidden';
+				app.style.touchAction = 'none';
+			}
+		}
+
+		return () => {
+			html.style.overflow = prevHtmlOverflow;
+			body.style.overflow = prevBodyOverflow;
+			body.style.touchAction = prevBodyTouchAction;
+			if (app) {
+				app.style.overflow = prevAppOverflow;
+				app.style.touchAction = prevAppTouchAction;
+			}
+			if (gptStore.opened && typeof window !== 'undefined') {
+				window.scrollTo(0, lockScrollY);
+			}
+		};
+	});
+
 	onMount(() => {
 		const restoredId = hydrateConversationId();
 		if (restoredId) {
@@ -375,11 +413,11 @@
 	class:opacity-0={!loadStore.loaded || (notificationStore.opened && !gptStore.opened)}
 	class="{gptStore.opened
 		? '!-translate-y-1/2 md:!-translate-x-1/2 max-md:w-[90vw]'
-		: 'max-md:-translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh_-_3.5rem)] w-[75vw]'} fixed min-h-24 top-1/2 max-md:left-auto flex flex-col p-3 pt-0 md:left-1/2 max-md:right-0 hover:translate-y-[calc(50svh_-_5rem)] md:w-[70vw] lg:w-[60vw] duration-500 bg-black z-30 transition-[transform opacity] glow"
+		: 'max-md:-translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh_-_3.5rem)] w-[75vw]'} fixed min-h-24 top-1/2 max-md:left-auto flex flex-col p-3 pt-0 md:left-1/2 max-md:right-0 hover:translate-y-[calc(50svh_-_5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[transform opacity] gpt-glow"
 >
 	<div class="flex flex-col w-full justify-center items-center">
 		<div class="w-full p-5 max-md:text-xs flex justify-between items-center">
-			<p class="font-mono text-white">Ask me anything</p>
+			<p class="font-mono gpt-text">Ask me anything</p>
 			<button
 				class="relative z-30"
 				onclick={(e) => {
@@ -389,7 +427,9 @@
 				><img
 					src={gptStore.opened ? x_img : caret}
 					alt={gptStore.opened ? 'Close Modal' : 'Open Modal'}
-					class="w-4 h-auto pointer-events-none invert dark:invert-0 rotate-180"
+					class="w-4 h-auto pointer-events-none rotate-180 {optionsStore.dark
+						? 'invert-0'
+						: 'invert'}"
 				/></button
 			>
 		</div>
@@ -404,14 +444,14 @@
 		>
 			{#each logs as log}
 				<p
-					class="font-mono text-white font-bold max-md:text-sm {log.speaker === 'James Henry'
+					class="font-mono gpt-text font-bold max-md:text-sm {log.speaker === 'James Henry'
 						? 'text-left'
 						: 'text-right self-end'}"
 				>
 					{log.speaker}
 				</p>
 				<p
-					class="font-mono text-white pb-5 max-md:text-xs {log.speaker === 'James Henry'
+					class="font-mono gpt-text pb-5 max-md:text-xs {log.speaker === 'James Henry'
 						? 'text-left'
 						: 'text-right self-end'}"
 				>
@@ -423,7 +463,7 @@
 	<div class="flex w-full relative items-center p-3 sm:p-5 gap-2 sm:gap-3">
 		<div
 			class:invisible={prompt !== ''}
-			class="absolute pointer-events-none flex-grow text-xl sm:text-2xl md:text-3xl opacity-10 text-white"
+			class="absolute pointer-events-none flex-grow text-xl sm:text-2xl md:text-3xl opacity-10 gpt-text"
 		>
 			{placeholder.toString().replaceAll(',', '')}
 		</div>
@@ -437,7 +477,7 @@
 			class:mask-left={inputScrolledRight}
 			class:mask-right={inputScrolledLeft}
 			onscroll={onInputScroll}
-			class="gpt overflow-x-scroll text-nowrap flex-grow mx-auto text-xl sm:text-2xl md:text-3xl bg-transparent focus:outline-none active:outline-none placeholder:opacity-50 text-white placeholder:transition-opacity {fetching
+			class="gpt gpt-text overflow-x-scroll text-nowrap flex-grow mx-auto text-xl sm:text-2xl md:text-3xl bg-transparent focus:outline-none active:outline-none placeholder:opacity-50 placeholder:transition-opacity {fetching
 				? 'placeholder:opacity-10'
 				: ''}"
 			{onkeydown}
@@ -446,7 +486,11 @@
 			disabled={prompt === '' || prompt.charCodeAt(0) === 10}
 			class="right-0 w-4 md:w-8 h-auto disabled:opacity-10 disabled:hover:scale-100 hover:scale-150 flex-shrink-0 transition-[transform_opacity] duration-500"
 			onclick={() => onkeydown()}
-			><img src={caret} alt="Send Message Button" class="w-full h-auto -rotate-90" /></button
+			><img
+				src={caret}
+				alt="Send Message Button"
+				class="w-full h-auto -rotate-90 {optionsStore.dark ? 'invert-0' : 'invert'}"
+			/></button
 		>
 	</div>
 </div>
@@ -468,9 +512,44 @@
 
 <style lang="scss" scoped>
 	#gpt {
+		background-color: #fff;
+		color: #000;
+		box-shadow:
+			0 0 10px rgb(255, 255, 255, 0.3),
+			-10px 0 40px rgb(255, 0, 255, 0.3),
+			10px 0 40px rgb(0, 255, 255, 0.3);
+
 		:global(a) {
 			@apply underline;
 		}
+	}
+
+	:global(html[data-theme='dark']) #gpt {
+		background-color: #000;
+		color: #fff;
+	}
+
+	.gpt-text,
+	.gpt :global(p),
+	.gpt :global(div[contenteditable='true']) {
+		color: inherit;
+	}
+
+	.gpt-glow::after {
+		content: '';
+		position: absolute;
+		z-index: -1;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		opacity: 0;
+		transition: opacity 0.3s ease-in-out;
+		animation: glowing 5s infinite;
+	}
+
+	.gpt-glow:hover::after {
+		opacity: 1;
 	}
 
 	.gpt-mask {

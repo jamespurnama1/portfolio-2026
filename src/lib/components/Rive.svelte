@@ -2,7 +2,8 @@
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { countStore, cursorStore, animationStore, loadStore } from '$lib/stores/index.svelte';
-	import RiveCanvas, { type SMIInput } from '@rive-app/canvas-advanced';
+	import { introSectionStore } from '$lib/stores/introSection';
+	import RiveCanvas, { type SMIInput, type StateMachineInstance } from '@rive-app/canvas-advanced';
 	import { onMount } from 'svelte';
 	import { gsap } from 'gsap';
 	import { useThrelte } from '@threlte/core';
@@ -12,10 +13,35 @@
 	let link = $state() as SMIInput;
 	let scroll = $state() as SMIInput;
 	let isTouchDevice = $state(false);
+	let stateMachine = $state() as StateMachineInstance | undefined;
+	let mainStateMachine = $state<any>();
+	let artboardRef = $state<any>();
+	let riveRef = $state<any>();
+	let wasIntroCursorLocked = $state(false);
+
+	function introCursorLocked() {
+		return page.url.pathname === '/' && loadStore.loaded && $introSectionStore.active;
+	}
+
+	function introCursorFrozen() {
+		return introCursorLocked() && !animationStore.isAnimating;
+	}
+
+	function resetIntroCursorStateMachine() {
+		if (!riveRef || !artboardRef || !mainStateMachine) return;
+		stateMachine?.delete?.();
+		const nextStateMachine = new riveRef.StateMachineInstance(mainStateMachine, artboardRef);
+		stateMachine = nextStateMachine;
+		scroll = nextStateMachine.input(1).asBool();
+		link = nextStateMachine.input(0).asBool();
+		scroll.value = false;
+		link.value = false;
+		nextStateMachine.advanceAndApply(0);
+	}
 
 	function onHover() {
 		if (!link) return;
-		if (animationStore.isAnimating) {
+		if (animationStore.isAnimating || introCursorLocked()) {
 			scroll.value = false;
 			link.value = false;
 		} else {
@@ -52,8 +78,14 @@
 
 	$effect(() => {
 		cursorStore.cursorState;
+		introSectionStore;
 		untrack(() => {
 			if (!scroll || !loadStore.loaded) return;
+			if (introCursorLocked()) {
+				scroll.value = false;
+				link.value = false;
+				return;
+			}
 			if (cursorStore.cursorState === 'link') {
 				onHover();
 			} else if (cursorStore.cursorState === 'scroll') {
@@ -88,9 +120,10 @@
 
 	$effect(() => {
 		countStore.inertiaIndex;
+		introSectionStore;
 		untrack(() => {
 			if (!scroll || !loadStore.loaded) return;
-			if (animationStore.isAnimating) {
+			if (animationStore.isAnimating || introCursorLocked()) {
 				scroll.value = false;
 				link.value = false;
 			} else {
@@ -130,27 +163,39 @@
 			// Loads Wasm bundle
 			locateFile: () => `https://unpkg.com/@rive-app/canvas-advanced@2.32.0/rive.wasm`
 		});
+		riveRef = rive;
 		const renderer = rive.makeRenderer(riveCanvas);
 		const bytes = await (await fetch(new Request('/cursor.riv'))).arrayBuffer();
 		const file = await rive.load(new Uint8Array(bytes));
 		const artboard = file.artboardByName('Cursor');
-		const stateMachine = new rive.StateMachineInstance(
-			artboard.stateMachineByName('Main'),
-			artboard
-		);
-
-		scroll = stateMachine.input(1).asBool();
-		link = stateMachine.input(0).asBool();
+		artboardRef = artboard;
+		mainStateMachine = artboard.stateMachineByName('Main');
+		resetIntroCursorStateMachine();
 
 		riveTask = (delta) => {
 			if (!renderer || !artboard || !stateMachine) return;
 			renderer.clear();
+			const introLocked = introCursorLocked();
+			if (introLocked && !wasIntroCursorLocked) {
+				resetIntroCursorStateMachine();
+			}
+			wasIntroCursorLocked = introLocked;
+			const freezeIntroFrame = introCursorFrozen();
+			if (freezeIntroFrame) {
+				scroll.value = false;
+				link.value = false;
+			}
 			stateMachine.advance(delta!);
 			artboard.advance(delta!);
 			renderer.save();
+			const introAlignmentActive =
+				page.url.pathname === '/' &&
+				loadStore.loaded &&
+				!animationStore.isAnimating &&
+				$introSectionStore.active;
 			renderer.align(
 				rive.Fit.contain,
-				rive.Alignment.topRight,
+				introAlignmentActive ? rive.Alignment.center : rive.Alignment.topRight,
 				{
 					minX: 0,
 					minY: 0,

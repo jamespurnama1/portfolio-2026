@@ -1,20 +1,68 @@
 <script lang="ts">
 	import { T, useThrelte } from '@threlte/core';
 	import Rive from '$lib/components/Rive.svelte';
-	import { CanvasTexture, Texture, type Mesh, type MeshBasicMaterial } from 'three';
+	import { CanvasTexture, Texture, type Mesh, type MeshBasicMaterial, MathUtils } from 'three';
 	import { onMount, untrack } from 'svelte';
 	import { animationStore, loadStore } from '$lib/stores/index.svelte';
+	import { introSectionStore } from '$lib/stores/introSection';
 	import { optionsStore } from '$lib/stores/options.svelte';
+	import { page } from '$app/state';
 	import gsap from 'gsap';
 
 	let { mouse, showCursor = true }: { mouse: { x: number; y: number }; showCursor?: boolean } =
 		$props();
+	const DEFAULT_CURSOR_SCALE = 0.038;
+	const INTRO_CURSOR_START_SCALE = 0.56;
+	const INTRO_CURSOR_END_SCALE = 0.1;
+	const INTRO_IDLE_OFFSET_X = 28;
+	const INTRO_IDLE_OFFSET_Y = -42;
+	const INTRO_CURSOR_START_ANCHOR_Y = 0.18;
+	const INTRO_CURSOR_END_ANCHOR_Y = 0.5;
+	const INTRO_CURSOR_START_Z = 88;
+	const INTRO_CURSOR_END_Z = 0;
+	const INTRO_SHARED_ROTATION_OFFSET_X = Math.PI * 0.5;
+	const INTRO_SHARED_ROTATION_X_START = -1.32 + INTRO_SHARED_ROTATION_OFFSET_X;
+	const INTRO_SHARED_ROTATION_X_END = 0;
+	const INTRO_SHARED_ROTATION_Y_START = 0.22;
+	const INTRO_SHARED_ROTATION_Y_END = 0;
+	const CURSOR_LOCAL_ALIGNMENT_ROLL = Math.PI * 0.5;
+	const CURSOR_LOCAL_ALIGNMENT_SCALE_Y = -1;
 
 	const { size } = useThrelte();
 	let caret = $state() as Texture;
 	let elementMaterial: MeshBasicMaterial | undefined = $state();
 	let elementMesh: Mesh | undefined = $state();
 	let riveCanvas = $state() as HTMLCanvasElement;
+	let introPlacementComplete = $state(false);
+	let introAutoPositioning = $state(false);
+	let loadingTimeline: gsap.core.Timeline | undefined = $state();
+	let lastDebugPhase = $state('init');
+
+	function getIntroTarget(scale: number, progress = 1) {
+		const viewportWidth = $size.width || 1440;
+		const viewportHeight = $size.height || 900;
+		const endXOffset = viewportWidth < 768 ? 0 : Math.min(viewportWidth * 0.32, 460);
+		const endYOffset = viewportWidth < 768 ? 0 : Math.min(viewportHeight * 0.02, 18);
+		const startXOffset =
+			endXOffset + (viewportWidth < 768 ? INTRO_IDLE_OFFSET_X * 0.5 : INTRO_IDLE_OFFSET_X);
+		const startYOffset =
+			endYOffset + (viewportWidth < 768 ? INTRO_IDLE_OFFSET_Y * 0.5 : INTRO_IDLE_OFFSET_Y);
+		const targetX = MathUtils.lerp(startXOffset, endXOffset, progress);
+		const targetY = MathUtils.lerp(startYOffset, endYOffset, progress);
+		const anchorY = MathUtils.lerp(
+			INTRO_CURSOR_START_ANCHOR_Y,
+			INTRO_CURSOR_END_ANCHOR_Y,
+			progress
+		);
+		return getAnchoredCursorTarget(targetX, targetY, scale, anchorY);
+	}
+
+	function getAnchoredCursorTarget(targetX: number, targetY: number, scale: number, anchorY = 0.5) {
+		return {
+			x: targetX - ($size.width * scale) / 2,
+			y: targetY - $size.height * scale * anchorY
+		};
+	}
 
 	function ensureCaretTexture() {
 		if (!riveCanvas || riveCanvas.width <= 0 || riveCanvas.height <= 0) return;
@@ -27,18 +75,88 @@
 		caret.needsUpdate = true;
 	}
 
+	function getIntroRotation(progress: number) {
+		const interactionX = MathUtils.clamp(mouse.x / (($size.width || 1) * 0.5), -1, 1);
+		const interactionY = MathUtils.clamp(mouse.y / (($size.height || 1) * 0.5), -1, 1);
+		const baseRotationX = MathUtils.lerp(
+			INTRO_SHARED_ROTATION_X_START,
+			INTRO_SHARED_ROTATION_X_END,
+			progress
+		);
+		const baseRotationY = MathUtils.lerp(
+			INTRO_SHARED_ROTATION_Y_START,
+			INTRO_SHARED_ROTATION_Y_END,
+			progress
+		);
+		return {
+			rotation: 0,
+			rotationX: baseRotationX + interactionY * 0.22,
+			rotationY: baseRotationY + interactionX * 0.28
+		};
+	}
+
+	function debugCursorPhase(phase: string, extra: Record<string, unknown> = {}) {
+		if (lastDebugPhase === phase) return;
+		lastDebugPhase = phase;
+		console.log('[RiveCursor]', phase, {
+			path: page.url.pathname,
+			introActive: $introSectionStore.active,
+			introProgress: Number($introSectionStore.progress.toFixed(4)),
+			loaded: loadStore.loaded,
+			isAnimating: animationStore.isAnimating,
+			introAutoPositioning,
+			introPlacementComplete,
+			caret: {
+				x: Number(caretPos.x.toFixed(2)),
+				y: Number(caretPos.y.toFixed(2)),
+				z: Number(caretPos.z.toFixed(2)),
+				scaleX: Number(caretPos.scaleX.toFixed(4)),
+				scaleY: Number(caretPos.scaleY.toFixed(4))
+			},
+			...extra
+		});
+	}
+
 	onMount(() => {
 		ensureCaretTexture();
+		return () => {
+			loadingTimeline?.kill();
+			gsap.killTweensOf(caretPos);
+		};
 	});
 	const caretPos = $state({
 		x: -$size.width,
 		y: -$size.height,
-		scaleX: 0.8,
-		scaleY: 0.8,
-		rotation: 0
+		z: 0,
+		scaleX: INTRO_CURSOR_START_SCALE,
+		scaleY: INTRO_CURSOR_START_SCALE,
+		rotation: 0,
+		rotationX: 0,
+		rotationY: 0
 	});
 
-	let meshOpacity = $derived(showCursor ? 1 : 0);
+	let meshOpacity = $derived.by(() => {
+		const introCursorPhase = page.url.pathname === '/' && $introSectionStore.active;
+		const introCursorOpacity = introCursorPhase
+			? 1 - MathUtils.smoothstep($introSectionStore.progress, 0.16, 0.34)
+			: -1;
+
+		if (introCursorOpacity >= 0) {
+			return introCursorOpacity;
+		}
+
+		return showCursor ? 1 : 0;
+	});
+	let meshLocalRoll = $derived.by(() => {
+		const introCursorPhase =
+			page.url.pathname === '/' && $introSectionStore.active && $introSectionStore.progress < 0.34;
+		return introCursorPhase ? CURSOR_LOCAL_ALIGNMENT_ROLL : 0;
+	});
+	let meshLocalScaleY = $derived.by(() => {
+		const introCursorPhase =
+			page.url.pathname === '/' && $introSectionStore.active && $introSectionStore.progress < 0.34;
+		return introCursorPhase ? CURSOR_LOCAL_ALIGNMENT_SCALE_Y : 1;
+	});
 	let riveTask = $state(() => {}) as (time?: number) => void;
 
 	export function getCaretPos() {
@@ -59,9 +177,14 @@
 	});
 
 	function loadingAnim() {
+		debugCursorPhase('loading:start');
+		introPlacementComplete = false;
+		introAutoPositioning = false;
+		loadingTimeline?.kill();
+		gsap.killTweensOf(caretPos);
 		animationStore.isAnimating = true;
-		const animTL = gsap.timeline();
-		animTL.to(caretPos, {
+		loadingTimeline = gsap.timeline();
+		loadingTimeline.to(caretPos, {
 			duration: 3,
 			x: $size.width / 2,
 			y: $size.height / 2,
@@ -69,25 +192,73 @@
 			repeatDelay: 0.25,
 			onRepeat: () => {
 				if (loadStore.load >= 100) {
-					animTL.kill();
+					loadingTimeline?.kill();
 					loadStore.loaded = true;
-					gsap.set(caretPos, {
-						x: -$size.width,
-						y: -$size.height
-					});
-					reset();
+					if (page.url.pathname === '/') {
+						debugCursorPhase('loading:complete-home');
+						const introStartRotation = getIntroRotation(0);
+						gsap.set(caretPos, {
+							x: $size.width / 2,
+							y: $size.height / 2,
+							z: INTRO_CURSOR_START_Z,
+							scaleX: INTRO_CURSOR_START_SCALE,
+							scaleY: INTRO_CURSOR_START_SCALE,
+							rotation: 0,
+							rotationX: 0,
+							rotationY: 0
+						});
+						animationStore.isAnimating = false;
+						const introTarget = getIntroTarget(INTRO_CURSOR_START_SCALE, 0);
+						introAutoPositioning = true;
+						debugCursorPhase('intro:auto-placement:start', {
+							target: {
+								x: Number(introTarget.x.toFixed(2)),
+								y: Number(introTarget.y.toFixed(2))
+							}
+						});
+						gsap.to(caretPos, {
+							duration: 0.75,
+							x: introTarget.x,
+							y: introTarget.y,
+							z: INTRO_CURSOR_START_Z,
+							rotation: introStartRotation.rotation,
+							rotationX: introStartRotation.rotationX,
+							rotationY: introStartRotation.rotationY,
+							ease: 'power3.out',
+							onComplete: () => {
+								introPlacementComplete = true;
+								introAutoPositioning = false;
+								debugCursorPhase('intro:auto-placement:complete');
+							}
+						});
+						gsap.to(optionsStore, {
+							rgbPersistFactor: 0.85
+						});
+					} else {
+						debugCursorPhase('loading:complete-non-home');
+						gsap.set(caretPos, {
+							x: -$size.width,
+							y: -$size.height
+						});
+						reset();
+					}
 				}
 			}
 		});
 	}
 
 	function reset(duration = 0.5) {
+		introPlacementComplete = false;
+		introAutoPositioning = false;
 		animationStore.isAnimating = false;
 		gsap.to(caretPos, {
 			duration,
-			scaleX: 0.05,
-			scaleY: 0.05,
+			z: 0,
+			scaleX: DEFAULT_CURSOR_SCALE,
+			scaleY: DEFAULT_CURSOR_SCALE,
 			rotation: 0,
+			rotationX: 0,
+			rotationY: 0,
 			ease: 'none',
 			onUpdate: () => {
 				// onMouseMove();
@@ -106,8 +277,76 @@
 
 		if (loadStore.loaded && caret && !animationStore.isAnimating) {
 			const mouseSpeed = delta * 10;
-			caretPos.x += (mouse.x - caretPos.x) * mouseSpeed;
-			caretPos.y += (mouse.y - caretPos.y) * mouseSpeed;
+			const introCursorActive =
+				page.url.pathname === '/' &&
+				$introSectionStore.active &&
+				$introSectionStore.progress < 0.34;
+
+			if (introCursorActive) {
+				debugCursorPhase(introAutoPositioning ? 'intro:autopositioning' : 'intro:interactive');
+				const introProgress = MathUtils.smoothstep($introSectionStore.progress, 0, 0.34);
+				const hasIntroScrollProgress = $introSectionStore.progress > 0.001;
+				const introIdleLocked = !introAutoPositioning && !hasIntroScrollProgress;
+				const targetScale = MathUtils.lerp(
+					INTRO_CURSOR_START_SCALE,
+					INTRO_CURSOR_END_SCALE,
+					introProgress
+				);
+				const anchoredCenter = getIntroTarget(targetScale, introProgress);
+				const idleTarget = getIntroTarget(INTRO_CURSOR_START_SCALE, 0);
+				const introRotation = getIntroRotation(introProgress);
+				const introZ = MathUtils.lerp(INTRO_CURSOR_START_Z, INTRO_CURSOR_END_Z, introProgress);
+				if (caretPos.x < -$size.width * 0.25 || caretPos.y < -$size.height * 0.25) {
+					caretPos.x = $size.width / 2;
+					caretPos.y = $size.height / 2;
+					caretPos.z = INTRO_CURSOR_START_Z;
+					caretPos.scaleX = INTRO_CURSOR_START_SCALE;
+					caretPos.scaleY = INTRO_CURSOR_START_SCALE;
+				}
+				if (introIdleLocked) {
+					caretPos.x = idleTarget.x;
+					caretPos.y = idleTarget.y;
+					caretPos.z = INTRO_CURSOR_START_Z;
+					caretPos.scaleX = INTRO_CURSOR_START_SCALE;
+					caretPos.scaleY = INTRO_CURSOR_START_SCALE;
+					caretPos.rotation = introRotation.rotation;
+					caretPos.rotationX = introRotation.rotationX;
+					caretPos.rotationY = introRotation.rotationY;
+				} else if (!introAutoPositioning && hasIntroScrollProgress) {
+					introPlacementComplete = true;
+					caretPos.x = anchoredCenter.x;
+					caretPos.y = anchoredCenter.y;
+					caretPos.z = introZ;
+					caretPos.scaleX = targetScale;
+					caretPos.scaleY = targetScale;
+					caretPos.rotation = introRotation.rotation;
+					caretPos.rotationX = introRotation.rotationX;
+					caretPos.rotationY = introRotation.rotationY;
+				} else {
+					if (!introAutoPositioning) {
+						caretPos.x = idleTarget.x;
+						caretPos.y = idleTarget.y;
+						caretPos.z = INTRO_CURSOR_START_Z;
+						caretPos.scaleX = INTRO_CURSOR_START_SCALE;
+						caretPos.scaleY = INTRO_CURSOR_START_SCALE;
+						caretPos.rotation = introRotation.rotation;
+						caretPos.rotationX = introRotation.rotationX;
+						caretPos.rotationY = introRotation.rotationY;
+					}
+				}
+			} else {
+				debugCursorPhase('cursor:default-follow');
+				introPlacementComplete = false;
+				introAutoPositioning = false;
+				caretPos.x += (mouse.x - caretPos.x) * mouseSpeed;
+				caretPos.y += (mouse.y - caretPos.y) * mouseSpeed;
+				caretPos.z += (0 - caretPos.z) * mouseSpeed * 0.85;
+				caretPos.scaleX += (DEFAULT_CURSOR_SCALE - caretPos.scaleX) * mouseSpeed * 0.85;
+				caretPos.scaleY += (DEFAULT_CURSOR_SCALE - caretPos.scaleY) * mouseSpeed * 0.85;
+				caretPos.rotation += (0 - caretPos.rotation) * mouseSpeed * 0.85;
+				caretPos.rotationX += (0 - caretPos.rotationX) * mouseSpeed * 0.85;
+				caretPos.rotationY += (0 - caretPos.rotationY) * mouseSpeed * 0.85;
+			}
 		}
 
 		// Update texture after Rive renders
@@ -155,20 +394,24 @@
 </script>
 
 {#if riveCanvas}
-	<T.Mesh
-		bind:ref={elementMesh}
-		position={[caretPos.x, caretPos.y, 0]}
+	<T.Group
+		position={[caretPos.x, caretPos.y, caretPos.z]}
 		scale={caretPos.scaleX}
+		rotation.x={caretPos.rotationX}
+		rotation.y={caretPos.rotationY}
 		rotation.z={caretPos.rotation}
 	>
-		<T.PlaneGeometry args={[$size.width, $size.height]} />
-		<T.MeshBasicMaterial
-			bind:ref={elementMaterial}
-			map={caret}
-			transparent={true}
-			opacity={meshOpacity}
-		/>
-	</T.Mesh>
+		<T.Mesh bind:ref={elementMesh} rotation.z={meshLocalRoll} raycast={() => null}>
+			<T is={elementMesh?.scale} y={meshLocalScaleY} />
+			<T.PlaneGeometry args={[$size.width, $size.height]} />
+			<T.MeshBasicMaterial
+				bind:ref={elementMaterial}
+				map={caret}
+				transparent={true}
+				opacity={meshOpacity}
+			/>
+		</T.Mesh>
+	</T.Group>
 {/if}
 
 <!-- RIVE -->

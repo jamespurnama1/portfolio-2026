@@ -6,6 +6,7 @@
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import Awards from '$lib/components/Awards.svelte';
 	import { page } from '$app/state';
+	import caret from '$lib/images/caret.svg';
 
 	const {
 		item,
@@ -91,8 +92,10 @@
 			{/if}
 			<button
 				class:opacity-0={hidden}
-				class="md:text-left text-center group {active && page.url.pathname === '/'
-					? 'hover:translate-x-12 transition duration-300'
+				class="md:text-left text-center group {active
+					? 'hover:translate-x-12'
+					: 'hover:translate-x-4'} {page.url.pathname === '/'
+					? 'transition duration-300'
 					: 'opacity-0'}"
 				onclick={(e) => {
 					if (countStore.activeIndex === (item as Post).index) {
@@ -107,7 +110,19 @@
 					}
 				}}
 			>
-				<span class="absolute transition -left-12 duration-300 mr-2 opacity-0 {active && page.url.pathname === '/' ? 'group-hover:opacity-100' : ''}">→</span>{(item as Post).title}
+				<span
+					class="absolute transition duration-300 mr-2 opacity-0 {active
+						? 'translate-y-3 -left-12'
+						: '-left-4 translate-y-1.5'} {page.url.pathname === '/'
+						? 'group-hover:opacity-100'
+						: ''}"
+					><img
+						src={caret}
+						alt=""
+						aria-hidden="true"
+						class="{active ? 'w-10' : 'w-4'} h-auto -rotate-90 invert dark:invert-0"
+					/></span
+				>{(item as Post).title}
 			</button>
 			{#if page.url.pathname.includes('work') && (item as Post).role.length}
 				<p

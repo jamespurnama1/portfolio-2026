@@ -17,6 +17,7 @@
 		notificationStore,
 		gptStore
 	} from '$lib/stores/index.svelte';
+	import { introSectionStore } from '$lib/stores/introSection';
 	import { projectSectionStore } from '$lib/stores/projectSection';
 	import { projectListHost } from '$lib/stores/projectListHost';
 	import { galleryScrollStore } from '$lib/stores/galleryScroll';
@@ -526,7 +527,9 @@
 
 	<!-- Main -->
 	<main
-		class="w-full overscroll-none z-10 relative flex flex-col items-center justify-center mix-blend-difference"
+		class="w-full overscroll-none z-10 relative flex flex-col items-center justify-center mix-blend-difference transition-opacity duration-500"
+		class:pointer-events-none={page.url.pathname === '/'}
+		class:opacity-0={gptStore.opened}
 	>
 		{#if loadStore.load < 100}
 			<div
@@ -560,7 +563,12 @@
 
 	<Notifications />
 	<!-- BG -->
-	<div class="fixed w-screen h-screen z-0 top-0 left-0 canvas-container">
+	<div
+		class="fixed w-screen h-screen z-0 top-0 left-0 canvas-container transition-opacity duration-500"
+		class:opacity-0={gptStore.opened &&
+			page.url.pathname === '/' &&
+			($introSectionStore.active || $introSectionStore.progress < 1)}
+	>
 		<Three bind:this={webGLComponent} {data} {preferImageThumbnails} />
 	</div>
 	<GPT

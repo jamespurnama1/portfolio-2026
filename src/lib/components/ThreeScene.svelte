@@ -17,31 +17,37 @@
 	import gsap from 'gsap';
 	import { untrack, onDestroy, onMount } from 'svelte';
 	import Cards from './Cards.svelte';
+	import IntroGridScene from './IntroGridScene.svelte';
 	import { page } from '$app/state';
 	import type { PageData } from '../../routes/$types';
 	import { beforeNavigate } from '$app/navigation';
 
-	let { data, preferImageThumbnails = false }: { data: PageData; preferImageThumbnails?: boolean } =
-		$props();
+	let {
+		data,
+		preferImageThumbnails = false,
+		mouse = { x: 0, y: 0 }
+	}: {
+		data: PageData;
+		preferImageThumbnails?: boolean;
+		mouse?: { x: number; y: number };
+	} = $props();
 	const textures: Texture[] = $state([]);
 	let imageTextures: Array<Texture | Promise<Texture>> = $state([]);
 	const { camera, canvas, renderer, size } = useThrelte();
 	const { load: loadTexture } = useLoader(TextureLoader);
 	let perspectiveCamera: PerspectiveCamera | undefined = $state();
+	const interactivityContext = pointerInteractivity(() => perspectiveCamera);
 	let postFXMesh: Mesh | undefined = $state();
 	let gradientMesh: Mesh | undefined = $state();
 	let gradientTexture = $state<CanvasTexture>();
 
 	const GRADIENT_HEIGHT_RATIO = 0.15;
+	const MOBILE_BREAKPOINT = 768;
+	const TABLET_BREAKPOINT = 1024;
+	const GRADIENT_WIDTH_OVERSCAN = 1.08;
 
 	renderer.outputColorSpace = SRGBColorSpace;
 	renderer.setPixelRatio(devicePixelRatio || 1);
-
-	$effect(() => {
-		if (perspectiveCamera) {
-			pointerInteractivity(perspectiveCamera);
-		}
-	});
 
 	// theme
 	$effect(() => {
@@ -88,7 +94,7 @@
 	function initGradientTexture() {
 		if (gradientTexture || typeof document === 'undefined') return;
 		const canvas = document.createElement('canvas');
-		canvas.width = 2;
+		canvas.width = 256;
 		canvas.height = 256;
 		const texture = new CanvasTexture(canvas);
 		texture.needsUpdate = true;
@@ -102,12 +108,24 @@
 		const ctx = canvas?.getContext('2d');
 		if (!canvas || !ctx) return;
 		const color = '0,0,0';
-		const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
-		gradient.addColorStop(0.5, `rgba(${color}, 1)`);
-		gradient.addColorStop(1, `rgba(${color}, 0)`);
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
-		ctx.fillStyle = gradient;
+
+		const verticalGradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+		verticalGradient.addColorStop(0.45, `rgba(${color}, 1)`);
+		verticalGradient.addColorStop(1, `rgba(${color}, 0)`);
+		ctx.fillStyle = verticalGradient;
 		ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+		const horizontalMask = ctx.createLinearGradient(0, 0, canvas.width, 0);
+		horizontalMask.addColorStop(0, 'rgba(0, 0, 0, 0)');
+		horizontalMask.addColorStop(0.18, 'rgba(0, 0, 0, 1)');
+		horizontalMask.addColorStop(0.82, 'rgba(0, 0, 0, 1)');
+		horizontalMask.addColorStop(1, 'rgba(0, 0, 0, 0)');
+		ctx.globalCompositeOperation = 'destination-in';
+		ctx.fillStyle = horizontalMask;
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		ctx.globalCompositeOperation = 'source-over';
+
 		gradientTexture.needsUpdate = true;
 	}
 
@@ -117,9 +135,13 @@
 		const fallbackHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
 		const width = $size.width || fallbackWidth;
 		const height = $size.height || fallbackHeight;
+		const gptRestingWidthRatio =
+			width >= TABLET_BREAKPOINT ? 0.6 : width >= MOBILE_BREAKPOINT ? 0.7 : 0.75;
+		const gradientWidth = Math.max(width * gptRestingWidthRatio * GRADIENT_WIDTH_OVERSCAN, 1);
 		const gradientHeight = Math.max(height * GRADIENT_HEIGHT_RATIO, 1);
-		gradientMesh.scale.set(width, gradientHeight, 1);
-		gradientMesh.position.set(0, -height / 2 + gradientHeight / 2, 5);
+		const gradientCenterX = width < MOBILE_BREAKPOINT ? width / 2 - gradientWidth / 2 : 0;
+		gradientMesh.scale.set(gradientWidth, gradientHeight, 1);
+		gradientMesh.position.set(gradientCenterX, -height / 2 + gradientHeight / 2, 5);
 		gradientMesh.renderOrder = 999;
 	}
 
@@ -400,6 +422,7 @@
 	// });
 
 	onDestroy(() => {
+		interactivityContext.target.set(undefined);
 		// Dispose all loaded textures
 		textures.forEach((tex) => {
 			if (tex && typeof tex.dispose === 'function') tex.dispose();
@@ -423,6 +446,9 @@
 </script>
 
 <T.PerspectiveCamera bind:ref={perspectiveCamera} makeDefault position={[0, 0, cameraZ]} {fov} />
+{#if page.url.pathname === '/'}
+	<IntroGridScene {mouse} />
+{/if}
 {#if textures.length && data}
 	{#each textures as texture, i}
 		{#if page.url.pathname === '/' || (page.url.pathname.includes('work') && i === countStore.activeIndex)}

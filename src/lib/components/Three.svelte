@@ -150,7 +150,7 @@
 	{#if showStudio && import.meta.env.MODE === 'development'}
 		{#await import('@threlte/studio') then { Studio }}
 			<Studio>
-				{#key `${size.width}-${size.height}-${optionsStore.dark}`}
+				{#key `${size.width}-${size.height}`}
 					<PostFXManager {mouse}>
 						{#if showGallery}
 							<PostFXScene enabled={true}>
@@ -158,7 +158,7 @@
 							</PostFXScene>
 						{:else if showCanvas}
 							<PostFXScene enabled={true}>
-								<ThreeScene {data} {preferImageThumbnails} />
+								<ThreeScene {data} {preferImageThumbnails} {mouse} />
 							</PostFXScene>
 							<PostFXScene
 								enabled={true}
@@ -175,7 +175,7 @@
 			</Studio>
 		{/await}
 	{:else}
-		{#key `${size.width}-${size.height}-${optionsStore.dark}`}
+		{#key `${size.width}-${size.height}`}
 			<PostFXManager {mouse}>
 				{#if showGallery}
 					<PostFXScene enabled={true}>
@@ -183,7 +183,7 @@
 					</PostFXScene>
 				{:else if showCanvas}
 					<PostFXScene enabled={true}>
-						<ThreeScene {data} {preferImageThumbnails} />
+						<ThreeScene {data} {preferImageThumbnails} {mouse} />
 					</PostFXScene>
 				{/if}
 				<PostFXScene
