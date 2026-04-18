@@ -13,7 +13,6 @@
 		loadStore,
 		animationStore,
 		scrollStore,
-		activityStore,
 		notificationStore,
 		gptStore
 	} from '$lib/stores/index.svelte';
@@ -47,7 +46,7 @@
 	let footerComponent: Footer;
 	let mediaEl = $state([]) as HTMLVideoElement[];
 	let thumbnailEls = $state([]) as HTMLImageElement[];
-	let timer: ReturnType<typeof setTimeout>;
+	let timer: ReturnType<typeof setTimeout> | undefined;
 	let touchStartY = $state(0);
 	let preferImageThumbnails = $state(false);
 	let projectListWrapper = $state() as HTMLDivElement | undefined;
@@ -55,6 +54,13 @@
 	let currentProjectListHost: HTMLElement | null = null;
 	const showSource = $derived(optionsStore.showSources ? 'opacity-100 z-50' : 'opacity-0 -z-10');
 	const slug = $derived(data.projects ? data.projects[countStore.activeIndex].slug.current : '');
+	const showProjectList = $derived(page.url.pathname === '/' || page.url.pathname.includes('work'));
+	const showLoadingScreen = $derived(!loadStore.loaded);
+	const homeIntroActive = $derived(
+		page.url.pathname === '/' && ($introSectionStore.active || $introSectionStore.progress < 1)
+	);
+	const showSiteChrome = $derived(loadStore.loaded && !homeIntroActive);
+	const showIntroPrompt = $derived(loadStore.loaded && homeIntroActive);
 	function withOptimizedThumbnail(url?: string) {
 		if (!url) return '';
 		const fallback = typeof window !== 'undefined' ? window.innerWidth : 1920;
@@ -206,14 +212,27 @@
 					el.pause();
 				}
 			}
-			// navComponent.afterLoad();
-			// footerComponent.afterLoad();
-			timer = setTimeout(() => {
-				activityStore.inactive = true;
-				notificationStore.opened = true;
+		});
+	});
+
+	$effect(() => {
+		showIntroPrompt;
+		gptStore.opened;
+		page.url.pathname;
+		untrack(() => {
+			const managingScrollPrompt = notificationStore.message === 'Scroll to browse';
+			if (showIntroPrompt && !gptStore.opened) {
 				notificationStore.message = 'Scroll to browse';
 				notificationStore.sub = '';
-			}, 5000);
+				notificationStore.persistent = true;
+				notificationStore.opened = true;
+				return;
+			}
+
+			if (managingScrollPrompt) {
+				notificationStore.persistent = false;
+				notificationStore.opened = false;
+			}
 		});
 	});
 
@@ -408,7 +427,6 @@
 
 	function onScroll(event: WheelEvent) {
 		if (!loadStore.loaded || gptStore.opened) return;
-		activityStore.inactive = false;
 		let deltaY = event.deltaY;
 		if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
 			deltaY *= 1;
@@ -436,7 +454,6 @@
 		const currentY = event.touches[0].clientY;
 		const deltaY = touchStartY - currentY;
 		if (Math.abs(deltaY) < 1) return;
-		activityStore.inactive = false;
 		touchStartY = currentY;
 		if (page.url.pathname.includes('work')) {
 			syncWorkScroll();
@@ -523,7 +540,7 @@
 
 <div class="app min-h-screen w-screen overflow-x-hidden">
 	<!-- Header -->
-	<Nav bind:this={navComponent} />
+	<Nav bind:this={navComponent} revealed={showSiteChrome} />
 
 	<!-- Main -->
 	<main
@@ -532,24 +549,26 @@
 		class:pointer-events-none={page.url.pathname === '/'}
 		class:opacity-0={gptStore.opened}
 	>
-		{#if loadStore.load < 100}
+		{#if showLoadingScreen}
 			<div
-				class="w-full h-screen flex items-center justify-center p-24 absolute top-0 left-0"
+				class="fixed inset-0 z-[200] flex h-screen w-full items-center justify-center p-24 pointer-events-none"
 				transition:scale={{ duration: 500, delay: 500, start: 0.5, easing: quintOut }}
 			>
 				<Loading />
 			</div>
 		{:else if data.projectsLength}
 			{@render children()}
-			<div
-				class="project-list-fallback relative w-full h-full"
-				class:pointer-events-none={page.url.pathname === '/' && !$projectSectionStore.pinned}
-				bind:this={projectListFallback}
-			>
-				<div bind:this={projectListWrapper}>
-					<ProjectList data={data as Required<PageData>} />
+			{#if showProjectList}
+				<div
+					class="project-list-fallback relative w-full h-full"
+					class:pointer-events-none={page.url.pathname === '/' && !$projectSectionStore.pinned}
+					bind:this={projectListFallback}
+				>
+					<div bind:this={projectListWrapper}>
+						<ProjectList data={data as Required<PageData>} />
+					</div>
 				</div>
-			</div>
+			{/if}
 			<!-- inactivity -->
 			<!-- {#if !page.params.slug && activityStore.inactive}
 				<p
@@ -565,7 +584,7 @@
 	<Notifications />
 	<!-- BG -->
 	<div
-		class="fixed w-screen h-screen z-0 top-0 left-0 canvas-container transition-opacity duration-500"
+		class="fixed w-screen h-screen z-0 top-0 left-0 canvas-container transition-opacity duration-500 bg-black"
 		class:opacity-0={gptStore.opened &&
 			page.url.pathname === '/' &&
 			($introSectionStore.active || $introSectionStore.progress < 1)}
@@ -578,7 +597,7 @@
 		categoryAnim={webGLComponent ? webGLComponent.getRiveSceneInstance().categoryAnim : null}
 	/>
 	<!-- Footer -->
-	<Footer bind:this={footerComponent} />
+	<Footer bind:this={footerComponent} revealed={showSiteChrome} />
 
 	<!-- Video Elements -->
 	<div class="absolute top-0 w-52 pointer-events-none {showSource}">

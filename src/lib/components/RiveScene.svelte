@@ -11,7 +11,7 @@
 		SRGBColorSpace
 	} from 'three';
 	import { onMount, untrack } from 'svelte';
-	import { animationStore, loadStore } from '$lib/stores/index.svelte';
+	import { animationStore, cursorSnapStore, loadStore } from '$lib/stores/index.svelte';
 	import { introSectionStore } from '$lib/stores/introSection';
 	import { optionsStore } from '$lib/stores/options.svelte';
 	import { page } from '$app/state';
@@ -35,6 +35,7 @@
 	const INTRO_SHARED_ROTATION_Y_END = 0;
 	const CURSOR_LOCAL_ALIGNMENT_ROLL = Math.PI * 0.5;
 	const CURSOR_LOCAL_ALIGNMENT_SCALE_Y = -1;
+	const SNAP_FOLLOW_STRENGTH = 1.65;
 
 	const { size } = useThrelte();
 	let caret = $state() as Texture;
@@ -71,6 +72,13 @@
 		return {
 			x: targetX - ($size.width * scale) / 2,
 			y: targetY - $size.height * scale * anchorY
+		};
+	}
+
+	function getClientCursorTarget(clientX: number, clientY: number, scale: number) {
+		return {
+			x: clientX - ($size.width * scale) / 2 - $size.width / 2,
+			y: $size.height / 2 - clientY - ($size.height * scale) / 2
 		};
 	}
 
@@ -132,7 +140,7 @@
 		rotationY: 0
 	});
 
-	let meshOpacity = $derived.by(() => {
+	let meshOpacityTarget = $derived.by(() => {
 		const introCursorPhase = page.url.pathname === '/' && $introSectionStore.active;
 		const introCursorOpacity = introCursorPhase
 			? 1 - MathUtils.smoothstep($introSectionStore.progress, 0.16, 0.34)
@@ -142,8 +150,13 @@
 			return introCursorOpacity;
 		}
 
+		if (page.url.pathname === '/branch' && cursorSnapStore.active) {
+			return 0;
+		}
+
 		return showCursor ? 1 : 0;
 	});
+	let meshOpacity = $state(1);
 	let meshLocalRoll = $derived.by(() => {
 		const introCursorPhase =
 			page.url.pathname === '/' && $introSectionStore.active && $introSectionStore.progress < 0.34;
@@ -266,6 +279,7 @@
 
 		if (loadStore.loaded && caret && !animationStore.isAnimating) {
 			const mouseSpeed = delta * 10;
+			const branchCursorSnapActive = page.url.pathname === '/branch' && cursorSnapStore.active;
 			const introCursorActive =
 				page.url.pathname === '/' &&
 				$introSectionStore.active &&
@@ -322,6 +336,20 @@
 						caretPos.rotationY = introRotation.rotationY;
 					}
 				}
+			} else if (branchCursorSnapActive) {
+				const snapTarget = getClientCursorTarget(
+					cursorSnapStore.x,
+					cursorSnapStore.y,
+					DEFAULT_CURSOR_SCALE
+				);
+				caretPos.x += (snapTarget.x - caretPos.x) * mouseSpeed * SNAP_FOLLOW_STRENGTH;
+				caretPos.y += (snapTarget.y - caretPos.y) * mouseSpeed * SNAP_FOLLOW_STRENGTH;
+				caretPos.z += (0 - caretPos.z) * mouseSpeed;
+				caretPos.scaleX += (DEFAULT_CURSOR_SCALE - caretPos.scaleX) * mouseSpeed;
+				caretPos.scaleY += (DEFAULT_CURSOR_SCALE - caretPos.scaleY) * mouseSpeed;
+				caretPos.rotation += (0 - caretPos.rotation) * mouseSpeed;
+				caretPos.rotationX += (0 - caretPos.rotationX) * mouseSpeed;
+				caretPos.rotationY += (0 - caretPos.rotationY) * mouseSpeed;
 			} else {
 				introPlacementComplete = false;
 				introAutoPositioning = false;
@@ -335,6 +363,8 @@
 				caretPos.rotationY += (0 - caretPos.rotationY) * mouseSpeed * 0.85;
 			}
 		}
+
+		meshOpacity += (meshOpacityTarget - meshOpacity) * Math.min(1, delta * 12);
 
 		// Update texture after Rive renders
 		if (elementMaterial && caret && riveCanvas.width > 0 && riveCanvas.height > 0) {

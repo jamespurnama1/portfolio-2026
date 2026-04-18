@@ -7,8 +7,9 @@
 
 	$effect(() => {
 		notificationStore.opened;
+		notificationStore.persistent;
 		untrack(() => {
-			if (!notificationStore.opened) return;
+			if (!notificationStore.opened || notificationStore.persistent) return;
 			setTimeout(() => {
 				notificationStore.opened = false;
 			}, 5000);

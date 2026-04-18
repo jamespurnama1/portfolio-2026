@@ -7,13 +7,15 @@
 	import { loadStore } from '$lib/stores/index.svelte';
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
+
+	let { revealed = loadStore.loaded }: { revealed?: boolean } = $props();
 </script>
 
 <footer
 	class="fixed bottom-0 mix-blend-difference text-white text-xs flex justify-between
 		uppercase font-mono w-full items-end p-4 z-20 overflow-hidden"
 >
-	{#if loadStore.loaded}
+	{#if revealed}
 		<a
 			href="/"
 			class="h-8 w-auto group"

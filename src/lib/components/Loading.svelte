@@ -53,20 +53,21 @@
 
 <div class="flex items-center h-full w-full">
 	{#if error === 200}
-		<div class="relative text-3xl sm:text-4xl md:text-6xl 2xl:text-7xl">
-			<h1
-				bind:this={loadingText}
-				class="text-white font-sans mix-blend-difference"
-			>
+		<div class="relative shrink-0 text-3xl sm:text-4xl md:text-6xl 2xl:text-7xl">
+			<h1 bind:this={loadingText} class="text-white font-sans mix-blend-difference">
 				{currentStr.toString().replaceAll(',', '')}
 			</h1>
-			<!-- Placeholder to avoid repaint
-			<h1 bind:this={loadingText} class="opacity-0 text-9xl font-sans">James Henry</h1> -->
+			<span
+				aria-hidden="true"
+				class="pointer-events-none absolute inset-0 opacity-0 text-white font-sans"
+			>
+				James Henry
+			</span>
 		</div>
 	{:else}
 		<h1 bind:this={errorText} class="text-white text-9xl font-sans mix-blend-difference">Error</h1>
 	{/if}
-	<div class="relative text-3xl sm:text-4xl md:text-6xl 2xl:text-7xl flex-1">
+	<div class="relative shrink-0 text-3xl sm:text-4xl md:text-6xl 2xl:text-7xl flex-1 pl-2 md:pl-4">
 		<p class="text-white font-mono mix-blend-difference">
 			&gt;{parseInt(loadStore.load.toString())}%
 		</p>

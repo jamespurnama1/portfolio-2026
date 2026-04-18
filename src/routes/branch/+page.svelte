@@ -1,11 +1,95 @@
 <script lang="ts">
+	import { cursorSnapStore } from '$lib/stores/index.svelte';
 	import ScrambleText from '$lib/components/ScrambleText.svelte';
+	import { onDestroy } from 'svelte';
 
 	const branches = [
 		{ label: 'v1.0.0', href: 'https://example.com/v1' },
 		{ label: 'v2.0.0', href: 'https://example.com/v2' },
 		{ label: 'v3.0.0', href: 'https://example.com/v3' }
 	];
+	const SNAP_RADIUS = 140;
+	let activeSnapId = $state('');
+	let branchButtons = $state([]) as HTMLAnchorElement[];
+
+	function clearSnap() {
+		activeSnapId = '';
+		cursorSnapStore.clear();
+	}
+
+	function updateSnapTarget(event: PointerEvent) {
+		if (event.pointerType === 'touch' || branchButtons.length === 0) {
+			clearSnap();
+			return;
+		}
+
+		let bestMatch:
+			| {
+					id: string;
+					x: number;
+					y: number;
+					distance: number;
+			  }
+			| undefined;
+
+		for (const button of branchButtons) {
+			if (!button) continue;
+			const rect = button.getBoundingClientRect();
+			const centerX = rect.left + rect.width / 2;
+			const centerY = rect.top + rect.height / 2;
+			const distance = Math.hypot(event.clientX - centerX, event.clientY - centerY);
+			const radius = Math.max(SNAP_RADIUS, rect.width * 0.7);
+			if (distance > radius) continue;
+			if (!bestMatch || distance < bestMatch.distance) {
+				bestMatch = {
+					id: button.dataset.branchId ?? '',
+					x: centerX,
+					y: centerY,
+					distance
+				};
+			}
+		}
+
+		if (!bestMatch) {
+			clearSnap();
+			return;
+		}
+
+		activeSnapId = bestMatch.id;
+		cursorSnapStore.setTarget({
+			id: bestMatch.id,
+			x: bestMatch.x,
+			y: bestMatch.y
+		});
+	}
+
+	function snapToFocusedButton(button: HTMLAnchorElement | null) {
+		if (!button) {
+			clearSnap();
+			return;
+		}
+		const rect = button.getBoundingClientRect();
+		const id = button.dataset.branchId ?? '';
+		activeSnapId = id;
+		cursorSnapStore.setTarget({
+			id,
+			x: rect.left + rect.width / 2,
+			y: rect.top + rect.height / 2
+		});
+	}
+
+	function handleSectionPointerUp(event: PointerEvent) {
+		const target = event.target as HTMLElement | null;
+		if (target?.closest('a')) return;
+		if (!activeSnapId) return;
+		const snappedButton = branchButtons.find((button) => button?.dataset.branchId === activeSnapId);
+		if (!snappedButton) return;
+		snappedButton.click();
+	}
+
+	onDestroy(() => {
+		clearSnap();
+	});
 </script>
 
 <svelte:head>
@@ -13,11 +97,26 @@
 	<meta name="description" content="Portfolio version selector" />
 </svelte:head>
 
-<section class="branch-page">
+<section
+	class="branch-page"
+	onpointermove={updateSnapTarget}
+	onpointerleave={clearSnap}
+	onpointerup={handleSectionPointerUp}
+>
 	<div class="branch-list" aria-label="Portfolio versions">
-		{#each branches as branch}
-			<a class="branch-link branch-glow" href={branch.href} target="_blank" rel="noreferrer">
-				<ScrambleText text={branch.label} />
+		{#each branches as branch, index}
+			<a
+				bind:this={branchButtons[index]}
+				class="branch-link branch-glow"
+				class:branch-link--snapped={activeSnapId === branch.label}
+				data-branch-id={branch.label}
+				href={branch.href}
+				target="_blank"
+				rel="noreferrer"
+				onfocus={(event) => snapToFocusedButton(event.currentTarget as HTMLAnchorElement)}
+				onblur={clearSnap}
+			>
+				<ScrambleText text={branch.label} active={activeSnapId === branch.label} />
 			</a>
 		{/each}
 	</div>
@@ -67,6 +166,14 @@
 		transform: translateY(-2px);
 	}
 
+	.branch-link--snapped {
+		transform: translateY(-4px) scale(1.04);
+		box-shadow:
+			0 0 18px rgb(255, 255, 255, 0.42),
+			-16px 0 56px rgb(255, 0, 255, 0.4),
+			16px 0 56px rgb(0, 255, 255, 0.4);
+	}
+
 	:global(html[data-theme='dark']) .branch-link {
 		background-color: #000;
 		color: #fff;
@@ -83,6 +190,7 @@
 	}
 
 	.branch-glow:hover::after,
+	.branch-link--snapped::after,
 	.branch-glow:focus-visible::after {
 		opacity: 1;
 	}

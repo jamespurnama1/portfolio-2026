@@ -1,13 +1,14 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 
 	const SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*';
 	const SCRAMBLE_DURATION_MS = 150;
 
-	let { text }: { text: string } = $props();
+	let { text, active = false }: { text: string; active?: boolean } = $props();
 	let displayedText = $state(text);
 	let scrambleTimer: ReturnType<typeof setInterval> | null = null;
 	let stopTimer: ReturnType<typeof setTimeout> | null = null;
+	let wasActive = $state(false);
 
 	function scramble(source: string) {
 		return source
@@ -47,6 +48,18 @@
 		if (!scrambleTimer) {
 			displayedText = text;
 		}
+	});
+
+	$effect(() => {
+		active;
+		untrack(() => {
+			if (active && !wasActive) {
+				startScramble();
+			} else if (!active && wasActive) {
+				stopScramble();
+			}
+			wasActive = active;
+		});
 	});
 
 	onDestroy(() => {

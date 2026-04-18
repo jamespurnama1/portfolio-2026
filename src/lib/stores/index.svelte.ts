@@ -120,6 +120,36 @@ export const cursorStore = {
 	}
 };
 
+let cursorSnapActive = $state(false);
+let cursorSnapX = $state(0);
+let cursorSnapY = $state(0);
+let cursorSnapId = $state('');
+
+export const cursorSnapStore = {
+	get active(): boolean {
+		return cursorSnapActive;
+	},
+	get x(): number {
+		return cursorSnapX;
+	},
+	get y(): number {
+		return cursorSnapY;
+	},
+	get id(): string {
+		return cursorSnapId;
+	},
+	setTarget(newTarget: { x: number; y: number; id: string }) {
+		cursorSnapActive = true;
+		cursorSnapX = newTarget.x;
+		cursorSnapY = newTarget.y;
+		cursorSnapId = newTarget.id;
+	},
+	clear() {
+		cursorSnapActive = false;
+		cursorSnapId = '';
+	}
+};
+
 let scroll = $state(0);
 let offset = $state(0);
 let velocity = $state(0);
@@ -199,6 +229,7 @@ export const activityStore = {
 let notifOpened = $state(false);
 let message = $state('');
 let sub = $state('');
+let notifPersistent = $state(false);
 export const notificationStore = {
 	get opened(): boolean {
 		return notifOpened;
@@ -217,6 +248,12 @@ export const notificationStore = {
 	},
 	set sub(newVal: string) {
 		sub = newVal;
+	},
+	get persistent(): boolean {
+		return notifPersistent;
+	},
+	set persistent(newVal: boolean) {
+		notifPersistent = newVal;
 	}
 };
 

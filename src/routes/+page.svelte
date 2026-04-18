@@ -6,6 +6,7 @@
 	import { ScrollTrigger } from 'gsap/ScrollTrigger';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
+	import { beforeNavigate } from '$app/navigation';
 	import { projectListHost } from '$lib/stores/projectListHost';
 	import { projectSectionStore } from '$lib/stores/projectSection';
 	import { introSectionStore } from '$lib/stores/introSection';
@@ -123,6 +124,29 @@
 		return buildFormattedText(tokens, getVisibleText(tokens).length);
 	}
 
+	function unwrapPinnedSection(section: HTMLElement | null) {
+		if (!section) return;
+		section.removeAttribute('style');
+		const parent = section.parentElement;
+		if (!parent || !parent.classList.contains('pin-spacer')) return;
+		parent.before(section);
+		parent.remove();
+	}
+
+	function cleanupHomeScrollState() {
+		projectListHost.set(null);
+		projectSectionStore.reset();
+		introSectionStore.reset();
+		ScrollTrigger.getAll().forEach((trigger) => trigger.kill(true));
+		unwrapPinnedSection(introSection);
+		unwrapPinnedSection(categorySection);
+		document.querySelectorAll('.pin-spacer').forEach((spacer) => {
+			if (spacer.querySelector('.intro-section') || spacer.querySelector('.landing-section')) {
+				spacer.replaceWith(...Array.from(spacer.childNodes));
+			}
+		});
+	}
+
 	function syncCategorySectionViewportTop() {
 		if (page.url.pathname !== '/' || !categorySection) {
 			projectSectionStore.setViewportTop(0);
@@ -171,11 +195,13 @@
 		page.url.pathname;
 		untrack(() => {
 			if (page.url.pathname === '/') return;
-			projectListHost.set(null);
-			projectSectionStore.reset();
-			introSectionStore.reset();
-			ScrollTrigger.getAll().forEach((trigger) => trigger.kill(true));
+			cleanupHomeScrollState();
 		});
+	});
+
+	beforeNavigate(({ to }) => {
+		if (page.url.pathname !== '/' || !to || to.url.pathname === '/') return;
+		cleanupHomeScrollState();
 	});
 
 	$effect(() => {
@@ -199,9 +225,7 @@
 	onMount(() => {
 		runIntroCopyAnimation();
 		if (page.url.pathname !== '/') {
-			projectListHost.set(null);
-			projectSectionStore.reset();
-			introSectionStore.reset();
+			cleanupHomeScrollState();
 			return;
 		}
 
@@ -296,9 +320,7 @@
 		return () => {
 			typingRun += 1;
 			triggers.forEach((trigger) => trigger.kill(true));
-			projectListHost.set(null);
-			projectSectionStore.reset();
-			introSectionStore.reset();
+			cleanupHomeScrollState();
 		};
 	});
 </script>

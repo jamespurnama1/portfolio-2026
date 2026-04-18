@@ -4,13 +4,15 @@
 	import ScrambleText from '$lib/components/ScrambleText.svelte';
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
+
+	let { revealed = loadStore.loaded }: { revealed?: boolean } = $props();
 </script>
 
 <header
 	class="mix-blend-difference uppercase text-white text-xs font-mono z-20 relative overflow-hidden"
 >
 	<nav class="flex justify-between items-start fixed w-full p-4 top-0 left-0">
-		{#if loadStore.loaded}
+		{#if revealed}
 			<a transition:fly={{ y: -200, duration: 500, easing: cubicInOut }} href="/about"
 				><p><ScrambleText text="about" /></p></a
 			>
@@ -39,7 +41,7 @@
 			? 'max-md:opacity-0 max-md:pointer-events-none'
 			: ''}"
 	>
-		{#if loadStore.loaded}
+		{#if revealed}
 			<a
 				href="https://instagram.com/jamespurnama1"
 				target="_blank"
