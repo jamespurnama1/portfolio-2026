@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { T, useThrelte } from '@threlte/core';
 	import Rive from '$lib/components/Rive.svelte';
-	import { CanvasTexture, Texture, type Mesh, type MeshBasicMaterial, MathUtils } from 'three';
+	import {
+		CanvasTexture,
+		Texture,
+		type Mesh,
+		type MeshBasicMaterial,
+		MathUtils,
+		LinearFilter,
+		SRGBColorSpace
+	} from 'three';
 	import { onMount, untrack } from 'svelte';
 	import { animationStore, loadStore } from '$lib/stores/index.svelte';
 	import { introSectionStore } from '$lib/stores/introSection';
@@ -33,10 +41,12 @@
 	let elementMaterial: MeshBasicMaterial | undefined = $state();
 	let elementMesh: Mesh | undefined = $state();
 	let riveCanvas = $state() as HTMLCanvasElement;
+	let canvasViewport = $state({ width: 0, height: 0 });
+	let caretTextureWidth = $state(0);
+	let caretTextureHeight = $state(0);
 	let introPlacementComplete = $state(false);
 	let introAutoPositioning = $state(false);
 	let loadingTimeline: gsap.core.Timeline | undefined = $state();
-	let lastDebugPhase = $state('init');
 
 	function getIntroTarget(scale: number, progress = 1) {
 		const viewportWidth = $size.width || 1440;
@@ -66,12 +76,20 @@
 
 	function ensureCaretTexture() {
 		if (!riveCanvas || riveCanvas.width <= 0 || riveCanvas.height <= 0) return;
-		if (!caret) {
+		const needsRecreate =
+			!caret || caretTextureWidth !== riveCanvas.width || caretTextureHeight !== riveCanvas.height;
+		if (needsRecreate) {
+			caret?.dispose?.();
 			caret = new CanvasTexture(riveCanvas);
+			caret.colorSpace = SRGBColorSpace;
+			caret.minFilter = LinearFilter;
+			caret.magFilter = LinearFilter;
+			caret.generateMipmaps = false;
+			caretTextureWidth = riveCanvas.width;
+			caretTextureHeight = riveCanvas.height;
 			caret.needsUpdate = true;
 			return;
 		}
-		caret.image = riveCanvas;
 		caret.needsUpdate = true;
 	}
 
@@ -95,33 +113,12 @@
 		};
 	}
 
-	function debugCursorPhase(phase: string, extra: Record<string, unknown> = {}) {
-		if (lastDebugPhase === phase) return;
-		lastDebugPhase = phase;
-		console.log('[RiveCursor]', phase, {
-			path: page.url.pathname,
-			introActive: $introSectionStore.active,
-			introProgress: Number($introSectionStore.progress.toFixed(4)),
-			loaded: loadStore.loaded,
-			isAnimating: animationStore.isAnimating,
-			introAutoPositioning,
-			introPlacementComplete,
-			caret: {
-				x: Number(caretPos.x.toFixed(2)),
-				y: Number(caretPos.y.toFixed(2)),
-				z: Number(caretPos.z.toFixed(2)),
-				scaleX: Number(caretPos.scaleX.toFixed(4)),
-				scaleY: Number(caretPos.scaleY.toFixed(4))
-			},
-			...extra
-		});
-	}
-
 	onMount(() => {
 		ensureCaretTexture();
 		return () => {
 			loadingTimeline?.kill();
 			gsap.killTweensOf(caretPos);
+			caret?.dispose?.();
 		};
 	});
 	const caretPos = $state({
@@ -166,6 +163,8 @@
 	// canvas resize
 	$effect(() => {
 		$size;
+		canvasViewport.width;
+		canvasViewport.height;
 		untrack(() => {
 			if (!riveCanvas) return;
 			ensureCaretTexture();
@@ -177,7 +176,6 @@
 	});
 
 	function loadingAnim() {
-		debugCursorPhase('loading:start');
 		introPlacementComplete = false;
 		introAutoPositioning = false;
 		loadingTimeline?.kill();
@@ -195,7 +193,6 @@
 					loadingTimeline?.kill();
 					loadStore.loaded = true;
 					if (page.url.pathname === '/') {
-						debugCursorPhase('loading:complete-home');
 						const introStartRotation = getIntroRotation(0);
 						gsap.set(caretPos, {
 							x: $size.width / 2,
@@ -210,12 +207,6 @@
 						animationStore.isAnimating = false;
 						const introTarget = getIntroTarget(INTRO_CURSOR_START_SCALE, 0);
 						introAutoPositioning = true;
-						debugCursorPhase('intro:auto-placement:start', {
-							target: {
-								x: Number(introTarget.x.toFixed(2)),
-								y: Number(introTarget.y.toFixed(2))
-							}
-						});
 						gsap.to(caretPos, {
 							duration: 0.75,
 							x: introTarget.x,
@@ -228,14 +219,12 @@
 							onComplete: () => {
 								introPlacementComplete = true;
 								introAutoPositioning = false;
-								debugCursorPhase('intro:auto-placement:complete');
 							}
 						});
 						gsap.to(optionsStore, {
 							rgbPersistFactor: 0.85
 						});
 					} else {
-						debugCursorPhase('loading:complete-non-home');
 						gsap.set(caretPos, {
 							x: -$size.width,
 							y: -$size.height
@@ -283,7 +272,6 @@
 				$introSectionStore.progress < 0.34;
 
 			if (introCursorActive) {
-				debugCursorPhase(introAutoPositioning ? 'intro:autopositioning' : 'intro:interactive');
 				const introProgress = MathUtils.smoothstep($introSectionStore.progress, 0, 0.34);
 				const hasIntroScrollProgress = $introSectionStore.progress > 0.001;
 				const introIdleLocked = !introAutoPositioning && !hasIntroScrollProgress;
@@ -335,7 +323,6 @@
 					}
 				}
 			} else {
-				debugCursorPhase('cursor:default-follow');
 				introPlacementComplete = false;
 				introAutoPositioning = false;
 				caretPos.x += (mouse.x - caretPos.x) * mouseSpeed;
@@ -385,6 +372,8 @@
 
 	$effect(() => {
 		if (!riveCanvas) return;
+		canvasViewport.width;
+		canvasViewport.height;
 		ensureCaretTexture();
 		if (elementMaterial && caret) {
 			elementMaterial.map = caret;
@@ -402,8 +391,12 @@
 		rotation.z={caretPos.rotation}
 	>
 		<T.Mesh bind:ref={elementMesh} rotation.z={meshLocalRoll} raycast={() => null}>
-			<T is={elementMesh?.scale} y={meshLocalScaleY} />
-			<T.PlaneGeometry args={[$size.width, $size.height]} />
+			<T
+				is={elementMesh?.scale}
+				x={Math.max(canvasViewport.width || $size.width, 1)}
+				y={Math.max(canvasViewport.height || $size.height, 1) * meshLocalScaleY}
+			/>
+			<T.PlaneGeometry args={[1, 1]} />
 			<T.MeshBasicMaterial
 				bind:ref={elementMaterial}
 				map={caret}
@@ -415,4 +408,4 @@
 {/if}
 
 <!-- RIVE -->
-<Rive bind:riveCanvas {loadingAnim} bind:riveTask {caretPos} />
+<Rive bind:riveCanvas bind:canvasViewport {loadingAnim} bind:riveTask {caretPos} />

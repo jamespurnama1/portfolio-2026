@@ -13,7 +13,6 @@
 	import fragmentShader from '../shaders/fragment.glsl?raw';
 	import vertexShader from '../shaders/vertex.glsl?raw';
 	import { optionsStore } from '$lib/stores/options.svelte';
-	import { or } from 'three/tsl';
 
 	let { children, mouse } = $props();
 	let orthoCamera = $state<OrthographicCamera>();
@@ -42,15 +41,21 @@
 	let postFXMeshMaterial = $state<ShaderMaterial>();
 
 	// Render targets for ping-pong
-	let renderBufferA = $state<WebGLRenderTarget>();
-	let renderBufferB = $state<WebGLRenderTarget>();
+	let renderBufferA: WebGLRenderTarget | undefined;
+	let renderBufferB: WebGLRenderTarget | undefined;
+
+	type SceneEntry = { scene: any; render: (delta: number) => void };
 
 	// Store for scenes to register themselves
-	const registeredScenes = writable<Array<{ scene: any; render: (delta: number) => void }>>([]);
+	const registeredScenes = writable<SceneEntry[]>([]);
 
 	// Expose registration function via context
 	setContext('postfx', {
-		registerScene: (scene: any, renderFn: (delta: number) => void) => {
+		registerScene: (
+			scene: any,
+			renderFn: (delta: number) => void,
+			options: { overlay?: boolean } = {}
+		) => {
 			registeredScenes.update((scenes) => [...scenes, { scene, render: renderFn }]);
 			return () => {
 				registeredScenes.update((scenes) => scenes.filter((s) => s.scene !== scene));
@@ -63,15 +68,12 @@
 		$size;
 		untrack(() => {
 			if ($size.width && $size.height) {
-				// Dispose old render targets
 				if (renderBufferA) renderBufferA.dispose();
 				if (renderBufferB) renderBufferB.dispose();
 
-				// Create new render targets
 				renderBufferA = new WebGLRenderTarget($size.width, $size.height);
 				renderBufferB = new WebGLRenderTarget($size.width, $size.height);
 
-				// Clear the main canvas and both buffers immediately
 				renderer.setRenderTarget(renderBufferA);
 				renderer.clear(true, true, true);
 				renderer.setRenderTarget(renderBufferB);
@@ -82,21 +84,9 @@
 		});
 	});
 
-	useTask((delta) => {
-		if (!renderBufferA || !renderBufferB || !postFXMeshMaterial || !orthoCamera) return;
-		renderer.autoClearColor = false;
-		postFXMeshMaterial.uniforms.sampler.value = renderBufferB.texture;
-		postFXMeshMaterial.uniforms.time.value += delta;
-		postFXMeshMaterial.needsUpdate = true;
-
-		// Render decayed history into the fresh buffer, then draw the current scenes on top.
-		renderer.setRenderTarget(renderBufferA);
-		renderer.clear(true, true, true);
-
-		renderer.render(postFXScene, orthoCamera);
-
-		$registeredScenes.forEach(({ scene, render }) => {
-			render(delta); // Execute custom render logic
+	function renderSceneEntries(entries: SceneEntry[], delta: number) {
+		entries.forEach(({ scene, render }) => {
+			render(delta);
 			const hidden: Array<{ obj: Mesh; visible: boolean }> = [];
 			scene.traverse((obj: Object3D) => {
 				const mesh = obj as Mesh;
@@ -110,6 +100,22 @@
 				obj.visible = visible;
 			});
 		});
+	}
+
+	useTask((delta) => {
+		if (!renderBufferA || !renderBufferB) return;
+		if (!postFXMeshMaterial || !orthoCamera) return;
+		renderer.autoClearColor = false;
+		postFXMeshMaterial.uniforms.sampler.value = renderBufferB.texture;
+		postFXMeshMaterial.uniforms.time.value += delta;
+		postFXMeshMaterial.needsUpdate = true;
+
+		// Render decayed history into the fresh buffer, then draw the current scenes on top.
+		renderer.setRenderTarget(renderBufferA);
+		renderer.clear(true, true, true);
+		renderer.render(postFXScene, orthoCamera);
+
+		renderSceneEntries($registeredScenes, delta);
 
 		// Apply post-FX
 		renderer.setRenderTarget(null);

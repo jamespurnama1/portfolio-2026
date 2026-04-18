@@ -130,11 +130,7 @@
 		gsap.to(transform, {
 			opacity: targetOpacity,
 			duration: 0.3,
-			ease,
-			onComplete: () => {
-				if (countStore.activeIndex === index)
-					console.log('[CARD OPACITY TWEEN COMPLETE]', index, targetOpacity);
-			}
+			ease
 		});
 	}
 
@@ -143,7 +139,6 @@
 		initialLoadComplete;
 		loadIn;
 		untrack(() => {
-			if (countStore.activeIndex === index) console.log('[CARD VISIBILITY]', index, hidden);
 			if (hidden) {
 				tweenOpacity(0, 'power2.out');
 			} else if (initialLoadComplete && !loadIn) {
@@ -343,7 +338,6 @@
 	// Update image position and scale based on current state
 	function updateImage(delay = 0, duration = 0.01, callback?: () => void) {
 		if (!loadStore.loaded || suppressUpdates) return;
-		if (countStore.activeIndex === index) console.log('[CARD UPDATE]', index);
 		let pos;
 		// if homepage
 		if (home) {

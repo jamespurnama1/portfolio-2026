@@ -18,6 +18,7 @@
 	let riveSceneInstance: SvelteComponent | undefined = $state();
 	let showStudio = $state(false);
 	let isTouchDevice = $state(false);
+	let hasPointerPosition = $state(false);
 
 	const relativeMousePos = { x: 0, y: 0 };
 	const mouse = $state({ x: 0, y: 0 });
@@ -48,19 +49,34 @@
 		return riveSceneInstance;
 	}
 
-	function onMouseMove(e: MouseEvent) {
-		relativeMousePos.x = e.clientX;
-		relativeMousePos.y = e.clientY;
-		if (!riveSceneInstance || !size.height || !size.width) return;
+	function syncMouseToViewport() {
+		if (!riveSceneInstance || !size.height || !size.width || !hasPointerPosition) return;
+		const caretPos = riveSceneInstance.getCaretPos();
 		mouse.y =
 			(1 - relativeMousePos.y / size.height) * size.height -
-			(size.height * riveSceneInstance.getCaretPos().scaleY) / 2 -
+			(size.height * caretPos.scaleY) / 2 -
 			size.height / 2;
 		mouse.x =
 			(relativeMousePos.x / size.width) * size.width -
-			(size.width * riveSceneInstance.getCaretPos().scaleX) / 2 -
+			(size.width * caretPos.scaleX) / 2 -
 			size.width / 2;
 	}
+
+	function onMouseMove(e: MouseEvent) {
+		relativeMousePos.x = e.clientX;
+		relativeMousePos.y = e.clientY;
+		hasPointerPosition = true;
+		syncMouseToViewport();
+	}
+
+	$effect(() => {
+		size.width;
+		size.height;
+		untrack(() => {
+			if (isTouchDevice) return;
+			syncMouseToViewport();
+		});
+	});
 
 	// $inspect(mouse)
 
@@ -153,13 +169,17 @@
 				{#key `${size.width}-${size.height}`}
 					<PostFXManager {mouse}>
 						{#if showGallery}
-							<PostFXScene enabled={true}>
-								<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
-							</PostFXScene>
+							{#key `gallery-${optionsStore.dark}`}
+								<PostFXScene enabled={true}>
+									<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
+								</PostFXScene>
+							{/key}
 						{:else if showCanvas}
-							<PostFXScene enabled={true}>
-								<ThreeScene {data} {preferImageThumbnails} {mouse} />
-							</PostFXScene>
+							{#key `canvas-${optionsStore.dark}`}
+								<PostFXScene enabled={true}>
+									<ThreeScene {data} {preferImageThumbnails} {mouse} />
+								</PostFXScene>
+							{/key}
 							<PostFXScene
 								enabled={true}
 								beforeRender={(delta: number) => {
@@ -178,13 +198,17 @@
 		{#key `${size.width}-${size.height}`}
 			<PostFXManager {mouse}>
 				{#if showGallery}
-					<PostFXScene enabled={true}>
-						<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
-					</PostFXScene>
+					{#key `gallery-${optionsStore.dark}`}
+						<PostFXScene enabled={true}>
+							<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
+						</PostFXScene>
+					{/key}
 				{:else if showCanvas}
-					<PostFXScene enabled={true}>
-						<ThreeScene {data} {preferImageThumbnails} {mouse} />
-					</PostFXScene>
+					{#key `canvas-${optionsStore.dark}`}
+						<PostFXScene enabled={true}>
+							<ThreeScene {data} {preferImageThumbnails} {mouse} />
+						</PostFXScene>
+					{/key}
 				{/if}
 				<PostFXScene
 					enabled={true}

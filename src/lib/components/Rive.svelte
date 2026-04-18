@@ -17,7 +17,9 @@
 	let mainStateMachine = $state<any>();
 	let artboardRef = $state<any>();
 	let riveRef = $state<any>();
+	let riveRenderer = $state<any>();
 	let wasIntroCursorLocked = $state(false);
+	let surfaceReady = $state(false);
 
 	function introCursorLocked() {
 		return page.url.pathname === '/' && loadStore.loaded && $introSectionStore.active;
@@ -99,16 +101,39 @@
 	let {
 		riveCanvas = $bindable(),
 		riveTask = $bindable(),
+		canvasViewport = $bindable({ width: 0, height: 0 }),
 		loadingAnim,
 		caretPos
 	}: {
 		riveCanvas: HTMLCanvasElement;
 		riveTask: (time?: number) => void;
+		canvasViewport: { width: number; height: number };
 		loadingAnim: () => void;
 		caretPos?: { x: number; y: number; scaleX: number; scaleY: number; rotation: number };
 	} = $props();
 
 	let canvasContainer: HTMLDivElement | undefined = $state();
+
+	function syncCanvasViewport(width: number, height: number) {
+		if (!riveCanvas) return;
+		canvasViewport = {
+			width,
+			height
+		};
+	}
+
+	function resizeRiveSurface(width: number, height: number) {
+		if (!riveCanvas || width <= 0 || height <= 0) return;
+		const pixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+		const targetWidth = Math.max(Math.round(width * pixelRatio), 1);
+		const targetHeight = Math.max(Math.round(height * pixelRatio), 1);
+		if (riveCanvas.width !== targetWidth || riveCanvas.height !== targetHeight) {
+			riveCanvas.width = targetWidth;
+			riveCanvas.height = targetHeight;
+		}
+		syncCanvasViewport(width, height);
+		surfaceReady = true;
+	}
 
 	function toNormal() {
 		setTimeout(() => {
@@ -136,13 +161,12 @@
 	// Handle canvas resize
 	$effect(() => {
 		if (!riveCanvas) return;
-		$size.width;
-		$size.height;
+		const width = $size.width;
+		const height = $size.height;
 		untrack(() => {
-			if (riveCanvas.width !== $size.width || riveCanvas.height !== $size.height) {
-				riveCanvas.width = $size.width;
-				riveCanvas.height = $size.height;
-			}
+			if (!width || !height) return;
+			surfaceReady = false;
+			resizeRiveSurface(width, height);
 		});
 	});
 
@@ -155,8 +179,7 @@
 		document.body.appendChild(canvasContainer);
 
 		riveCanvas = document.createElement('canvas');
-		riveCanvas.width = $size.width;
-		riveCanvas.height = $size.height;
+		resizeRiveSurface($size.width, $size.height);
 		riveCanvas.className = 'riveCanvas';
 		canvasContainer.appendChild(riveCanvas);
 		const rive = await RiveCanvas({
@@ -164,7 +187,7 @@
 			locateFile: () => `https://unpkg.com/@rive-app/canvas-advanced@2.32.0/rive.wasm`
 		});
 		riveRef = rive;
-		const renderer = rive.makeRenderer(riveCanvas);
+		riveRenderer = rive.makeRenderer(riveCanvas);
 		const bytes = await (await fetch(new Request('/cursor.riv'))).arrayBuffer();
 		const file = await rive.load(new Uint8Array(bytes));
 		const artboard = file.artboardByName('Cursor');
@@ -173,8 +196,8 @@
 		resetIntroCursorStateMachine();
 
 		riveTask = (delta) => {
-			if (!renderer || !artboard || !stateMachine) return;
-			renderer.clear();
+			if (!surfaceReady || !riveRenderer || !artboard || !stateMachine) return;
+			riveRenderer.clear();
 			const introLocked = introCursorLocked();
 			if (introLocked && !wasIntroCursorLocked) {
 				resetIntroCursorStateMachine();
@@ -187,13 +210,13 @@
 			}
 			stateMachine.advance(delta!);
 			artboard.advance(delta!);
-			renderer.save();
+			riveRenderer.save();
 			const introAlignmentActive =
 				page.url.pathname === '/' &&
 				loadStore.loaded &&
 				!animationStore.isAnimating &&
 				$introSectionStore.active;
-			renderer.align(
+			riveRenderer.align(
 				rive.Fit.contain,
 				introAlignmentActive ? rive.Alignment.center : rive.Alignment.topRight,
 				{
@@ -204,15 +227,18 @@
 				},
 				artboard.bounds
 			);
-			artboard.draw(renderer);
-			renderer.restore();
+			artboard.draw(riveRenderer);
+			riveRenderer.restore();
 			rive.resolveAnimationFrame();
 		};
 
-		loadingAnim();
+		if (!loadStore.loaded) {
+			loadingAnim();
+		}
 	});
 
 	onDestroy(() => {
+		riveRenderer?.delete?.();
 		if (canvasContainer && canvasContainer.parentNode) {
 			canvasContainer.parentNode.removeChild(canvasContainer);
 		}

@@ -4,6 +4,7 @@
 
 	let {
 		enabled = true,
+		overlay = false,
 		beforeRender = (delta: number) => {},
 		children
 	} = $props();
@@ -13,7 +14,7 @@
 
 	onMount(() => {
 		if (enabled && postfx && sceneRef) {
-			return postfx.registerScene(sceneRef, beforeRender);
+			return postfx.registerScene(sceneRef, beforeRender, { overlay });
 		}
 	});
 </script>
