@@ -61,10 +61,37 @@
 
 <span
 	role="presentation"
+	class="scramble-text"
 	onmouseenter={startScramble}
 	onmouseleave={stopScramble}
 	onfocus={startScramble}
 	onblur={stopScramble}
 >
-	{displayedText}
+	<span class="scramble-text__reserve" aria-hidden="true">{text}</span>
+	<span class="scramble-text__display">{displayedText}</span>
 </span>
+
+<style>
+	.scramble-text {
+		display: inline-grid;
+		grid-template-columns: minmax(0, max-content);
+		grid-template-rows: auto;
+		align-items: baseline;
+		white-space: pre-wrap;
+	}
+
+	.scramble-text__reserve,
+	.scramble-text__display {
+		grid-area: 1 / 1;
+		white-space: inherit;
+	}
+
+	.scramble-text__reserve {
+		visibility: hidden;
+		pointer-events: none;
+	}
+
+	.scramble-text__display {
+		min-width: 100%;
+	}
+</style>

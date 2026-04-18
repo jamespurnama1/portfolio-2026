@@ -19,6 +19,8 @@
 	const finalBodyText =
 		'Creative direction, motion systems, interactive builds, and production-ready frontend implementation for teams that need both a point of view and the technical depth to ship it.';
 	const SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*';
+	const introHeadlineReserve = buildStaticFormattedText(introHeadlineText);
+	const introBodyReserve = buildStaticFormattedText(introBodyText);
 	const projectsLength = data.projectsLength ?? data.projects?.length ?? 0;
 	const projectsPinPercent = Math.max(0, projectsLength * 10);
 	let introSection: HTMLElement | null = null;
@@ -114,6 +116,11 @@
 		}
 
 		return html;
+	}
+
+	function buildStaticFormattedText(text: string) {
+		const tokens = parseMarkedText(text);
+		return buildFormattedText(tokens, getVisibleText(tokens).length);
 	}
 
 	function syncCategorySectionViewportTop() {
@@ -306,12 +313,16 @@
 		<h1
 			class="font-sans text-4xl md:text-5xl lg:text-6xl leading-[0.92] font-bold mb-6 text-left intro-heading"
 		>
-			{@html introHeadlineDisplay}
+			<span class="intro-scramble-stack">
+				<span class="intro-scramble-reserve" aria-hidden="true">{@html introHeadlineReserve}</span>
+				<span class="intro-scramble-display">{@html introHeadlineDisplay}</span>
+			</span>
 		</h1>
-		<p
-			class="font-sans text-sm md:text-base leading-relaxed max-w-xl opacity-80 text-left intro-body"
-		>
-			{@html introBodyDisplay}
+		<p class="font-sans text-xs md:text-sm leading-relaxed opacity-80 text-left intro-body">
+			<span class="intro-scramble-stack">
+				<span class="intro-scramble-reserve" aria-hidden="true">{@html introBodyReserve}</span>
+				<span class="intro-scramble-display">{@html introBodyDisplay}</span>
+			</span>
 		</p>
 	</div>
 </section>
@@ -339,7 +350,7 @@
 		>
 			{finalHeadlineText}
 		</h3>
-		<p class="font-mono text-sm md:text-base leading-relaxed max-w-2xl opacity-80 text-left">
+		<p class="font-mono text-xs md:text-sm leading-relaxed max-w-2xl opacity-80 text-left">
 			{finalBodyText}
 		</p>
 	</div>
@@ -373,12 +384,34 @@
 	.intro-copy {
 		width: min(100%, 84rem);
 		margin-right: auto;
-		padding: 0 min(36vw, 30rem) 0 clamp(2rem, 5vw, 4rem);
+		padding: 0 min(30vw, 30rem) 0 clamp(2rem, 5vw, 4rem);
 	}
 
 	.intro-heading,
 	.intro-body {
 		min-height: 1lh;
+	}
+
+	.intro-scramble-stack {
+		position: relative;
+		display: block;
+		width: 100%;
+	}
+
+	.intro-scramble-reserve,
+	.intro-scramble-display {
+		display: block;
+		white-space: normal;
+	}
+
+	.intro-scramble-reserve {
+		visibility: hidden;
+		pointer-events: none;
+	}
+
+	.intro-scramble-display {
+		position: absolute;
+		inset: 0;
 	}
 
 	.final-section {
