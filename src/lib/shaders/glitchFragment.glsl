@@ -11,18 +11,8 @@ uniform bool inverted;
 uniform float uTextureZoom;
 uniform float uTextureRotation;
 uniform bool uCoverTexture;
-
-vec3 linearToSRGB(vec3 linear) {
-    // Create a boolean condition based on component-wise comparison
-    // No need to store in a vec3; use the condition directly in the mix
-    vec3 result = mix(
-        linear * 12.92, 
-        pow(linear, vec3(1.0 / 2.4)) * 1.055 - 0.055, 
-        step(0.0031308, linear) // Use step to determine which path to take
-    );
-
-    return result;
-}
+uniform bool uApplyOutputColorSpace;
+uniform bool uInvertAfterOutputColorSpace;
 
 void main() {
     vec2 newUV = v_uv - vec2(0.5);
@@ -95,4 +85,10 @@ void main() {
     // }
 
     gl_FragColor = image;
+    if (uApplyOutputColorSpace) {
+        #include <colorspace_fragment>
+    }
+    if (uInvertAfterOutputColorSpace) {
+        gl_FragColor.rgb = 1.0 - gl_FragColor.rgb;
+    }
 }

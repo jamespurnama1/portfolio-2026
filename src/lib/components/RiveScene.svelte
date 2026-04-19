@@ -11,7 +11,12 @@
 		SRGBColorSpace
 	} from 'three';
 	import { onMount, untrack } from 'svelte';
-	import { animationStore, cursorSnapStore, loadStore } from '$lib/stores/index.svelte';
+	import {
+		animationStore,
+		cursorSnapStore,
+		homeTransitionStore,
+		loadStore
+	} from '$lib/stores/index.svelte';
 	import { introSectionStore } from '$lib/stores/introSection';
 	import { optionsStore } from '$lib/stores/options.svelte';
 	import { page } from '$app/state';
@@ -138,6 +143,25 @@
 		rotation: 0,
 		rotationX: 0,
 		rotationY: 0
+	});
+
+	$effect(() => {
+		homeTransitionStore.pending;
+		page.url.pathname;
+		untrack(() => {
+			if (page.url.pathname !== '/' || !homeTransitionStore.pending || !loadStore.loaded) return;
+			introPlacementComplete = false;
+			introAutoPositioning = false;
+			gsap.killTweensOf(caretPos);
+			caretPos.x = mouse.x;
+			caretPos.y = mouse.y;
+			caretPos.z = 0;
+			caretPos.scaleX = DEFAULT_CURSOR_SCALE;
+			caretPos.scaleY = DEFAULT_CURSOR_SCALE;
+			caretPos.rotation = 0;
+			caretPos.rotationX = 0;
+			caretPos.rotationY = 0;
+		});
 	});
 
 	let meshOpacityTarget = $derived.by(() => {
@@ -282,6 +306,7 @@
 			const branchCursorSnapActive = page.url.pathname === '/branch' && cursorSnapStore.active;
 			const introCursorActive =
 				page.url.pathname === '/' &&
+				!homeTransitionStore.pending &&
 				$introSectionStore.active &&
 				$introSectionStore.progress < 0.34;
 

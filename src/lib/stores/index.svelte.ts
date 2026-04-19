@@ -155,8 +155,18 @@ let offset = $state(0);
 let velocity = $state(0);
 let lastScroll = $state(0);
 let lastTime = $state(Date.now());
-let velocityDecayTimer: number | null = null;
+let velocityDecayFrame: number | null = null;
+let velocityLastUpdateTime = $state(Date.now());
 // let overScroll = $state(0);
+
+const shouldDebugWorkScroll = () => {
+	if (typeof window === 'undefined') return false;
+	const debugWindow = window as Window & {
+		__DEBUG_WORK_SCROLL__?: boolean;
+		DEBUG_WORK_SCROLL?: boolean;
+	};
+	return Boolean(debugWindow.__DEBUG_WORK_SCROLL__ || debugWindow.DEBUG_WORK_SCROLL);
+};
 
 export const scrollStore = {
 	get scroll(): number {
@@ -169,28 +179,54 @@ export const scrollStore = {
 
 		if (deltaTime > 0) {
 			velocity = deltaScroll / deltaTime;
-			// console.log('[SCROLL] velocity', velocity);
+		}
+
+		if (shouldDebugWorkScroll()) {
+			console.log('[work-scroll/store]', {
+				newVal,
+				deltaScroll,
+				deltaTime,
+				velocity,
+				lastScroll,
+				offset
+			});
 		}
 
 		scroll = newVal;
 		lastScroll = newVal;
 		lastTime = now;
+		velocityLastUpdateTime = now;
 
-		// Clear existing decay timer
-		if (velocityDecayTimer !== null) {
-			clearTimeout(velocityDecayTimer);
-		}
+		if (velocityDecayFrame !== null || typeof window === 'undefined') return;
 
-		// Start decay after 100ms of no scroll updates
-		velocityDecayTimer = window.setTimeout(() => {
-			const decayInterval = setInterval(() => {
-				velocity *= 0.9; // Decay by 10% each frame
+		const decayVelocity = () => {
+			const idleFor = Date.now() - velocityLastUpdateTime;
+			if (idleFor > 48) {
+				velocity *= 0.9;
 				if (Math.abs(velocity) < 0.1) {
 					velocity = 0;
-					clearInterval(decayInterval);
+					if (shouldDebugWorkScroll()) {
+						console.log('[work-scroll/store:decay-stop]', {
+							scroll,
+							velocity
+						});
+					}
+					velocityDecayFrame = null;
+					return;
 				}
-			}, 16); // ~60fps
-		}, 100);
+			}
+
+			velocityDecayFrame = window.requestAnimationFrame(decayVelocity);
+		};
+
+		if (shouldDebugWorkScroll()) {
+			console.log('[work-scroll/store:decay-start]', {
+				scroll,
+				velocity
+			});
+		}
+
+		velocityDecayFrame = window.requestAnimationFrame(decayVelocity);
 	},
 	get offset(): number {
 		return offset;
@@ -254,6 +290,86 @@ export const notificationStore = {
 	},
 	set persistent(newVal: boolean) {
 		notifPersistent = newVal;
+	}
+};
+
+let pendingHomeReturn = $state(false);
+let pendingHomeReturnIndex = $state(0);
+
+export const homeTransitionStore = {
+	get pending(): boolean {
+		return pendingHomeReturn;
+	},
+	get index(): number {
+		return pendingHomeReturnIndex;
+	},
+	requestHomeReturn(index: number) {
+		pendingHomeReturn = true;
+		pendingHomeReturnIndex = Math.max(0, index);
+	},
+	clear() {
+		pendingHomeReturn = false;
+		pendingHomeReturnIndex = 0;
+	}
+};
+
+type SharedCardTransitionState = {
+	direction: 'to-work' | 'to-home';
+	index: number;
+	slug: string;
+	geometry: {
+		width: number;
+		height: number;
+	};
+	transform: {
+		x: number;
+		y: number;
+		z: number;
+		scale: number;
+		opacity: number;
+	};
+};
+
+type HomeCardSnapshotState = {
+	index: number;
+	slug: string;
+	geometry: {
+		width: number;
+		height: number;
+	};
+	transform: {
+		x: number;
+		y: number;
+		z: number;
+		scale: number;
+		opacity: number;
+	};
+};
+
+let sharedCardTransition = $state<SharedCardTransitionState | null>(null);
+let currentHomeCardSnapshot = $state<HomeCardSnapshotState | null>(null);
+
+export const sharedCardTransitionStore = {
+	get value(): SharedCardTransitionState | null {
+		return sharedCardTransition;
+	},
+	set(next: SharedCardTransitionState) {
+		sharedCardTransition = next;
+	},
+	clear() {
+		sharedCardTransition = null;
+	}
+};
+
+export const currentHomeCardSnapshotStore = {
+	get value(): HomeCardSnapshotState | null {
+		return currentHomeCardSnapshot;
+	},
+	set(next: HomeCardSnapshotState) {
+		currentHomeCardSnapshot = next;
+	},
+	clear() {
+		currentHomeCardSnapshot = null;
 	}
 };
 

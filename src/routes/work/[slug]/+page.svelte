@@ -1,10 +1,15 @@
 <script lang="ts">
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { countStore, gptStore, scrollStore } from '$lib/stores/index.svelte';
+	import {
+		animationStore,
+		countStore,
+		gptStore,
+		homeTransitionStore,
+		scrollStore
+	} from '$lib/stores/index.svelte';
 	import Section from '$lib/components/Section.svelte';
 	import { gsap } from 'gsap';
-	import { ScrollTrigger } from 'gsap/ScrollTrigger';
 	import { onMount, tick, untrack } from 'svelte';
 	import { type PageData } from './$types';
 	import { optionsStore } from '$lib/stores/options.svelte';
@@ -12,6 +17,8 @@
 	import caret from '$lib/images/caret.svg';
 	import chroma from 'chroma-js';
 	import { cardDimensionsStore } from '$lib/stores/cardDimensions.svelte';
+	import { browser } from '$app/environment';
+	import type { ScrollTrigger as ScrollTriggerInstance } from 'gsap/ScrollTrigger';
 
 	const { data }: { data: Required<PageData> } = $props();
 	let caretEl = $state() as HTMLImageElement;
@@ -20,6 +27,25 @@
 	let innerHeight = $state(0);
 	let animating = true;
 	let tl = gsap.timeline();
+	let ScrollTrigger: typeof import('gsap/ScrollTrigger').ScrollTrigger | null = null;
+	const sanityImageParams = $derived.by(() => {
+		const fallbackWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+		const baseWidth = innerWidth || fallbackWidth;
+		const targetWidth = Math.min(Math.max(Math.round(baseWidth || 1920), 480), 2560);
+		return `auto=format&fit=max&q=85&w=${targetWidth}`;
+	});
+
+	function withSanityImageParams(url?: string) {
+		if (!url || /\.(mp4|webm)$/i.test(url) || !url.includes('cdn.sanity.io')) {
+			return url ?? '';
+		}
+		return `${url}${url.includes('?') ? '&' : '?'}${sanityImageParams}`;
+	}
+
+	function getViewportScrollTop() {
+		const scrollRoot = document.scrollingElement ?? document.documentElement;
+		return Math.max(window.scrollY, scrollRoot?.scrollTop ?? 0);
+	}
 
 	// const mapper = gsap.utils.mapRange(0, 300, 0, 100);
 	// const mapper2 = gsap.utils.mapRange(0, 300, 88, 15);
@@ -74,6 +100,9 @@
 	let delay = $state(false);
 
 	afterNavigate(({ to }) => {
+		if (to?.url.pathname.includes('work')) {
+			window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+		}
 		updateCurrent();
 		animateIn();
 		setTimeout(() => (delay = false), 3000);
@@ -97,17 +126,70 @@
 			])
 			.colors(3)
 	);
+	const heroMediaUrl = $derived(
+		current ? withSanityImageParams(current.thumbnail?.asset?.url) : ''
+	);
+	const heroLightImageUrl = $derived(
+		current ? withSanityImageParams(current.thumbnailImage?.asset?.url) : ''
+	);
+	const heroHasVideo = $derived(/\.(mp4|webm)$/i.test(heroMediaUrl));
+	const heroImage = $derived(
+		heroMediaUrl && !heroHasVideo
+			? {
+					_id: current?._id ?? 'hero-image',
+					originalFilename: current?.thumbnail?.asset?.originalFilename ?? '',
+					size: current?.thumbnail?.asset?.size ?? 0,
+					url: heroMediaUrl
+				}
+			: undefined
+	);
+	const heroImageLight = $derived(
+		heroLightImageUrl
+			? {
+					_id: `${current?._id ?? 'hero-image'}-light`,
+					originalFilename: current?.thumbnailImage?.asset?.originalFilename ?? '',
+					size: current?.thumbnailImage?.asset?.size ?? 0,
+					url: heroLightImageUrl
+				}
+			: undefined
+	);
+	const heroVideo = $derived(
+		heroHasVideo
+			? {
+					_id: current?._id ?? 'hero-video',
+					originalFilename: current?.thumbnail?.asset?.originalFilename ?? '',
+					size: current?.thumbnail?.asset?.size ?? 0,
+					url: heroMediaUrl
+				}
+			: undefined
+	);
+
+	$effect(() => {
+		page.url.pathname;
+		untrack(() => {
+			if (!page.url.pathname.includes('work')) return;
+			requestAnimationFrame(() => {
+				scrollStore.scroll = getViewportScrollTop();
+			});
+		});
+	});
 
 	onMount(async () => {
+		if (!browser) return;
+		const scrollTriggerModule = await import('gsap/ScrollTrigger');
+		ScrollTrigger = scrollTriggerModule.ScrollTrigger;
 		gsap.registerPlugin(ScrollTrigger);
+		window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 		animateIn();
 		updateCurrent();
-		scrollStore.scroll = document.querySelector('.app') ? document.querySelector('.app')!.scrollTop : 0;
+		scrollStore.scroll = getViewportScrollTop();
 		await tick();
 		scrollHeight = document.documentElement.scrollHeight;
-		setTimeout(() => {
-			ScrollTrigger.refresh();
-			tl.to('ul > li > *', {
+		requestAnimationFrame(() => {
+			ScrollTrigger?.refresh();
+			const projectListTargets = gsap.utils.toArray<HTMLElement>('ul > li > *');
+			if (!projectListTargets.length) return;
+			tl.to(projectListTargets, {
 				scrollTrigger: {
 					id: 'trigger1',
 					trigger: 'section:first-child',
@@ -118,7 +200,7 @@
 				stagger: 0.1,
 				y: -300
 			});
-		}, 500);
+		});
 	});
 
 	const progress = $derived(
@@ -165,7 +247,7 @@
 	});
 
 	function animateIn() {
-		scrollStore.scroll = document.querySelector('.app') ? document.querySelector('.app')!.scrollTop : 0;
+		scrollStore.scroll = getViewportScrollTop();
 
 		gsap.to('.gradient-top', {
 			opacity: 1,
@@ -180,10 +262,15 @@
 		});
 	}
 
-	beforeNavigate(() => {
-		scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+	beforeNavigate(({ to }) => {
+		if (to?.url.pathname === '/' && typeof currIndex === 'number') {
+			animationStore.isTransitioning = true;
+			homeTransitionStore.requestHomeReturn(currIndex);
+		} else {
+			scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+		}
 		tl.time(0).kill();
-		const trigger1 = ScrollTrigger.getById('trigger1');
+		const trigger1 = ScrollTrigger?.getById('trigger1');
 		if (trigger1) trigger1.kill(true);
 	});
 </script>
@@ -204,10 +291,16 @@
 </aside>
 <article
 	class="relative overflow-hidden self-start w-full transition-opacity duration-300"
-	class:opacity-0={optionsStore.fullscreen || gptStore.opened}
+	class:opacity-0={optionsStore.fullscreen || gptStore.opened || animationStore.isTransitioning}
 >
 	{#if current && typeof currIndex === 'number'}
-		<Section heading={data.projects[currIndex].title} index={0} />
+		<Section
+			heading={data.projects[currIndex].title}
+			index={0}
+			image={heroImage}
+			imageLight={heroImageLight}
+			video={heroVideo}
+		/>
 		{#each current.content as item, index}
 			{#if data.projects && data.projects[currIndex] && data.projects[currIndex].content && data.projects[currIndex].content[index]}
 				<!-- Calculate imageWidth and imageHeight inside the block -->

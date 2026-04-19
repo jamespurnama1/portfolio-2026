@@ -16,6 +16,15 @@ type size = {
 
 const topLeft = (cardSize: number) => cardSize / 2;
 
+const shouldDebugWorkScroll = () => {
+	if (typeof window === 'undefined') return false;
+	const debugWindow = window as Window & {
+		__DEBUG_WORK_SCROLL__?: boolean;
+		DEBUG_WORK_SCROLL?: boolean;
+	};
+	return Boolean(debugWindow.__DEBUG_WORK_SCROLL__ || debugWindow.DEBUG_WORK_SCROLL);
+};
+
 export const centerPos = (index: number) => {
 	// console.log('[POS] Center pos', index);
 	return {
@@ -175,25 +184,68 @@ export const projectPage = (
 	maxSize?: number
 ) => {
 	let scale = 1;
-	const scroll = Math.round(scrollStore.scroll);
 	const countIndex = countStore.inertiaIndex;
 	let x = 0;
 	let y = 0;
 	let opacity = 1;
-	const mobile = size.width <= 768;
 	const cardWidth = imageGeo.parameters.width * scale;
-
-	if (index === 0) {
-		return {
-			x: mobile ? 0 : topLeft(cardWidth) - size.width * 0.5,
-			y: scroll - index * size.height,
-			z: -0.6,
-			scale: 1.3,
-			opacity
-		};
-	}
+	const mobile = size.width <= 768;
 	// Get actual media element position and convert to Three.js coordinates
 	const mediaEl = document.getElementById(`media-${index}`) as HTMLImageElement | HTMLVideoElement;
+	if (works && index === 0) {
+		const aspect = imageGeo.parameters.width / imageGeo.parameters.height || 16 / 9;
+		const desktopMaxWidth = size.width * 0.48;
+		const desktopHeight = size.height * 0.46;
+		const mobileWidth = size.width * 0.9;
+		const desiredWidth = mobile ? mobileWidth : Math.min(desktopHeight * aspect, desktopMaxWidth);
+		const desiredHeight = desiredWidth / aspect;
+		if (!mediaEl) {
+			return {
+				x: 0,
+				y: 0,
+				z: -0.6,
+				scale: desiredWidth / Math.max(imageGeo.parameters.width, 1),
+				opacity
+			};
+		}
+		const rect = mediaEl.getBoundingClientRect();
+		const fallbackHeroPos = {
+			x: rect.left + rect.width / 2 - size.width / 2,
+			y: -(rect.top + rect.height / 2) + size.height / 2,
+			z: -0.6,
+			scale: desiredWidth / Math.max(imageGeo.parameters.width, 1),
+			opacity
+		};
+		const widthDelta = Math.abs(rect.width - desiredWidth);
+		const heightDelta = Math.abs(rect.height - desiredHeight);
+		const widthTolerance = Math.max(24, desiredWidth * 0.12);
+		const heightTolerance = Math.max(24, desiredHeight * 0.12);
+		const rectLooksUnstable =
+			rect.width < 32 ||
+			rect.height < 32 ||
+			widthDelta > widthTolerance ||
+			heightDelta > heightTolerance;
+		if (rectLooksUnstable) {
+			if (shouldDebugWorkScroll()) {
+				console.log('[work-scroll/hero:fallback]', {
+					index,
+					rect: {
+						left: rect.left,
+						top: rect.top,
+						width: rect.width,
+						height: rect.height
+					},
+					desiredWidth,
+					desiredHeight,
+					fallback: fallbackHeroPos,
+					scrollY: typeof window !== 'undefined' ? window.scrollY : 0
+				});
+			}
+			return {
+				...fallbackHeroPos
+			};
+		}
+	}
 	if (works && mediaEl) {
 		const rect = mediaEl.getBoundingClientRect();
 		// match scale to element size
@@ -203,7 +255,8 @@ export const projectPage = (
 		y = -rect.top + size.height / 2 - topLeft(rect.height);
 		opacity = works ? 1 : countIndex === index ? 1 : 0;
 	} else {
-		console.warn(`[POS] projectPage: Media element not found for index ${index}`);
+		x = mobile ? 0 : topLeft(cardWidth) - size.width * 0.5;
+		y = -index * size.height;
 	}
 
 	// if (index === 1) console.log('[POS] projectPage', x, y, scale, works);

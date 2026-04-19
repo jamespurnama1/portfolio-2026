@@ -3,16 +3,17 @@
 	import { type Post, type SanityReference } from '$lib/types';
 	import { page } from '$app/stores';
 	import { optionsStore } from '$lib/stores/options.svelte';
-	import { onMount, tick, untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import ListItem from './ListItem.svelte';
 	import { countStore, gptStore } from '$lib/stores/index.svelte';
 	import { gsap } from 'gsap';
-	import { afterNavigate, beforeNavigate } from '$app/navigation';
 
 	const { data }: { data: Required<PageData> } = $props();
 	let projectList = $state() as HTMLUListElement;
 	let list = $state([]) as Array<{ content: string; catIndex: number } | Post>;
 	const posts = $state([]) as Array<Post>;
+	const categoryItems = $derived(data.catItems ?? []);
+	const projectsLength = $derived(data.projectsLength ?? data.projects?.length ?? 0);
 	const activeIndex = $derived(
 		posts[countStore.activeIndex]
 			? (posts[countStore.activeIndex].catIndex as number)
@@ -20,7 +21,6 @@
 	);
 	let sel = $state() as HTMLLIElement;
 	let selHeight = $state(44);
-	let extraDelay = $state(0);
 	// let selHeight = $derived(sel ? sel.getBoundingClientRect().height : 44);
 
 	onMount(() => {
@@ -29,13 +29,14 @@
 			x: 0,
 			opacity: 1,
 			ease: 'power3.out',
-			delay: data.projectsLength * 0.25
+			delay: projectsLength * 0.25
 		});
-		data.catItems.forEach((category, catIndex) => {
+		if (!categoryItems.length) return;
+		categoryItems.forEach((category, catIndex) => {
 			list.push({ content: `> ${category.title} >`, catIndex: catIndex });
 			category.items.forEach((item: Post | SanityReference<Post>, postIndex: number): void => {
 				(item as Post).index = catIndex
-					? data.categoriesLength[catIndex - 1] + postIndex
+					? (data.categoriesLength?.[catIndex - 1] ?? 0) + postIndex
 					: postIndex;
 				(item as Post).catIndex = catIndex;
 				list.push(item as Post);
@@ -64,23 +65,6 @@
 		});
 	});
 
-	beforeNavigate(({ to }) => {
-		if (to && to.url.pathname === '/') {
-			extraDelay = data.projectsLength * 0.15;
-		}
-	});
-
-	afterNavigate(() => {
-		if (extraDelay === 0) return;
-		setTimeout(
-			() => {
-				extraDelay = 0;
-			},
-			// revert back extraDelay after animation
-			(0.5 + extraDelay + data.projectsLength * 0.25) * 1000
-		);
-	});
-
 	$effect(() => {
 		gptStore.opened;
 		optionsStore.fullscreen;
@@ -89,7 +73,7 @@
 				gsap.to(projectList, {
 					duration: 0.3,
 					opacity: 0,
-					ease: 'power3.in',
+					ease: 'power3.in'
 				});
 			} else {
 				gsap.to(projectList, {
@@ -108,11 +92,11 @@
 	bind:this={projectList}
 	class="absolute md:h-full h-[40vh] w-full md:w-[45%] max-md:top-0 md:right-0 text-white font-mono ml-auto mix-blend-difference flex items-center justify-center flex-col opacity-0 -translate-x-10"
 >
-	{#if posts}
+	{#if list.length}
 		{#each list as item, index}
 			<ListItem
 				{index}
-				{extraDelay}
+				extraDelay={0}
 				{item}
 				{selHeight}
 				{activeIndex}

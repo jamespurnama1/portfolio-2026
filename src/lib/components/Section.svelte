@@ -33,6 +33,20 @@
 		maxSize?: number;
 	} = $props();
 
+	let sectionEl = $state() as HTMLElement;
+	const isHeroSection = $derived(index === 0);
+	const displayImageSrc = $derived.by(() => {
+		if (isHeroSection && !optionsStore.dark && imageLight?.url) return imageLight.url;
+		return image?.url ?? imageLight?.url;
+	});
+	const mediaWidth = $derived.by(() => {
+		if (imageWidth > 0 && imageHeight > 0) {
+			return `min(${maxSize}px, ${imageWidth}px)`;
+		}
+
+		return 'min(50vw, 100%)';
+	});
+
 	onMount(() => {
 		animateIn();
 	});
@@ -44,55 +58,66 @@
 	});
 
 	function animateIn() {
-		gsap.to('section', {
+		if (isHeroSection) return;
+		if (!sectionEl) return;
+		gsap.killTweensOf(sectionEl);
+		gsap.to(sectionEl, {
 			y: 0,
-			opacity: 1
-			// delay: 3
+			opacity: 1,
+			duration: 0.6,
+			ease: 'power3.out'
 		});
 	}
 </script>
 
 <section
-	class="w-full flex flex-col {index % 2 === 0
-		? 'md:flex-row-reverse'
-		: 'md:flex-row'} p-4 items-start justify-end gap-8 translate-y-full opacity-0 relative min-h-screen"
+	bind:this={sectionEl}
+	class="w-full flex flex-col {isHeroSection
+		? 'md:flex-row md:justify-center md:items-center'
+		: index % 2 === 0
+			? 'md:flex-row-reverse'
+			: 'md:flex-row'} p-4 {isHeroSection
+		? 'items-center justify-center translate-y-0 opacity-100'
+		: 'items-start justify-end translate-y-full opacity-0'} gap-8 relative min-h-screen"
 >
-	<!-- Match position with <ul> from layout -->
-	<div class="min-h-0 min-w-[25vw] flex flex-col gap-2 {index === 0 ? 'mr-0 absolute right-0' : index % 2 === 0 ? 'mr-4' : 'ml-4'}">
-		{#if !index && heading}
-			<h1
-				class="text-white mix-blend-difference font-sans text-3xl sm:text-4xl md:text-5xl 2xl:text-7xl font-bold whitespace-pre-wrap invisible"
-			>
-				{heading}
-			</h1>
-			<p class="font-mono text-xs text-white uppercase mt-8 {top ? '' : 'opacity-0'}">
-				{top ? top : ''}
-			</p>
-		{:else if heading}
-			<h2
-				class="text-white mix-blend-difference font-sans text-3xl sm:text-4xl md:text-5xl 2xl:text-7xl font-bold whitespace-pre-wrap"
-			>
-				{heading}
-			</h2>
-		{/if}
-		{#if body}
-			<p class="text-white mix-blend-difference whitespace-pre-wrap">{body}</p>
-		{/if}
-	</div>
-	<div class="flex flex-col justify-center gap-5 invisible">
-		<!-- Placeholder matches actual image size -->
+	{#if !isHeroSection}
+		<div class="min-h-0 min-w-[25vw] flex flex-col gap-2 {index % 2 === 0 ? 'mr-4' : 'ml-4'}">
+			{#if heading}
+				<h2
+					class="text-white mix-blend-difference font-sans text-3xl sm:text-4xl md:text-5xl 2xl:text-7xl font-bold whitespace-pre-wrap"
+				>
+					{heading}
+				</h2>
+			{/if}
+			{#if body}
+				<p class="text-white mix-blend-difference whitespace-pre-wrap">{body}</p>
+			{/if}
+		</div>
+	{/if}
+
+	<div
+		class="flex flex-col justify-center gap-5 invisible max-w-full {isHeroSection
+			? 'w-[90vw] max-w-[90vw] md:order-2 md:w-[48vw] md:max-w-[48vw] md:flex-none'
+			: ''}"
+	>
 		{#if image}
 			<img
 				id="media-{index}"
-				src={imageLight && !optionsStore.dark ? imageLight.url : image.url}
+				src={displayImageSrc}
 				alt={heading}
-				class="object-contain max-w-full select-none min-w-[50vw]"
+				class="object-contain max-w-full select-none {isHeroSection
+					? 'w-[90vw] max-w-[90vw] md:w-auto md:max-w-[48vw] md:h-[46vh] md:min-w-0'
+					: 'min-w-[50vw]'}"
+				style={isHeroSection ? undefined : `width: ${mediaWidth};`}
 			/>
 		{:else if video}
 			<video
 				id="media-{index}"
 				src={video.url}
-				class="object-contain max-w-full max-h-[80vh] select-none min-w-[50vw]"
+				class="object-contain max-w-full max-h-[80vh] select-none {isHeroSection
+					? 'w-[90vw] max-w-[90vw] md:w-auto md:max-w-[48vw] md:h-[46vh] md:min-w-0'
+					: 'min-w-[50vw]'}"
+				style={isHeroSection ? undefined : `width: ${mediaWidth};`}
 				autoplay
 				loop
 				muted
@@ -101,4 +126,19 @@
 		{/if}
 		<p class="font-mono text-xs text-white {bottom ? '' : 'opacity-0'}">{bottom ? '' : ''}</p>
 	</div>
+
+	{#if isHeroSection && heading}
+		<div
+			class="pointer-events-none mt-4 w-[90vw] max-w-[90vw] md:order-1 md:mt-0 md:mr-4 md:w-[16rem] md:max-w-[16rem] md:flex-none md:self-center"
+		>
+			<h1
+				class="text-white mix-blend-difference font-sans text-3xl sm:text-4xl md:text-5xl 2xl:text-7xl font-bold whitespace-pre-wrap text-left"
+			>
+				{heading}
+			</h1>
+			{#if top}
+				<p class="font-mono text-xs text-white uppercase mt-4 text-left">{top}</p>
+			{/if}
+		</div>
+	{/if}
 </section>

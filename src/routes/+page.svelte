@@ -1,16 +1,23 @@
 <script lang="ts">
-	import { animationStore, countStore, gptStore, scrollStore } from '$lib/stores/index.svelte';
+	import {
+		animationStore,
+		countStore,
+		gptStore,
+		homeTransitionStore,
+		scrollStore
+	} from '$lib/stores/index.svelte';
 	import { scale } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 	import { gsap } from 'gsap';
-	import { ScrollTrigger } from 'gsap/ScrollTrigger';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import { projectListHost } from '$lib/stores/projectListHost';
 	import { projectSectionStore } from '$lib/stores/projectSection';
 	import { introSectionStore } from '$lib/stores/introSection';
 	import type { PageData } from './$types';
+	import type { ScrollTrigger as ScrollTriggerInstance } from 'gsap/ScrollTrigger';
 
 	const { data }: { data: Required<PageData> } = $props();
 	const introHeadlineText = 'Where ideas<br>&&nbsp;design are elevated <mono>digitally.</mono>';
@@ -30,13 +37,13 @@
 	let introHeadlineDisplay = $state('');
 	let introBodyDisplay = $state('');
 	let typingRun = 0;
+	let categoryTriggerRef: ScrollTriggerInstance | null = null;
+	let ScrollTrigger: typeof import('gsap/ScrollTrigger').ScrollTrigger | null = null;
 
 	type MarkedToken =
 		| { kind: 'text'; text: string }
 		| { kind: 'mono'; text: string }
 		| { kind: 'br' };
-
-	gsap.registerPlugin(ScrollTrigger);
 
 	function escapeHtml(value: string) {
 		return value
@@ -137,7 +144,7 @@
 		projectListHost.set(null);
 		projectSectionStore.reset();
 		introSectionStore.reset();
-		ScrollTrigger.getAll().forEach((trigger) => trigger.kill(true));
+		ScrollTrigger?.getAll().forEach((trigger) => trigger.kill(true));
 		unwrapPinnedSection(introSection);
 		unwrapPinnedSection(categorySection);
 		document.querySelectorAll('.pin-spacer').forEach((spacer) => {
@@ -157,6 +164,22 @@
 
 	function wait(ms: number) {
 		return new Promise((resolve) => setTimeout(resolve, ms));
+	}
+
+	function prepareHomeReturnScroll() {
+		if (!homeTransitionStore.pending || typeof window === 'undefined') return null;
+		const maxIndex = Math.max(0, projectsLength - 1);
+		const targetIndex = Math.max(0, Math.min(homeTransitionStore.index, maxIndex));
+		const progress = maxIndex === 0 ? 0 : targetIndex / maxIndex;
+
+		countStore.inertiaIndex = targetIndex;
+		introSectionStore.setActive(false);
+		introSectionStore.setProgress(1);
+		projectSectionStore.setPinned(true);
+		projectSectionStore.setProgress(progress);
+		projectSectionStore.setViewportTop(0);
+
+		return { progress, targetIndex };
 	}
 
 	async function animateScrambleText(
@@ -215,72 +238,104 @@
 		page.url.pathname;
 		untrack(() => {
 			if (page.url.pathname !== '/' || gptStore.opened) return;
+			if (!ScrollTrigger) return;
 			requestAnimationFrame(() => {
-				ScrollTrigger.refresh();
+				ScrollTrigger?.refresh();
 				syncCategorySectionViewportTop();
 			});
 		});
 	});
 
 	onMount(() => {
-		runIntroCopyAnimation();
-		if (page.url.pathname !== '/') {
-			cleanupHomeScrollState();
-			return;
-		}
+		let cleanup: (() => void) | undefined;
 
-		introSectionStore.setActive(true);
-		introSectionStore.setProgress(0);
+		void (async () => {
+			if (!browser) return;
+			const scrollTriggerModule = await import('gsap/ScrollTrigger');
+			ScrollTrigger = scrollTriggerModule.ScrollTrigger;
+			gsap.registerPlugin(ScrollTrigger);
 
-		if (projectListHostEl) {
-			projectListHost.set(projectListHostEl);
-		}
-		syncCategorySectionViewportTop();
+			const restoringHomeReturn = homeTransitionStore.pending;
+			const pendingHomeReturn = restoringHomeReturn ? prepareHomeReturnScroll() : null;
+			if (restoringHomeReturn) {
+				introHeadlineDisplay = introHeadlineReserve;
+				introBodyDisplay = introBodyReserve;
+			} else {
+				animationStore.isTransitioning = false;
+				runIntroCopyAnimation();
+			}
+			if (page.url.pathname !== '/') {
+				cleanupHomeScrollState();
+				return;
+			}
 
-		const triggers: ScrollTrigger[] = [];
-		if (introSection) {
-			triggers.push(
-				ScrollTrigger.create({
-					trigger: introSection,
-					start: 'top top',
-					end: '+=200%',
-					pin: true,
-					pinSpacing: true,
-					scrub: true,
-					onEnter: () => {
-						if (gptStore.opened) return;
-						introSectionStore.setActive(true);
-					},
-					onEnterBack: () => {
-						if (gptStore.opened) return;
-						introSectionStore.setActive(true);
-					},
-					onLeave: () => {
-						if (gptStore.opened) return;
-						introSectionStore.setActive(false);
-						introSectionStore.setProgress(1);
-					},
-					onLeaveBack: () => {
-						if (gptStore.opened) return;
-						introSectionStore.setActive(false);
-						introSectionStore.setProgress(0);
-					},
-					onUpdate: (self) => {
-						if (gptStore.opened) return;
-						introSectionStore.setProgress(self.progress);
-					}
-				})
-			);
-		}
-		if (categorySection) {
-			triggers.push(
-				ScrollTrigger.create({
+			if (restoringHomeReturn) {
+				introSectionStore.setActive(false);
+				introSectionStore.setProgress(1);
+			} else {
+				introSectionStore.setActive(true);
+				introSectionStore.setProgress(0);
+			}
+
+			if (projectListHostEl) {
+				projectListHost.set(projectListHostEl);
+			}
+			syncCategorySectionViewportTop();
+
+			const triggers: ScrollTriggerInstance[] = [];
+			if (introSection && ScrollTrigger) {
+				triggers.push(
+					ScrollTrigger.create({
+						trigger: introSection,
+						start: 'top top',
+						end: '+=200%',
+						pin: true,
+						pinSpacing: true,
+						scrub: true,
+						onEnter: () => {
+							if (gptStore.opened) return;
+							introSectionStore.setActive(true);
+						},
+						onEnterBack: () => {
+							if (gptStore.opened) return;
+							introSectionStore.setActive(true);
+						},
+						onLeave: () => {
+							if (gptStore.opened) return;
+							introSectionStore.setActive(false);
+							introSectionStore.setProgress(1);
+						},
+						onLeaveBack: () => {
+							if (gptStore.opened) return;
+							introSectionStore.setActive(false);
+							introSectionStore.setProgress(0);
+						},
+						onUpdate: (self) => {
+							if (gptStore.opened) return;
+							introSectionStore.setProgress(self.progress);
+						}
+					})
+				);
+			}
+			if (categorySection && ScrollTrigger) {
+				const maxIndex = Math.max(0, projectsLength - 1);
+				categoryTriggerRef = ScrollTrigger.create({
 					trigger: categorySection,
 					start: 'top top',
 					end: `+=${projectsPinPercent}%`,
 					pin: true,
 					pinSpacing: true,
 					scrub: true,
+					...(maxIndex > 0
+						? {
+								snap: {
+									snapTo: (value: number) => Math.round(value * maxIndex) / maxIndex,
+									duration: { min: 0.06, max: 0.12 },
+									delay: 0,
+									ease: 'power2.out'
+								}
+							}
+						: {}),
 					onEnter: () => {
 						if (gptStore.opened) return;
 						projectSectionStore.setPinned(true);
@@ -309,19 +364,40 @@
 						projectSectionStore.setProgress(self.progress);
 						syncCategorySectionViewportTop();
 						if (self.isActive) {
-							const maxIndex = Math.max(0, projectsLength - 1);
 							countStore.inertiaIndex = maxIndex === 0 ? 0 : self.progress * maxIndex;
 							scrollStore.scroll = typeof window !== 'undefined' ? window.scrollY : 0;
 						}
 					}
-				})
-			);
-		}
-		return () => {
-			typingRun += 1;
-			triggers.forEach((trigger) => trigger.kill(true));
-			cleanupHomeScrollState();
-		};
+				});
+				triggers.push(categoryTriggerRef);
+			}
+			if (pendingHomeReturn && ScrollTrigger) {
+				requestAnimationFrame(() => {
+					ScrollTrigger?.refresh();
+					if (categoryTriggerRef) {
+						const targetScroll =
+							categoryTriggerRef.start +
+							(categoryTriggerRef.end - categoryTriggerRef.start) * pendingHomeReturn.progress;
+						window.scrollTo({ top: targetScroll, left: 0, behavior: 'auto' });
+						scrollStore.scroll = targetScroll;
+						countStore.inertiaIndex = pendingHomeReturn.targetIndex;
+					}
+					ScrollTrigger?.update();
+					projectSectionStore.setViewportTop(0);
+					syncCategorySectionViewportTop();
+					animationStore.isTransitioning = false;
+					homeTransitionStore.clear();
+				});
+			}
+
+			cleanup = () => {
+				typingRun += 1;
+				triggers.forEach((trigger) => trigger.kill(true));
+				cleanupHomeScrollState();
+			};
+		})();
+
+		return () => cleanup?.();
 	});
 </script>
 
@@ -330,7 +406,12 @@
 	<meta name="description" content="Portfolio" />
 </svelte:head>
 
-<section bind:this={introSection} class="intro-section">
+<section
+	bind:this={introSection}
+	class="intro-section"
+	class:opacity-0={animationStore.isTransitioning || page.url.pathname !== '/'}
+	class:invisible={animationStore.isTransitioning || page.url.pathname !== '/'}
+>
 	<div class="intro-copy max-w-4xl text-white mix-blend-difference">
 		<h1
 			class="font-sans text-4xl md:text-5xl lg:text-6xl leading-[0.92] font-bold mb-6 text-left intro-heading"
@@ -348,12 +429,13 @@
 		</p>
 	</div>
 </section>
-<section class="landing-section" bind:this={categorySection}>
-	<div
-		class="project-list-host"
-		class:project-list-host--active={page.url.pathname === '/'}
-		bind:this={projectListHostEl}
-	></div>
+<section
+	class="landing-section"
+	bind:this={categorySection}
+	class:opacity-0={animationStore.isTransitioning || page.url.pathname !== '/'}
+	class:invisible={animationStore.isTransitioning || page.url.pathname !== '/'}
+>
+	<div class="project-list-host" bind:this={projectListHostEl}></div>
 	{#if countStore.isNewCat}
 		<div
 			class="md:w-[30vw] top-1/2 md:top-[20%] max-md:-translate-y-1/2 md:left-0 md:translate-x-1/3 pointer-events-none absolute"
@@ -365,7 +447,11 @@
 		</div>
 	{/if}
 </section>
-<section class="final-section">
+<section
+	class="final-section"
+	class:opacity-0={animationStore.isTransitioning || page.url.pathname !== '/'}
+	class:invisible={animationStore.isTransitioning || page.url.pathname !== '/'}
+>
 	<div class="final-copy max-w-5xl text-white mix-blend-difference">
 		<h3
 			class="font-sans text-3xl sm:text-4xl md:text-5xl 2xl:text-7xl font-bold leading-[0.92] text-left mb-8"
@@ -397,10 +483,6 @@
 		bottom: 0;
 		left: 0;
 		pointer-events: none;
-	}
-
-	.project-list-host--active {
-		pointer-events: auto;
 	}
 
 	.intro-copy {

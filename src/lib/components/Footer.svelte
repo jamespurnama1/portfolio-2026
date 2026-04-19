@@ -13,38 +13,38 @@
 
 <footer
 	class="fixed bottom-0 mix-blend-difference text-white text-xs flex justify-between
-		uppercase font-mono w-full items-end p-4 z-20 overflow-hidden"
+		uppercase font-mono w-full items-end p-4 z-20 overflow-hidden transition-opacity duration-300"
+	class:opacity-0={!revealed}
+	class:pointer-events-none={!revealed}
 >
-	{#if revealed}
-		<a
-			href="/"
-			class="h-8 w-auto group"
-			transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 900 }}
+	<a
+		href="/"
+		class="h-8 w-auto group"
+		transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 900 }}
+	>
+		<img
+			alt="James Henry Logo"
+			class="h-full w-full object-contain group-hover:!scale-125 transition-transform"
+			src={logo}
+		/>
+	</a>
+	<span class="flex flex-col max-md:hidden">
+		<button
+			onclick={() => theme(!optionsStore.dark, true)}
+			transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 800 }}
+			><p class="text-right leading-none uppercase">
+				<ScrambleText text={optionsStore.dark ? 'DARK' : 'LIGHT'} />
+			</p></button
 		>
-			<img
-				alt="James Henry Logo"
-				class="h-full w-full object-contain group-hover:!scale-125 transition-transform"
-				src={logo}
-			/>
+		<a
+			href="https://github.com/jamespurnama1/new-portfolio"
+			target="_blank"
+			rel="noopener noreferrer"
+			transition:fly={{ y: 200, duration: 700, easing: cubicInOut, delay: 700 }}
+			><p class="text-right leading-none"><ScrambleText text={dev ? 'DEV' : 'PROD'} /></p>
 		</a>
-		<span class="flex flex-col max-md:hidden">
-			<button
-				onclick={() => theme(!optionsStore.dark, true)}
-				transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 800 }}
-				><p class="text-right leading-none uppercase">
-					<ScrambleText text={optionsStore.dark ? 'DARK' : 'LIGHT'} />
-				</p></button
-			>
-			<a
-				href="https://github.com/jamespurnama1/new-portfolio"
-				target="_blank"
-				rel="noopener noreferrer"
-				transition:fly={{ y: 200, duration: 700, easing: cubicInOut, delay: 700 }}
-				><p class="text-right leading-none"><ScrambleText text={dev ? 'DEV' : 'PROD'} /></p>
-			</a>
-			<a href="/branch" transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 800 }}
-				><p class="text-right leading-none"><ScrambleText text="v4.0.0" /></p></a
-			>
-		</span>
-	{/if}
+		<a href="/branch" transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 800 }}
+			><p class="text-right leading-none"><ScrambleText text="v4.0.0" /></p></a
+		>
+	</span>
 </footer>

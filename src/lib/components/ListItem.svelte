@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { animationStore, countStore, loadStore } from '$lib/stores/index.svelte';
+	import {
+		animationStore,
+		countStore,
+		currentHomeCardSnapshotStore,
+		loadStore,
+		sharedCardTransitionStore
+	} from '$lib/stores/index.svelte';
 	import type { Post } from '$lib/types';
 	import { cubicInOut } from 'svelte/easing';
 	import { fade, fly } from 'svelte/transition';
@@ -14,14 +20,14 @@
 		activeIndex,
 		selHeight,
 		active,
-		extraDelay
+		extraDelay = 0
 	}: {
 		item: { content: string; catIndex: number } | Post;
 		index: number;
 		activeIndex: number;
 		selHeight: number;
 		active?: boolean;
-		extraDelay: number;
+		extraDelay?: number;
 	} = $props();
 
 	let hidden = $state(false);
@@ -34,15 +40,35 @@
 
 	afterNavigate(() => {
 		if (!hidden) return;
-		setTimeout(
-			() => {
-				hidden = false;
-			},
-			index * 100 + delay + extraDelay * 1000
-		);
+		requestAnimationFrame(() => {
+			hidden = false;
+		});
 	});
 
 	const delay = $derived(loadStore.loaded ? 500 : 3000);
+	const targetSlug = $derived((item as Post).slug?.current ?? '');
+	const isReelsItem = $derived(targetSlug === 'reels' || (item as Post).index === 0);
+
+	function navigateToWorkFromList(targetPath: string, targetIndex: number) {
+		const snapshot = currentHomeCardSnapshotStore.value;
+		if (
+			page.url.pathname === '/' &&
+			snapshot &&
+			snapshot.index === targetIndex &&
+			snapshot.slug === targetSlug
+		) {
+			sharedCardTransitionStore.set({
+				direction: 'to-work',
+				index: snapshot.index,
+				slug: snapshot.slug,
+				geometry: snapshot.geometry,
+				transform: snapshot.transform
+			});
+		}
+
+		goto(targetPath);
+	}
+
 	//+= active element / 2 + (active pos - item pos) * item height
 	const offset = $derived(
 		!active && typeof item.catIndex === 'number'
@@ -65,7 +91,7 @@
 				x: 200,
 				duration: 500,
 				easing: cubicInOut,
-				delay: index * 100 + delay + extraDelay * 1000
+				delay: 0
 			}}
 			out:fade={{ duration: 400 }}
 		>
@@ -83,7 +109,7 @@
 				x: '100vw',
 				duration: 500,
 				easing: cubicInOut,
-				delay: index * 100 + delay + extraDelay * 1000
+				delay: 0
 			}}
 			out:fade={{ duration: 400 }}
 		>
@@ -92,21 +118,23 @@
 			{/if}
 			<button
 				class:opacity-0={hidden}
+				class:pointer-events-auto={page.url.pathname === '/' || page.url.pathname.includes('work')}
 				class="md:text-left text-center group {active
 					? 'hover:translate-x-12'
 					: 'hover:translate-x-4'} {page.url.pathname === '/'
 					? 'transition duration-300'
 					: 'opacity-0'}"
 				onclick={(e) => {
-					if (countStore.activeIndex === (item as Post).index) {
-						if ((item as Post).slug.current !== 'reels') {
-							goto(`/work/${(item as Post).slug.current}`);
-						} else {
-							// if reels then open
-							goto('/#reels');
-						}
+					const targetIndex = (item as Post).index as number;
+					if (countStore.activeIndex !== targetIndex) {
+						countStore.inertiaIndex = targetIndex;
+						return;
+					}
+
+					if (isReelsItem) {
+						goto('/#reels');
 					} else {
-						countStore.inertiaIndex = (item as Post).index as number;
+						navigateToWorkFromList(`/work/${targetSlug}`, targetIndex);
 					}
 				}}
 			>
@@ -124,7 +152,7 @@
 					/></span
 				>{(item as Post).title}
 			</button>
-			{#if page.url.pathname.includes('work') && (item as Post).role.length}
+			{#if page.url.pathname.includes('work') && ((item as Post).role?.length ?? 0)}
 				<p
 					class:opacity-0={hidden}
 					transition:fade

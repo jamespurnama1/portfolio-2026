@@ -9,12 +9,13 @@
 		CanvasTexture,
 		RGBFormat,
 		SRGBColorSpace,
-		PerspectiveCamera
+		PerspectiveCamera,
+		LinearFilter,
+		LinearMipmapLinearFilter
 	} from 'three';
 	import { optionsStore } from '$lib/stores/options.svelte';
 	import { countStore, loadStore } from '$lib/stores/index.svelte';
 	import { cardDimensionsStore } from '$lib/stores/cardDimensions.svelte';
-	import gsap from 'gsap';
 	import { untrack, onDestroy, onMount } from 'svelte';
 	import Cards from './Cards.svelte';
 	import IntroGridScene from './IntroGridScene.svelte';
@@ -49,25 +50,19 @@
 	renderer.outputColorSpace = SRGBColorSpace;
 	renderer.setPixelRatio(devicePixelRatio || 1);
 
-	// theme
-	$effect(() => {
-		optionsStore.dark;
-		untrack(() => {
-			if (!canvas) return;
-			if (!optionsStore.dark) {
-				gsap.to(canvas, {
-					filter: 'invert(100%)'
-				});
-			} else if (optionsStore.dark) {
-				gsap.to(canvas, {
-					filter: 'invert(0%)'
-				});
-			}
-		});
-	});
-
 	const videoBank: Array<HTMLVideoElement> = [];
 	let sanityImageParams = $state('auto=format&fit=max&q=85&w=1920');
+
+	function configureColorTexture(texture: Texture, { isVideo = false } = {}) {
+		texture.colorSpace = SRGBColorSpace;
+		texture.magFilter = LinearFilter;
+		texture.minFilter = isVideo ? LinearFilter : LinearMipmapLinearFilter;
+		texture.generateMipmaps = !isVideo;
+		texture.premultiplyAlpha = false;
+		texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+		texture.needsUpdate = true;
+		return texture;
+	}
 
 	function disposeTextureList(items: Texture[]) {
 		items.forEach((tex) => {
@@ -75,6 +70,25 @@
 				tex.dispose();
 			}
 		});
+	}
+
+	function disposeResolvedWorkTextures() {
+		imageTextures.forEach((tex) => {
+			if (tex instanceof Promise) return;
+			if (tex && typeof tex.dispose === 'function') {
+				tex.dispose();
+			}
+		});
+		imageTextures = [];
+		cardDimensionsStore.set([]);
+	}
+
+	function cleanupWorkVideoBank() {
+		videoBank.forEach((video) => {
+			video.pause();
+			if (video.parentNode) video.parentNode.removeChild(video);
+		});
+		videoBank.length = 0;
 	}
 
 	$effect(() => {
@@ -89,6 +103,15 @@
 			return url;
 		}
 		return `${url}${url.includes('?') ? '&' : '?'}${sanityImageParams}`;
+	}
+
+	async function loadImageTexture(url: string) {
+		const texture = await loadTexture(url);
+		return configureColorTexture(texture);
+	}
+
+	function isVideoUrl(url: string) {
+		return /\.(mp4|webm)$/i.test(url);
 	}
 
 	function initGradientTexture() {
@@ -185,8 +208,7 @@
 		await waitForVideoData(video);
 		const texture = new VideoTexture(video);
 		texture.format = RGBFormat;
-		texture.colorSpace = SRGBColorSpace;
-		return texture;
+		return configureColorTexture(texture, { isVideo: true });
 	}
 
 	async function videoLoader(str: string, index: number, id = false) {
@@ -216,9 +238,7 @@
 	}
 
 	beforeNavigate(() => {
-		videoBank.forEach((v) => {
-			if (v.parentNode) v.parentNode.removeChild(v);
-		});
+		cleanupWorkVideoBank();
 	});
 
 	// Calculate camera to match orthographic viewport
@@ -268,9 +288,7 @@
 					: null;
 				if (preferImageThumbnails && thumbnailUrl) {
 					try {
-						const texture = await loadTexture(thumbnailUrl);
-						texture.colorSpace = SRGBColorSpace;
-						nextTextures[i] = texture;
+						nextTextures[i] = configureColorTexture(await loadTexture(thumbnailUrl));
 						continue;
 					} catch (error) {
 						console.error(
@@ -294,26 +312,29 @@
 		});
 	});
 
-	function useLightImage(x: any, i: number) {
+	function useWorkCardMedia(x: any) {
 		let url = '';
 		if (x.video?.url) {
 			url = x.video.url;
-		} else if (x.imageLight?.url && !optionsStore.dark) {
-			url = x.imageLight.url;
 		} else if (x.image?.url) {
 			url = x.image.url;
+		} else if (!optionsStore.dark && x.imageLight?.url) {
+			url = x.imageLight.url;
+		} else if (x.imageLight?.url) {
+			url = x.imageLight.url;
 		}
 		return withSanityImageParams(url);
 	}
 
 	async function handleWorkCards() {
 		loadStore.cardLoading = true;
+		disposeResolvedWorkTextures();
+		cleanupWorkVideoBank();
 		const current = data!.projects!.find((x) => x.slug.current === page.params.slug)!;
-		imageTextures = [];
 		const promises: Promise<Texture>[] = [];
 		const dimensions: { width: number; height: number }[] = [];
 		current.content.forEach((x, i) => {
-			let url = useLightImage(x, i);
+			let url = useWorkCardMedia(x);
 			if (!url.length) {
 				console.warn('No valid media URL found for content item', i, x);
 				return;
@@ -333,8 +354,7 @@
 				imageTextures.push(promise);
 				promises.push(promise);
 			} else {
-				const promise = loadTexture(url).then((texture) => {
-					texture.colorSpace = SRGBColorSpace;
+				const promise = loadImageTexture(url).then((texture) => {
 					if (texture.image) {
 						dimensions[i] = {
 							width: texture.image.naturalWidth || texture.image.width || 0,
@@ -423,25 +443,16 @@
 
 	onDestroy(() => {
 		interactivityContext.target.set(undefined);
+		cleanupWorkVideoBank();
 		// Dispose all loaded textures
 		textures.forEach((tex) => {
 			if (tex && typeof tex.dispose === 'function') tex.dispose();
 		});
-		imageTextures.forEach((tex) => {
-			if (
-				tex &&
-				tex instanceof Object &&
-				'dispose' in tex &&
-				typeof (tex as Texture).dispose === 'function'
-			) {
-				(tex as Texture).dispose();
-			}
-		});
+		disposeResolvedWorkTextures();
 		if (postFXMesh && typeof postFXMesh.geometry?.dispose === 'function')
 			postFXMesh.geometry.dispose();
 		// Optionally clear arrays
 		textures.length = 0;
-		imageTextures.length = 0;
 	});
 </script>
 
@@ -451,15 +462,28 @@
 {/if}
 {#if textures.length && data}
 	{#each textures as texture, i}
-		{#if page.url.pathname === '/' || (page.url.pathname.includes('work') && i === countStore.activeIndex)}
-			<Cards
-				{texture}
-				index={page.url.pathname.includes('work') ? 0 : i}
-				data={data as Required<PageData>}
-				home={page.url.pathname === '/'}
-				works={page.url.pathname.includes('work') && i === countStore.activeIndex}
-				homeAspectRatio={preferImageThumbnails ? 16 / 9 : undefined}
-			/>
+		{#if page.url.pathname === '/'}
+			{#key `home-card-${i}`}
+				<Cards
+					{texture}
+					index={i}
+					data={data as Required<PageData>}
+					home={true}
+					works={false}
+					homeAspectRatio={preferImageThumbnails ? 16 / 9 : undefined}
+				/>
+			{/key}
+		{:else if page.url.pathname.includes('work') && i === countStore.activeIndex}
+			{#key `work-hero-${page.params.slug}-${i}`}
+				<Cards
+					{texture}
+					index={0}
+					data={data as Required<PageData>}
+					home={false}
+					works={true}
+					homeAspectRatio={preferImageThumbnails ? 16 / 9 : undefined}
+				/>
+			{/key}
 		{/if}
 	{/each}
 {/if}
@@ -468,10 +492,14 @@
 	{#each imageTextures as texture, i}
 		{#if texture instanceof Promise}
 			{#await texture then x}
-				<Cards texture={x} index={i + 1} works={true} data={data as Required<PageData>} />
+				{#key `work-detail-${page.params.slug}-${i}`}
+					<Cards texture={x} index={i + 1} works={true} data={data as Required<PageData>} />
+				{/key}
 			{/await}
 		{:else}
-			<Cards {texture} index={i + 1} works={true} data={data as Required<PageData>} />
+			{#key `work-detail-${page.params.slug}-${i}`}
+				<Cards {texture} index={i + 1} works={true} data={data as Required<PageData>} />
+			{/key}
 		{/if}
 	{/each}
 {/if}

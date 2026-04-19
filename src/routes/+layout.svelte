@@ -34,6 +34,15 @@
 	import { browser, dev } from '$app/environment';
 	import { isSafariUserAgent } from '$lib/utils/device';
 
+	const shouldDebugWorkScroll = () =>
+		browser &&
+		Boolean(
+			(window as Window & { __DEBUG_WORK_SCROLL__?: boolean; DEBUG_WORK_SCROLL?: boolean })
+				.__DEBUG_WORK_SCROLL__ ||
+				(window as Window & { __DEBUG_WORK_SCROLL__?: boolean; DEBUG_WORK_SCROLL?: boolean })
+					.DEBUG_WORK_SCROLL
+		);
+
 	let prev = 0;
 	let innerWidth = $state(0);
 	let app = $state() as HTMLDivElement | undefined;
@@ -52,6 +61,10 @@
 	let projectListWrapper = $state() as HTMLDivElement | undefined;
 	let projectListFallback = $state() as HTMLDivElement | undefined;
 	let currentProjectListHost: HTMLElement | null = null;
+	let wheelHandler = $state<((event: WheelEvent) => void) | null>(null);
+	let touchStartHandler = $state<((event: TouchEvent) => void) | null>(null);
+	let touchMoveHandler = $state<((event: TouchEvent) => void) | null>(null);
+	let workScrollHandler = $state<(() => void) | null>(null);
 	const showSource = $derived(optionsStore.showSources ? 'opacity-100 z-50' : 'opacity-0 -z-10');
 	const slug = $derived(data.projects ? data.projects[countStore.activeIndex].slug.current : '');
 	const showProjectList = $derived(page.url.pathname === '/' || page.url.pathname.includes('work'));
@@ -416,11 +429,27 @@
 	}
 
 	function syncWorkScroll() {
-		const currentScroll =
-			page.url.pathname === '/'
+		const documentScrollRoot = document.scrollingElement ?? document.documentElement;
+		const scrollRoot = page.url.pathname.includes('work')
+			? documentScrollRoot
+			: app && app.scrollHeight > app.clientHeight
+				? app
+				: documentScrollRoot;
+		const currentScroll = page.url.pathname.includes('work')
+			? Math.max(window.scrollY, documentScrollRoot?.scrollTop ?? 0)
+			: page.url.pathname === '/'
 				? window.scrollY
-				: ((app ?? document.scrollingElement ?? document.documentElement)?.scrollTop ??
-					window.scrollY);
+				: Math.max(window.scrollY, scrollRoot?.scrollTop ?? 0);
+		if (shouldDebugWorkScroll() && page.url.pathname.includes('work')) {
+			console.log('[work-scroll/layout]', {
+				pathname: page.url.pathname,
+				windowScrollY: window.scrollY,
+				rootTag: scrollRoot?.tagName,
+				rootScrollTop: scrollRoot?.scrollTop,
+				appScrollTop: app?.scrollTop,
+				currentScroll
+			});
+		}
 		scrollStore.scroll = currentScroll;
 		return currentScroll;
 	}
@@ -435,11 +464,7 @@
 		} else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
 			deltaY *= 53;
 		}
-
-		if (page.url.pathname.includes('work')) {
-			syncWorkScroll();
-			return;
-		}
+		if (page.url.pathname.includes('work')) return;
 
 		handleVirtualScroll(deltaY);
 	}
@@ -455,11 +480,8 @@
 		const deltaY = touchStartY - currentY;
 		if (Math.abs(deltaY) < 1) return;
 		touchStartY = currentY;
-		if (page.url.pathname.includes('work')) {
-			syncWorkScroll();
-			return;
-		}
 		const scaledDelta = Math.max(Math.min(deltaY * 10, 2000), -2000);
+		if (page.url.pathname.includes('work')) return;
 		if (!page.url.pathname.includes('work')) {
 			// event.preventDefault();
 		}
@@ -469,6 +491,28 @@
 	function disableScroll(e: Event) {
 		e.preventDefault();
 	}
+
+	$effect(() => {
+		page.url.pathname;
+		return untrack(() => {
+			if (!wheelHandler || !touchStartHandler || !touchMoveHandler) return;
+			const useVirtualScroll = !page.url.pathname.includes('work');
+			if (useVirtualScroll) {
+				document.addEventListener('wheel', wheelHandler, { passive: false });
+				document.addEventListener('touchstart', touchStartHandler, { passive: true });
+				document.addEventListener('touchmove', touchMoveHandler, { passive: false });
+				return () => {
+					document.removeEventListener('wheel', wheelHandler!);
+					document.removeEventListener('touchstart', touchStartHandler!);
+					document.removeEventListener('touchmove', touchMoveHandler!);
+				};
+			}
+
+			document.removeEventListener('wheel', wheelHandler);
+			document.removeEventListener('touchstart', touchStartHandler);
+			document.removeEventListener('touchmove', touchMoveHandler);
+		});
+	});
 
 	$effect(() => {
 		optionsStore.fullscreen;
@@ -485,6 +529,14 @@
 		});
 	});
 
+	$effect(() => {
+		page.url.pathname;
+		untrack(() => {
+			if (!app || !page.url.pathname.includes('work')) return;
+			if (app.scrollTop !== 0) app.scrollTop = 0;
+		});
+	});
+
 	onMount(() => {
 		const unsubscribeProjectListHost = projectListHost.subscribe((host) => {
 			currentProjectListHost = host;
@@ -498,18 +550,15 @@
 
 		app = document.querySelector('.app') as HTMLDivElement;
 
-		const wheelHandler = (event: WheelEvent) => onScroll(event);
-		const touchStartHandler = (event: TouchEvent) => onTouchStart(event);
-		const touchMoveHandler = (event: TouchEvent) => onTouchMove(event);
-		const workScrollHandler = () => {
+		wheelHandler = (event: WheelEvent) => onScroll(event);
+		touchStartHandler = (event: TouchEvent) => onTouchStart(event);
+		touchMoveHandler = (event: TouchEvent) => onTouchMove(event);
+		workScrollHandler = () => {
 			if (page.url.pathname.includes('work') || page.url.pathname === '/') {
 				syncWorkScroll();
 			}
 		};
 
-		document.addEventListener('wheel', wheelHandler, { passive: true });
-		document.addEventListener('touchstart', touchStartHandler, { passive: true });
-		document.addEventListener('touchmove', touchMoveHandler, { passive: false });
 		window.addEventListener('scroll', workScrollHandler, { passive: true });
 		app?.addEventListener('scroll', workScrollHandler, { passive: true });
 
@@ -527,18 +576,18 @@
 		return () => {
 			unsubscribeProjectListHost();
 			relocateProjectList(null);
-			document.removeEventListener('wheel', wheelHandler);
-			document.removeEventListener('touchstart', touchStartHandler);
-			document.removeEventListener('touchmove', touchMoveHandler);
-			window.removeEventListener('scroll', workScrollHandler);
-			app?.removeEventListener('scroll', workScrollHandler);
+			if (wheelHandler) document.removeEventListener('wheel', wheelHandler);
+			if (touchStartHandler) document.removeEventListener('touchstart', touchStartHandler);
+			if (touchMoveHandler) document.removeEventListener('touchmove', touchMoveHandler);
+			if (workScrollHandler) window.removeEventListener('scroll', workScrollHandler);
+			if (workScrollHandler) app?.removeEventListener('scroll', workScrollHandler);
 		};
 	});
 </script>
 
 <svelte:window bind:innerWidth bind:innerHeight on:keydown={onKeyDown} />
 
-<div class="app min-h-screen w-screen overflow-x-hidden">
+<div class="app min-h-screen w-screen overflow-x-hidden overflow-y-clip">
 	<!-- Header -->
 	<Nav bind:this={navComponent} revealed={showSiteChrome} />
 
@@ -561,10 +610,15 @@
 			{#if showProjectList}
 				<div
 					class="project-list-fallback relative w-full h-full"
-					class:pointer-events-none={page.url.pathname === '/' && !$projectSectionStore.pinned}
+					class:pointer-events-none={true}
 					bind:this={projectListFallback}
 				>
-					<div bind:this={projectListWrapper}>
+					<div
+						bind:this={projectListWrapper}
+						class:pointer-events-auto={page.url.pathname.includes('work') ||
+							(page.url.pathname === '/' && $projectSectionStore.pinned)}
+						class:pointer-events-none={page.url.pathname === '/' && !$projectSectionStore.pinned}
+					>
 						<ProjectList data={data as Required<PageData>} />
 					</div>
 				</div>
@@ -585,6 +639,8 @@
 	<!-- BG -->
 	<div
 		class="fixed w-screen h-screen z-0 top-0 left-0 canvas-container transition-opacity duration-500 bg-black"
+		class:invert={!optionsStore.dark}
+		class:invert-0={optionsStore.dark}
 		class:opacity-0={gptStore.opened &&
 			page.url.pathname === '/' &&
 			($introSectionStore.active || $introSectionStore.progress < 1)}
