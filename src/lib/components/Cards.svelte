@@ -11,14 +11,15 @@
 		homeTransitionStore,
 		loadStore,
 		sharedCardTransitionStore,
-		scrollStore
+		scrollStore,
+		workRouteReadyStore
 	} from '$lib/stores/index.svelte';
 	import { optionsStore } from '$lib/stores/options.svelte';
 	import fragmentShader from '../shaders/glitchFragment.glsl?raw';
 	import vertexShader from '../shaders/vertexBend.glsl?raw';
 	import gsap from 'gsap';
 	import { beforeNavigate, goto } from '$app/navigation';
-	import { onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { homePos, centerPos, projectPage, initialPos, fullscreen } from '$lib/utils/positions';
 	import {
@@ -88,6 +89,235 @@
 			: { x: 0, y: 0, z: 0, scale: 1, opacity: 0 }
 	);
 	let motionState = $state(createCardMotionState());
+	let lastReportedWorkReadyKey = $state('');
+	let settledWorkReadyFrame = $state<number | null>(null);
+	let fullscreenZoom = $state(1);
+	let fullscreenPan = $state({ x: 0, y: 0 });
+	let fullscreenPointerDragging = $state(false);
+	let fullscreenDragMoved = $state(false);
+	let fullscreenDragStart = $state({ x: 0, y: 0 });
+	let fullscreenPanStart = $state({ x: 0, y: 0 });
+	let fullscreenTouchMode = $state<'none' | 'pan' | 'pinch'>('none');
+	let fullscreenPinchStartDistance = $state(0);
+	let fullscreenPinchStartZoom = $state(1);
+	let fullscreenTouchPanStart = $state({ x: 0, y: 0 });
+	let fullscreenTouchCenterStart = $state({ x: 0, y: 0 });
+	let fullscreenTouchCleanup: (() => void) | null = null;
+
+	function resetFullscreenInteractionState() {
+		fullscreenZoom = 1;
+		fullscreenPan = { x: 0, y: 0 };
+		fullscreenPointerDragging = false;
+		fullscreenDragMoved = false;
+		fullscreenTouchMode = 'none';
+		fullscreenPinchStartDistance = 0;
+		fullscreenPinchStartZoom = 1;
+	}
+
+	function getFullscreenBaseSize() {
+		return {
+			width: Math.max(0, imageGeo?.parameters.width ?? 0) * Math.max(transform.scale, 0),
+			height: Math.max(0, imageGeo?.parameters.height ?? 0) * Math.max(transform.scale, 0)
+		};
+	}
+
+	function getFullscreenPanBounds(zoom = fullscreenZoom) {
+		const { width, height } = getFullscreenBaseSize();
+		return {
+			x: Math.max(0, (width * zoom - width) / 2),
+			y: Math.max(0, (height * zoom - height) / 2)
+		};
+	}
+
+	function clampFullscreenPan(pan: { x: number; y: number }, zoom = fullscreenZoom) {
+		const bounds = getFullscreenPanBounds(zoom);
+		return {
+			x: Math.max(-bounds.x, Math.min(bounds.x, pan.x)),
+			y: Math.max(-bounds.y, Math.min(bounds.y, pan.y))
+		};
+	}
+
+	function setFullscreenZoom(nextZoom: number) {
+		const clampedZoom = Math.max(1, Math.min(4, nextZoom));
+		fullscreenZoom = clampedZoom;
+		fullscreenPan =
+			clampedZoom <= 1 ? { x: 0, y: 0 } : clampFullscreenPan(fullscreenPan, clampedZoom);
+	}
+
+	function toggleFullscreenZoom() {
+		setFullscreenZoom(fullscreenZoom > 1.01 ? 1 : 2.2);
+	}
+
+	function cleanupFullscreenTouchListeners() {
+		fullscreenTouchCleanup?.();
+		fullscreenTouchCleanup = null;
+	}
+
+	function handleFullscreenPointerMove(event: PointerEvent) {
+		if (!fullscreenPointerDragging || !full || !works || fullscreenZoom <= 1) return;
+		event.preventDefault();
+		fullscreenDragMoved = true;
+		fullscreenPan = clampFullscreenPan({
+			x: fullscreenPanStart.x + (event.clientX - fullscreenDragStart.x),
+			y: fullscreenPanStart.y - (event.clientY - fullscreenDragStart.y)
+		});
+	}
+
+	function stopFullscreenPointerDrag() {
+		if (typeof window === 'undefined') return;
+		fullscreenPointerDragging = false;
+		window.removeEventListener('pointermove', handleFullscreenPointerMove);
+		window.removeEventListener('pointerup', stopFullscreenPointerDrag);
+		window.removeEventListener('pointercancel', stopFullscreenPointerDrag);
+	}
+
+	function startFullscreenPointerDrag(event: IntersectionEvent<PointerEvent>) {
+		if (!full || !works || fullscreenZoom <= 1) return;
+		fullscreenPointerDragging = true;
+		fullscreenDragMoved = false;
+		fullscreenDragStart = {
+			x: event.nativeEvent.clientX,
+			y: event.nativeEvent.clientY
+		};
+		fullscreenPanStart = { ...fullscreenPan };
+		window.addEventListener('pointermove', handleFullscreenPointerMove, { passive: false });
+		window.addEventListener('pointerup', stopFullscreenPointerDrag);
+		window.addEventListener('pointercancel', stopFullscreenPointerDrag);
+	}
+
+	function getTouchDistance(touches: TouchList) {
+		if (touches.length < 2) return 0;
+		const first = touches[0];
+		const second = touches[1];
+		return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+	}
+
+	function getTouchCenter(touches: TouchList) {
+		if (!touches.length) return { x: 0, y: 0 };
+		if (touches.length === 1) return { x: touches[0].clientX, y: touches[0].clientY };
+		return {
+			x: (touches[0].clientX + touches[1].clientX) / 2,
+			y: (touches[0].clientY + touches[1].clientY) / 2
+		};
+	}
+
+	$effect(() => {
+		full;
+		works;
+		untrack(() => {
+			cleanupFullscreenTouchListeners();
+			if (typeof window === 'undefined' || !full || !works) {
+				if (!full) resetFullscreenInteractionState();
+				return;
+			}
+			const handleTouchStart = (event: TouchEvent) => {
+				if (!full || !works) return;
+				if (event.touches.length === 2) {
+					fullscreenTouchMode = 'pinch';
+					fullscreenPinchStartDistance = getTouchDistance(event.touches);
+					fullscreenPinchStartZoom = fullscreenZoom;
+					fullscreenTouchCenterStart = getTouchCenter(event.touches);
+					event.preventDefault();
+					return;
+				}
+				if (event.touches.length === 1 && fullscreenZoom > 1) {
+					fullscreenTouchMode = 'pan';
+					fullscreenTouchPanStart = { ...fullscreenPan };
+					fullscreenTouchCenterStart = getTouchCenter(event.touches);
+					event.preventDefault();
+				}
+			};
+			const handleTouchMove = (event: TouchEvent) => {
+				if (!full || !works) return;
+				if (fullscreenTouchMode === 'pinch' && event.touches.length === 2) {
+					const nextDistance = getTouchDistance(event.touches);
+					if (fullscreenPinchStartDistance > 0) {
+						setFullscreenZoom(
+							fullscreenPinchStartZoom * (nextDistance / fullscreenPinchStartDistance)
+						);
+					}
+					event.preventDefault();
+					return;
+				}
+				if (fullscreenTouchMode === 'pan' && event.touches.length === 1 && fullscreenZoom > 1) {
+					const center = getTouchCenter(event.touches);
+					fullscreenPan = clampFullscreenPan({
+						x: fullscreenTouchPanStart.x + (center.x - fullscreenTouchCenterStart.x),
+						y: fullscreenTouchPanStart.y - (center.y - fullscreenTouchCenterStart.y)
+					});
+					event.preventDefault();
+				}
+			};
+			const handleTouchEnd = () => {
+				if (!full || !works) return;
+				if (fullscreenTouchMode === 'pinch' && fullscreenZoom > 1) {
+					fullscreenTouchMode = 'pan';
+					fullscreenTouchPanStart = { ...fullscreenPan };
+					return;
+				}
+				fullscreenTouchMode = 'none';
+			};
+			window.addEventListener('touchstart', handleTouchStart, { passive: false });
+			window.addEventListener('touchmove', handleTouchMove, { passive: false });
+			window.addEventListener('touchend', handleTouchEnd);
+			window.addEventListener('touchcancel', handleTouchEnd);
+			fullscreenTouchCleanup = () => {
+				window.removeEventListener('touchstart', handleTouchStart);
+				window.removeEventListener('touchmove', handleTouchMove);
+				window.removeEventListener('touchend', handleTouchEnd);
+				window.removeEventListener('touchcancel', handleTouchEnd);
+			};
+		});
+	});
+
+	function reportWorkReady() {
+		if (!works) return;
+		const readyKey = `${slug}:${index}`;
+		if (lastReportedWorkReadyKey === readyKey) return;
+		lastReportedWorkReadyKey = readyKey;
+		workRouteReadyStore.markReady(slug ?? '', readyKey);
+	}
+
+	function clearSettledWorkReadyFrame() {
+		if (typeof window === 'undefined' || settledWorkReadyFrame === null) return;
+		window.cancelAnimationFrame(settledWorkReadyFrame);
+		settledWorkReadyFrame = null;
+	}
+
+	function scheduleSettledWorkReady() {
+		if (!works || typeof window === 'undefined' || settledWorkReadyFrame !== null) return;
+		settledWorkReadyFrame = window.requestAnimationFrame(() => {
+			settledWorkReadyFrame = null;
+			runWhenWorkTargetReady(() => {
+				if (
+					!works ||
+					loadIn ||
+					!initialLoadComplete ||
+					handoffInProgress ||
+					hidden ||
+					full ||
+					animationStore.isTransitioning
+				) {
+					return;
+				}
+				syncWorkTransform();
+				window.requestAnimationFrame(() => {
+					if (
+						!works ||
+						loadIn ||
+						!initialLoadComplete ||
+						handoffInProgress ||
+						hidden ||
+						full ||
+						animationStore.isTransitioning
+					) {
+						return;
+					}
+					reportWorkReady();
+				});
+			});
+		});
+	}
 
 	function updateAspectUniforms(textureAspectValue?: number) {
 		if (!imageMat) return;
@@ -213,14 +443,33 @@
 			// if (index === 0) console.log('[NEXT PR TRANSITION]', index);
 			// scrollStore.scroll = document.documentElement.scrollTop;
 			// const duration = !works && page.url.pathname.includes('work') ? 0.01 : 0.5
-			updateImage(0.2, 0.5, () => {
-				loadIn = false;
-				animationStore.isTransitioning = false;
+			runWhenWorkTargetReady(() => {
+				updateImage(0.2, 0.5, () => {
+					loadIn = false;
+					scheduleSettledWorkReady();
+					if (!works) {
+						animationStore.isTransitioning = false;
+					}
+				});
 			});
 		});
 	});
 
 	// homepage && agent modal state card update
+	$effect(() => {
+		animationStore.isTransitioning;
+		loadIn;
+		initialLoadComplete;
+		handoffInProgress;
+		hidden;
+		full;
+		page.params.slug;
+		untrack(() => {
+			if (!works) return;
+			scheduleSettledWorkReady();
+		});
+	});
+
 	$effect(() => {
 		countStore.inertiaIndex;
 		gptStore.opened;
@@ -261,6 +510,7 @@
 		}
 		full = bool;
 		if (bool) {
+			resetFullscreenInteractionState();
 			gsap.to(img, {
 				scale: 1
 			});
@@ -268,6 +518,9 @@
 			setTimeout(() => document.addEventListener('click', escapeListener), 0);
 			window.addEventListener('keydown', escapeListener);
 		} else {
+			resetFullscreenInteractionState();
+			stopFullscreenPointerDrag();
+			cleanupFullscreenTouchListeners();
 			document.removeEventListener('click', escapeListener);
 			window.removeEventListener('keydown', escapeListener);
 		}
@@ -335,9 +588,15 @@
 		if (hidden) return;
 
 		event.stopPropagation();
+		if (full && works && fullscreenDragMoved) {
+			fullscreenDragMoved = false;
+			return;
+		}
 		// stopPropagation = true;
 		// If in enlarged mode, make it smaller
-		if (full && slug !== 'reels') {
+		if (full && works) {
+			toggleFullscreenZoom();
+		} else if (full && slug !== 'reels') {
 			updateFullscreen(false);
 		} else if (slug === 'reels' && page.url.hash === '#reels') {
 			goto('/');
@@ -397,6 +656,36 @@
 		if (!mediaEl || !imageGeo) return false;
 		const rect = mediaEl.getBoundingClientRect();
 		return rect.width > 32 && rect.height > 32;
+	}
+
+	function workTargetReady() {
+		if (!works) return true;
+		const mediaEl = document.getElementById(`media-${index}`) as
+			| HTMLImageElement
+			| HTMLVideoElement
+			| null;
+		if (!mediaEl || !imageGeo) return false;
+		const rect = mediaEl.getBoundingClientRect();
+		return rect.width > 24 && rect.height > 24;
+	}
+
+	function runWhenWorkTargetReady(callback: () => void, maxAttempts = 18) {
+		if (!works || typeof window === 'undefined') {
+			callback();
+			return;
+		}
+
+		let attempts = 0;
+		const waitForStableTarget = () => {
+			if (workTargetReady() || attempts >= maxAttempts) {
+				callback();
+				return;
+			}
+			attempts += 1;
+			window.requestAnimationFrame(waitForStableTarget);
+		};
+
+		window.requestAnimationFrame(waitForStableTarget);
 	}
 
 	function startConsumedSharedTransition(transition: NonNullable<typeof sharedTransitionTarget>) {
@@ -477,7 +766,7 @@
 	});
 
 	function syncWorkTransform() {
-		if (!works || !imageGeo || hidden || full) return;
+		if (!works || !imageGeo || hidden || full || !workTargetReady()) return;
 		transform = {
 			...transform,
 			...projectPage(index, $size, works, imageGeo, $size.width)
@@ -564,7 +853,9 @@
 		imageMat.uniforms.u_aberrationIntensity.value = aberrationIntensity;
 
 		const motionProgress = works
-			? velocityToMotionProgress(scrollStore.velocity, 650)
+			? Math.abs(scrollStore.velocity) < 18
+				? 0
+				: velocityToMotionProgress(scrollStore.velocity, 1100)
 			: indexOffsetToMotionProgress(countStore.inertiaIndex - countStore.activeIndex);
 
 		// Update screen position for bend calculation
@@ -579,20 +870,24 @@
 			motionProgress,
 			normalizedX,
 			enableRoll: works,
-			bendMax: works ? 60 : 50,
-			rotationMax: works ? 0.17 : 0.15,
-			zoomMax: works ? 0.18 : 0.25,
-			textureRotationMax: works ? 0.095 : 0.1,
-			threshold: works ? 0.045 : 0.1
+			bendMax: works ? 52 : 50,
+			rotationMax: works ? 0.012 : 0.15,
+			zoomMax: works ? 0.08 : 0.25,
+			textureRotationMax: works ? 0.028 : 0.1,
+			threshold: works ? 0.055 : 0.1,
+			easingPower: works ? 2.4 : 3
 		});
 		imageMat.uniforms.uBendAmplitude.value = motionState.bendAmount;
 		imageMat.uniforms.uRotation.value = motionState.rotationAmount;
 		imageMat.uniforms.uEnableRoll.value = works;
 		imageMat.uniforms.uTextureZoom.value = motionState.textureZoom;
 		imageMat.uniforms.uTextureRotation.value = motionState.textureRotation;
-		const isWorkDetailCard = works && index > 0;
-		const invertAfterOutput = isWorkDetailCard && !optionsStore.dark;
-		imageMat.uniforms.uApplyOutputColorSpace.value = isWorkDetailCard;
+		// Only static image textures are uploaded as SRGB8 (hardware-linearized on sample).
+		// VideoTextures are RGBA8 — no hardware linearization — so no re-encoding needed.
+		const isVideoTex = (texture as any).isVideoTexture === true;
+		const needsColorspaceConversion = !isVideoTex;
+		const invertAfterOutput = needsColorspaceConversion && !optionsStore.dark;
+		imageMat.uniforms.uApplyOutputColorSpace.value = needsColorspaceConversion;
 		imageMat.uniforms.uInvertAfterOutputColorSpace.value = invertAfterOutput;
 		imageMat.uniforms.inverted.value = !optionsStore.dark && !invertAfterOutput ? 1.0 : 0.0;
 		if (
@@ -648,7 +943,12 @@
 
 		initialLoadComplete = true;
 		loadIn = false;
-		const syncInitialPosition = () => updateImage(0, 0.01);
+		const syncInitialPosition = () =>
+			runWhenWorkTargetReady(() =>
+				updateImage(0, 0.01, () => {
+					scheduleSettledWorkReady();
+				})
+			);
 		queueMicrotask(() => {
 			if (typeof window !== 'undefined' && 'requestAnimationFrame' in window) {
 				window.requestAnimationFrame(() => {
@@ -776,7 +1076,7 @@
 		}
 		updateAspectUniforms(textureAspectVal);
 		if (works && initialLoadComplete && !loadIn && !handoffInProgress) {
-			queueMicrotask(() => syncWorkTransform());
+			queueMicrotask(() => runWhenWorkTargetReady(() => syncWorkTransform()));
 		}
 	});
 
@@ -826,15 +1126,22 @@
 			});
 		}
 	});
+
+	onDestroy(() => {
+		clearSettledWorkReadyFrame();
+		stopFullscreenPointerDrag();
+		cleanupFullscreenTouchListeners();
+	});
 </script>
 
 <T.Mesh
 	bind:ref={image as Mesh}
-	scale={transform.scale}
-	position={[transform.x, transform.y, transform.z]}
+	scale={transform.scale * fullscreenZoom}
+	position={[transform.x + fullscreenPan.x, transform.y + fullscreenPan.y, transform.z]}
 	onclick={(e: IntersectionEvent<'click'>) => {
 		handleClick(e, index);
 	}}
+	onpointerdown={(e: IntersectionEvent<PointerEvent>) => startFullscreenPointerDrag(e)}
 	userData={{
 		skipPostFX: works
 	}}
@@ -878,10 +1185,14 @@
 				})()
 			},
 			uCoverTexture: { value: shouldCoverTexture },
-			uApplyOutputColorSpace: { value: works && index > 0 },
-			uInvertAfterOutputColorSpace: { value: works && index > 0 && !optionsStore.dark },
+			uApplyOutputColorSpace: { value: (texture as any).isVideoTexture !== true },
+			uInvertAfterOutputColorSpace: {
+				value: (texture as any).isVideoTexture !== true && !optionsStore.dark
+			},
 			scale: { value: 1 },
-			inverted: { value: !optionsStore.dark && !(works && index > 0) ? 1.0 : 0.0 },
+			inverted: {
+				value: !optionsStore.dark && (texture as any).isVideoTexture === true ? 1.0 : 0.0
+			},
 			opacity: { value: 0.0 }
 		}}
 		transparent={true}

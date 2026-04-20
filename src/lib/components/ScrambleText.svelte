@@ -4,7 +4,12 @@
 	const SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*';
 	const SCRAMBLE_DURATION_MS = 150;
 
-	let { text, active = false }: { text: string; active?: boolean } = $props();
+	let {
+		text,
+		active = false,
+		reserveText = text,
+		durationMs = SCRAMBLE_DURATION_MS
+	}: { text: string; active?: boolean; reserveText?: string; durationMs?: number } = $props();
 	let displayedText = $state(text);
 	let scrambleTimer: ReturnType<typeof setInterval> | null = null;
 	let stopTimer: ReturnType<typeof setTimeout> | null = null;
@@ -40,7 +45,7 @@
 		}, 48);
 		stopTimer = setTimeout(() => {
 			stopScramble();
-		}, SCRAMBLE_DURATION_MS);
+		}, durationMs);
 	}
 
 	$effect(() => {
@@ -80,7 +85,7 @@
 	onfocus={startScramble}
 	onblur={stopScramble}
 >
-	<span class="scramble-text__reserve" aria-hidden="true">{text}</span>
+	<span class="scramble-text__reserve" aria-hidden="true">{reserveText}</span>
 	<span class="scramble-text__display">{displayedText}</span>
 </span>
 

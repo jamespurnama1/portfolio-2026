@@ -22,10 +22,10 @@
 		in:fly={{ x: 200, duration: 500, easing: cubicInOut }}
 		out:fade
 		class:scale-[75%]={page.params.slug}
-		class="flex gap-5 relative z-10 max-md:justify-center md:origin-left scale-75 md:scale-100 {className}"
+		class="relative z-10 flex w-full max-w-full flex-wrap items-start justify-start gap-4 origin-left scale-75 md:gap-5 md:scale-100 {className}"
 	>
 		{#each awards as award}
-			<div class="flex flex-col items-start gap-1 w-min">
+			<div class="flex w-min shrink-0 flex-col items-start gap-1">
 				<img
 					class="w-10 h-10 object-contain brightness-100"
 					src={award.icon.asset.url}
@@ -79,7 +79,7 @@
 	</div>
 	<p
 		bind:this={awardsEl[1]}
-		class="no-touch text-[0.45em] max-md:text-center max-md:w-full md:text-xs md:h-6 md:my-2 w-[70%] font-mono font-light {className}"
+		class="no-touch w-full text-left text-[0.45em] md:text-xs md:h-6 md:my-2 font-mono font-light {className}"
 		transition:fly={{ x: 200, duration: 500, easing: cubicInOut, delay: 100 }}
 	>
 		{currAward ? currAward : 'Hover to see each awards'}

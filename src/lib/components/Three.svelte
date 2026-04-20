@@ -69,6 +69,13 @@
 		syncMouseToViewport();
 	}
 
+	function onPointerMoveForCursorRestore(e: PointerEvent) {
+		if (e.pointerType === 'mouse' && isTouchDevice) {
+			isTouchDevice = false;
+			document.addEventListener('mousemove', onMouseMove);
+		}
+	}
+
 	$effect(() => {
 		size.width;
 		size.height;
@@ -86,11 +93,11 @@
 		if (!isTouchDevice) {
 			document.addEventListener('mousemove', onMouseMove);
 		}
+		window.addEventListener('pointermove', onPointerMoveForCursorRestore);
 		return () => {
 			window.removeEventListener('keydown', handleKey);
-			if (!isTouchDevice) {
-				document.removeEventListener('mousemove', onMouseMove);
-			}
+			document.removeEventListener('mousemove', onMouseMove);
+			window.removeEventListener('pointermove', onPointerMoveForCursorRestore);
 		};
 	});
 

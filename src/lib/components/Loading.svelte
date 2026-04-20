@@ -51,28 +51,34 @@
 	});
 </script>
 
-<div class="flex items-center h-full w-full">
+<div class="flex items-center justify-center md:justify-start h-full w-full">
 	{#if error === 200}
-		<div class="relative shrink-0 text-3xl sm:text-4xl md:text-6xl 2xl:text-7xl">
-			<h1 bind:this={loadingText} class="text-white font-sans mix-blend-difference">
-				{currentStr.toString().replaceAll(',', '')}
-			</h1>
-			<span
-				aria-hidden="true"
-				class="pointer-events-none absolute inset-0 opacity-0 text-white font-sans"
+		<!--
+			inline-grid stacks two layers in the same cell:
+			  1. invisible "James Henry >100%" — reserves the full width so the block is always
+			     centered at the same position regardless of how many characters are typed.
+			  2. visible animated layer — h1 shows the typing effect, >XX% sits immediately
+			     after it and moves right naturally as more letters appear.
+		-->
+		<div class="inline-grid text-3xl sm:text-4xl md:text-6xl 2xl:text-7xl">
+			<!-- Reserve layer (invisible, sets container width) -->
+			<div
+				class="[grid-area:1/1] invisible pointer-events-none select-none flex items-center whitespace-nowrap"
 			>
-				James Henry
-			</span>
+				<span class="font-sans">James Henry</span>
+				<span class="font-mono pl-2 md:pl-4">&gt;100%</span>
+			</div>
+			<!-- Visible layer -->
+			<div class="[grid-area:1/1] flex items-center whitespace-nowrap">
+				<h1 bind:this={loadingText} class="shrink-0 text-white font-sans mix-blend-difference">
+					{currentStr.toString().replaceAll(',', '')}
+				</h1>
+				<p class="shrink-0 text-white font-mono mix-blend-difference pl-2 md:pl-4">
+					&gt;{parseInt(loadStore.load.toString())}%
+				</p>
+			</div>
 		</div>
 	{:else}
 		<h1 bind:this={errorText} class="text-white text-9xl font-sans mix-blend-difference">Error</h1>
 	{/if}
-	<div class="relative shrink-0 text-3xl sm:text-4xl md:text-6xl 2xl:text-7xl flex-1 pl-2 md:pl-4">
-		<p class="text-white font-mono mix-blend-difference">
-			&gt;{parseInt(loadStore.load.toString())}%
-		</p>
-		<!-- <p class="font-mono opacity-0">
-			&gt;100%
-		</p> -->
-	</div>
 </div>

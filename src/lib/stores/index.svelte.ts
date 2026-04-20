@@ -109,6 +109,43 @@ export const animationStore = {
 	}
 };
 
+let workRouteReadySlug = $state('');
+let workRouteReadyExpected = $state(0);
+let workRouteReadyKeys = $state<string[]>([]);
+
+export const workRouteReadyStore = {
+	begin(slug: string, expected: number) {
+		workRouteReadySlug = slug;
+		workRouteReadyExpected = Math.max(0, expected);
+		workRouteReadyKeys = [];
+	},
+	markReady(slug: string, key: string) {
+		if (workRouteReadySlug !== slug) return;
+		if (workRouteReadyKeys.includes(key)) return;
+		workRouteReadyKeys = [...workRouteReadyKeys, key];
+	},
+	reset() {
+		workRouteReadySlug = '';
+		workRouteReadyExpected = 0;
+		workRouteReadyKeys = [];
+	},
+	get slug(): string {
+		return workRouteReadySlug;
+	},
+	get expected(): number {
+		return workRouteReadyExpected;
+	},
+	get readyCount(): number {
+		return workRouteReadyKeys.length;
+	},
+	hasKey(slug: string, key: string): boolean {
+		return workRouteReadySlug === slug && workRouteReadyKeys.includes(key);
+	},
+	get isReady(): boolean {
+		return workRouteReadyExpected === 0 || workRouteReadyKeys.length >= workRouteReadyExpected;
+	}
+};
+
 let cursor = $state('');
 
 export const cursorStore = {

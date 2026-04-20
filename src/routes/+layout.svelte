@@ -34,6 +34,9 @@
 	import { browser, dev } from '$app/environment';
 	import { isSafariUserAgent } from '$lib/utils/device';
 
+	// Initialize theme before first render to prevent flash of wrong colors on mobile
+	if (browser) checkSavedTheme();
+
 	const shouldDebugWorkScroll = () =>
 		browser &&
 		Boolean(
@@ -569,9 +572,6 @@
 			// } else {
 			// document.documentElement.classList.remove('overflow-hidden');
 		}
-
-		//check light Mode
-		checkSavedTheme();
 
 		return () => {
 			unsubscribeProjectListHost();

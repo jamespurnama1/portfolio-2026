@@ -326,6 +326,11 @@
 		return withSanityImageParams(url);
 	}
 
+	const workProjectIndex = $derived.by(() => {
+		if (!page.url.pathname.includes('work') || !data.projects?.length) return -1;
+		return data.projects.findIndex((project) => project.slug.current === page.params.slug);
+	});
+
 	async function handleWorkCards() {
 		loadStore.cardLoading = true;
 		disposeResolvedWorkTextures();
@@ -384,6 +389,7 @@
 
 	$effect(() => {
 		optionsStore.dark;
+		page.params.slug;
 		if (!loadStore.loaded || !data.projects || !page.route.id?.includes('work')) return;
 		untrack(() => handleWorkCards());
 	});
@@ -473,7 +479,7 @@
 					homeAspectRatio={preferImageThumbnails ? 16 / 9 : undefined}
 				/>
 			{/key}
-		{:else if page.url.pathname.includes('work') && i === countStore.activeIndex}
+		{:else if page.url.pathname.includes('work') && i === workProjectIndex}
 			{#key `work-hero-${page.params.slug}-${i}`}
 				<Cards
 					{texture}
