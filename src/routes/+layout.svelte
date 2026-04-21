@@ -39,15 +39,6 @@
 	// Initialize theme before first render to prevent flash of wrong colors on mobile
 	if (browser) checkSavedTheme();
 
-	const shouldDebugWorkScroll = () =>
-		browser &&
-		Boolean(
-			(window as Window & { __DEBUG_WORK_SCROLL__?: boolean; DEBUG_WORK_SCROLL?: boolean })
-				.__DEBUG_WORK_SCROLL__ ||
-				(window as Window & { __DEBUG_WORK_SCROLL__?: boolean; DEBUG_WORK_SCROLL?: boolean })
-					.DEBUG_WORK_SCROLL
-		);
-
 	let prev = 0;
 	let innerWidth = $state(0);
 	let app = $state() as HTMLDivElement | undefined;
@@ -457,16 +448,6 @@
 			: page.url.pathname === '/'
 				? window.scrollY
 				: Math.max(window.scrollY, scrollRoot?.scrollTop ?? 0);
-		if (shouldDebugWorkScroll() && page.url.pathname.includes('work')) {
-			console.log('[work-scroll/layout]', {
-				pathname: page.url.pathname,
-				windowScrollY: window.scrollY,
-				rootTag: scrollRoot?.tagName,
-				rootScrollTop: scrollRoot?.scrollTop,
-				appScrollTop: app?.scrollTop,
-				currentScroll
-			});
-		}
 		scrollStore.scroll = currentScroll;
 		return currentScroll;
 	}

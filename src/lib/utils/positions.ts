@@ -16,15 +16,6 @@ type size = {
 
 const topLeft = (cardSize: number) => cardSize / 2;
 
-const shouldDebugWorkScroll = () => {
-	if (typeof window === 'undefined') return false;
-	const debugWindow = window as Window & {
-		__DEBUG_WORK_SCROLL__?: boolean;
-		DEBUG_WORK_SCROLL?: boolean;
-	};
-	return Boolean(debugWindow.__DEBUG_WORK_SCROLL__ || debugWindow.DEBUG_WORK_SCROLL);
-};
-
 export const centerPos = (index: number) => {
 	// console.log('[POS] Center pos', index);
 	return {
@@ -235,21 +226,6 @@ export const projectPage = (
 			widthDelta > widthTolerance ||
 			heightDelta > heightTolerance;
 		if (rectLooksUnstable) {
-			if (shouldDebugWorkScroll()) {
-				console.log('[work-scroll/hero:fallback]', {
-					index,
-					rect: {
-						left: rect.left,
-						top: rect.top,
-						width: rect.width,
-						height: rect.height
-					},
-					desiredWidth,
-					desiredHeight,
-					fallback: fallbackHeroPos,
-					scrollY: typeof window !== 'undefined' ? window.scrollY : 0
-				});
-			}
 			return {
 				...fallbackHeroPos
 			};

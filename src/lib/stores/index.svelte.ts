@@ -203,15 +203,6 @@ let velocityDecayFrame: number | null = null;
 let velocityLastUpdateTime = $state(Date.now());
 // let overScroll = $state(0);
 
-const shouldDebugWorkScroll = () => {
-	if (typeof window === 'undefined') return false;
-	const debugWindow = window as Window & {
-		__DEBUG_WORK_SCROLL__?: boolean;
-		DEBUG_WORK_SCROLL?: boolean;
-	};
-	return Boolean(debugWindow.__DEBUG_WORK_SCROLL__ || debugWindow.DEBUG_WORK_SCROLL);
-};
-
 export const scrollStore = {
 	get scroll(): number {
 		return scroll + offset;
@@ -223,17 +214,6 @@ export const scrollStore = {
 
 		if (deltaTime > 0) {
 			velocity = deltaScroll / deltaTime;
-		}
-
-		if (shouldDebugWorkScroll()) {
-			console.log('[work-scroll/store]', {
-				newVal,
-				deltaScroll,
-				deltaTime,
-				velocity,
-				lastScroll,
-				offset
-			});
 		}
 
 		scroll = newVal;
@@ -249,12 +229,6 @@ export const scrollStore = {
 				velocity *= 0.9;
 				if (Math.abs(velocity) < 0.1) {
 					velocity = 0;
-					if (shouldDebugWorkScroll()) {
-						console.log('[work-scroll/store:decay-stop]', {
-							scroll,
-							velocity
-						});
-					}
 					velocityDecayFrame = null;
 					return;
 				}
@@ -262,13 +236,6 @@ export const scrollStore = {
 
 			velocityDecayFrame = window.requestAnimationFrame(decayVelocity);
 		};
-
-		if (shouldDebugWorkScroll()) {
-			console.log('[work-scroll/store:decay-start]', {
-				scroll,
-				velocity
-			});
-		}
 
 		velocityDecayFrame = window.requestAnimationFrame(decayVelocity);
 	},

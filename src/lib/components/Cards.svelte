@@ -1130,9 +1130,9 @@
 		imageMat.uniforms.u_aberrationIntensity.value = aberrationIntensity;
 
 		const motionProgress = works
-			? Math.abs(scrollStore.velocity) < 18
+			? Math.abs(scrollStore.velocity) < 60
 				? 0
-				: velocityToMotionProgress(scrollStore.velocity, 1100)
+				: velocityToMotionProgress(scrollStore.velocity, 1600)
 			: indexOffsetToMotionProgress(countStore.inertiaIndex - countStore.activeIndex);
 
 		// Update screen position for bend calculation
@@ -1143,14 +1143,18 @@
 		imageMat.uniforms.uScreenCenter.value.set(0, scrollStore.scroll); // Center moves with scroll
 
 		const normalizedX = transform.x / Math.max($size.width / 2, 1);
+		// For taller (portrait) images on work pages, reduce rotation/swivel to near-zero.
+		// aspectRatio < 1 = portrait/tall; scale rotation down proportionally.
+		const aspectRatio = imageGeo ? imageGeo.parameters.width / imageGeo.parameters.height : 1;
+		const rotationScale = works ? Math.min(1, aspectRatio * 1.2) : 1;
 		motionState = stepCardMotion(motionState, {
 			motionProgress,
 			normalizedX,
 			enableRoll: works,
 			bendMax: works ? 52 : 50,
-			rotationMax: works ? 0.012 : 0.15,
+			rotationMax: works ? 0.012 * rotationScale : 0.15,
 			zoomMax: works ? 0.08 : 0.25,
-			textureRotationMax: works ? 0.028 : 0.1,
+			textureRotationMax: works ? 0.028 * rotationScale : 0.1,
 			threshold: works ? 0.055 : 0.1,
 			easingPower: works ? 2.4 : 3
 		});
