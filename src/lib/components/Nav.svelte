@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { gptStore, loadStore } from '$lib/stores/index.svelte';
+	import { optionsStore } from '$lib/stores/options.svelte';
 	import ScrambleText from '$lib/components/ScrambleText.svelte';
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
@@ -32,14 +33,22 @@
 				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 200 }}
 				class="goback"
 				class:invisible={page.url.pathname === '/'}
-				href="/"><p>go back</p></a
+				href="/"
+				onclick={(e) => {
+					// When a lightbox is open, close it instead of navigating home.
+					// The click still bubbles to document where Cards.svelte's
+					// escapeListener will call updateFullscreen(false).
+					if (optionsStore.fullscreen) e.preventDefault();
+				}}><p>go back</p></a
 			>
 		{/if}
 	</nav>
 	<aside
-		class="fixed top-0 right-4 max-md:gap-4 h-full flex flex-col justify-center text-right -z-0 transition-opacity delay-300 {gptStore.opened
-			? 'max-md:opacity-0 max-md:pointer-events-none'
-			: ''}"
+		class="fixed top-0 right-4 max-md:gap-4 h-full flex flex-col justify-center text-right -z-0 transition-opacity {optionsStore.fullscreen
+			? 'opacity-0 pointer-events-none'
+			: gptStore.opened
+				? 'max-md:opacity-0 max-md:pointer-events-none delay-300'
+				: 'delay-300'}"
 	>
 		{#if revealed}
 			<a

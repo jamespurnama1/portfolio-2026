@@ -413,7 +413,9 @@
 	class:opacity-0={!loadStore.loaded || (notificationStore.opened && !gptStore.opened)}
 	class="{gptStore.opened
 		? '!-translate-y-1/2 md:!-translate-x-1/2 max-md:w-[90vw]'
-		: 'max-md:-translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh_-_3.5rem)] w-[75vw]'} fixed min-h-24 top-1/2 max-md:left-auto flex flex-col p-3 pt-0 md:left-1/2 max-md:right-0 hover:translate-y-[calc(50svh_-_5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[transform opacity] gpt-glow"
+		: optionsStore.fullscreen
+			? 'max-md:-translate-x-0 md:-translate-x-1/2 translate-y-[150svh] w-[75vw] pointer-events-none'
+			: 'max-md:-translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh_-_3.5rem)] w-[75vw]'} fixed min-h-24 top-1/2 max-md:left-auto flex flex-col p-3 pt-0 md:left-1/2 max-md:right-0 hover:translate-y-[calc(50svh_-_5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[transform,opacity] gpt-glow"
 >
 	<div class="flex flex-col w-full justify-center items-center">
 		<div class="w-full p-5 max-md:text-xs flex justify-between items-center">

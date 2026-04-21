@@ -1090,6 +1090,7 @@
 		(animationStore.isTransitioning &&
 			!nextProjectTransitionActive &&
 			!nextProjectTransitionEntering)}
+	class:pointer-events-none={optionsStore.fullscreen || gptStore.opened}
 >
 	{#if current && typeof currIndex === 'number'}
 		{@const currentSlug = page.params.slug ?? ''}
@@ -1135,6 +1136,20 @@
 	{/if}
 	<div bind:this={bottomSentinelEl} class="h-0 w-full pointer-events-none"></div>
 </article>
+
+{#if optionsStore.fullscreen}
+	{#if optionsStore.videoPaused}
+		<!-- Paused indicator — purely visual, no pointer events -->
+		<div class="fixed inset-0 z-20 flex items-center justify-center pointer-events-none">
+			<div class="w-16 h-16 rounded-full bg-black/50 flex items-center justify-center">
+				<svg viewBox="0 0 24 24" fill="white" class="w-7 h-7">
+					<rect x="6" y="4" width="4" height="16" rx="1" />
+					<rect x="14" y="4" width="4" height="16" rx="1" />
+				</svg>
+			</div>
+		</div>
+	{/if}
+{/if}
 
 {#if showNextProjectOverlay}
 	<aside

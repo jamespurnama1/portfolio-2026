@@ -6,6 +6,7 @@ let dark = $state(true);
 let showSources = $state(false);
 let fullscreen = $state(false);
 let notification = $state(false);
+let videoPaused = $state(false);
 
 export const optionsStore = {
 	get noiseFactor() {
@@ -55,5 +56,11 @@ export const optionsStore = {
 	},
 	set notification(newVal) {
 		notification = newVal;
+	},
+	get videoPaused() {
+		return videoPaused;
+	},
+	set videoPaused(newVal) {
+		videoPaused = newVal;
 	}
 };

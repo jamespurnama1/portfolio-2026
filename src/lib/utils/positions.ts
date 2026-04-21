@@ -166,12 +166,15 @@ export const enlarged = (
 };
 
 export const fullscreen = (index: number, imageGeo: PlaneGeometry, size: size) => {
-	// console.log('[POS] fullscreen', index);
+	// Fit within 85% of both viewport dimensions, preserving aspect ratio
+	const scaleByWidth = (size.width * 0.85) / imageGeo.parameters.width;
+	const scaleByHeight = (size.height * 0.85) / imageGeo.parameters.height;
+	const scale = Math.min(scaleByWidth, scaleByHeight);
 	return {
 		x: 0,
 		y: 0,
 		z: -0.6 * (index - 1),
-		scale: (size.width * 0.85) / imageGeo.parameters.width,
+		scale,
 		opacity: gptStore.opened ? 0 : 1
 	};
 };

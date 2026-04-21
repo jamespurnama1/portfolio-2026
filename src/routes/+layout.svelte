@@ -595,7 +595,7 @@
 	<main
 		class="w-full overscroll-none z-10 relative flex flex-col items-center justify-center transition-opacity duration-500"
 		class:mix-blend-difference={page.url.pathname !== '/branch'}
-		class:pointer-events-none={page.url.pathname === '/'}
+		class:pointer-events-none={page.url.pathname === '/' || page.url.pathname.includes('work')}
 		class:opacity-0={gptStore.opened}
 	>
 		{#if showLoadingScreen}

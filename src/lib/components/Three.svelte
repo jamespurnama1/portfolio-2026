@@ -202,31 +202,29 @@
 			</Studio>
 		{/await}
 	{:else}
-		{#key `${size.width}-${size.height}`}
-			<PostFXManager {mouse}>
-				{#if showGallery}
-					{#key `gallery-${optionsStore.dark}`}
-						<PostFXScene enabled={true}>
-							<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
-						</PostFXScene>
-					{/key}
-				{:else if showCanvas}
-					{#key `canvas-${optionsStore.dark}`}
-						<PostFXScene enabled={true}>
-							<ThreeScene {data} {preferImageThumbnails} {mouse} />
-						</PostFXScene>
-					{/key}
-				{/if}
-				<PostFXScene
-					enabled={true}
-					beforeRender={(delta: number) => {
-						// Custom rendering logic for this scene
-						riveSceneInstance!.beforeRender(delta);
-					}}
-				>
-					<RiveScene {mouse} bind:this={riveSceneInstance} showCursor={cursorVisible} />
-				</PostFXScene>
-			</PostFXManager>
-		{/key}
+		<PostFXManager {mouse}>
+			{#if showGallery}
+				{#key `gallery-${optionsStore.dark}`}
+					<PostFXScene enabled={true}>
+						<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
+					</PostFXScene>
+				{/key}
+			{:else if showCanvas}
+				{#key `canvas-${optionsStore.dark}`}
+					<PostFXScene enabled={true}>
+						<ThreeScene {data} {preferImageThumbnails} {mouse} />
+					</PostFXScene>
+				{/key}
+			{/if}
+			<PostFXScene
+				enabled={true}
+				beforeRender={(delta: number) => {
+					// Custom rendering logic for this scene
+					riveSceneInstance!.beforeRender(delta);
+				}}
+			>
+				<RiveScene {mouse} bind:this={riveSceneInstance} showCursor={cursorVisible} />
+			</PostFXScene>
+		</PostFXManager>
 	{/if}
 </Canvas>

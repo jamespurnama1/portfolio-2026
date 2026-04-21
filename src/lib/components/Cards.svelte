@@ -1,7 +1,17 @@
 <script lang="ts">
 	import { T, useTask, useThrelte } from '@threlte/core';
 	import { type IntersectionEvent } from '@threlte/extras';
-	import { type Mesh, type ShaderMaterial, PlaneGeometry, type Texture, Vector2 } from 'three';
+	import {
+		type Mesh,
+		type ShaderMaterial,
+		PlaneGeometry,
+		type Texture,
+		Vector2,
+		TextureLoader,
+		SRGBColorSpace,
+		LinearFilter,
+		LinearMipmapLinearFilter
+	} from 'three';
 	import {
 		animationStore,
 		countStore,
@@ -103,6 +113,75 @@
 	let fullscreenTouchPanStart = $state({ x: 0, y: 0 });
 	let fullscreenTouchCenterStart = $state({ x: 0, y: 0 });
 	let fullscreenTouchCleanup: (() => void) | null = null;
+	// Set by handleClick so escapeListener knows the raycaster handled the event
+	// and shouldn't also close the lightbox.
+	let meshHandledClick = false;
+	// Prevents synthesized click (fired ~300ms after touchend) from double-toggling
+	let touchJustHandled = false;
+	let highResTexture = $state<Texture | null>(null);
+	let highResLoadGeneration = 0;
+
+	function buildHighResUrl(url: string): string | undefined {
+		if (!url || /\.(mp4|webm)$/i.test(url) || !url.includes('cdn.sanity.io')) return undefined;
+		// Strip any existing query params we set, then add high-quality ones
+		const base = url.split('?')[0];
+		return `${base}?auto=format&fit=max&q=95&w=3840`;
+	}
+
+	const highResUrl = $derived.by((): string | undefined => {
+		if (!works) return undefined;
+		const project = data.projects.find((p) => p.slug.current === page.params.slug);
+		if (!project) return undefined;
+		if (index === 0) {
+			const rawUrl = project.thumbnail?.asset?.url;
+			return rawUrl ? buildHighResUrl(rawUrl) : undefined;
+		}
+		const item = project.content?.[index - 1];
+		if (!item) return undefined;
+		const rawUrl = item.image?.url ?? item.imageLight?.url;
+		return rawUrl ? buildHighResUrl(rawUrl) : undefined;
+	});
+
+	function swapToHighResTexture() {
+		const url = highResUrl;
+		if (!url || (texture as any).isVideoTexture === true) return;
+		const gen = ++highResLoadGeneration;
+		new TextureLoader().load(url, (tex) => {
+			if (gen !== highResLoadGeneration) {
+				tex.dispose();
+				return;
+			}
+			tex.colorSpace = SRGBColorSpace;
+			tex.magFilter = LinearFilter;
+			tex.minFilter = LinearMipmapLinearFilter;
+			tex.generateMipmaps = true;
+			tex.needsUpdate = true;
+			highResTexture = tex;
+			// Only swap in if we're still in fullscreen for this card
+			if (imageMat && full) {
+				imageMat.uniforms.u_texture.value = tex;
+				imageMat.uniformsNeedUpdate = true;
+			}
+		});
+	}
+
+	function revertToLowResTexture() {
+		// Cancel any in-flight high-res load
+		++highResLoadGeneration;
+		if (imageMat) {
+			imageMat.uniforms.u_texture.value = texture;
+			imageMat.uniformsNeedUpdate = true;
+		}
+		if (highResTexture) {
+			const toDispose = highResTexture;
+			highResTexture = null;
+			if (typeof window !== 'undefined') {
+				window.requestAnimationFrame(() => toDispose.dispose());
+			} else {
+				toDispose.dispose();
+			}
+		}
+	}
 
 	function resetFullscreenInteractionState() {
 		fullscreenZoom = 1;
@@ -148,6 +227,18 @@
 		setFullscreenZoom(fullscreenZoom > 1.01 ? 1 : 2.2);
 	}
 
+	function toggleVideoPlayback() {
+		const el = document.getElementById(workVideoId());
+		if (!(el instanceof HTMLVideoElement)) return;
+		if (el.paused) {
+			el.play();
+			optionsStore.videoPaused = false;
+		} else {
+			el.pause();
+			optionsStore.videoPaused = true;
+		}
+	}
+
 	function cleanupFullscreenTouchListeners() {
 		fullscreenTouchCleanup?.();
 		fullscreenTouchCleanup = null;
@@ -156,10 +247,13 @@
 	function handleFullscreenPointerMove(event: PointerEvent) {
 		if (!fullscreenPointerDragging || !full || !works || fullscreenZoom <= 1) return;
 		event.preventDefault();
-		fullscreenDragMoved = true;
+		const dx = event.clientX - fullscreenDragStart.x;
+		const dy = event.clientY - fullscreenDragStart.y;
+		// Only mark as a drag after 5 px of movement to avoid click-jitter false positives
+		if (Math.hypot(dx, dy) >= 5) fullscreenDragMoved = true;
 		fullscreenPan = clampFullscreenPan({
-			x: fullscreenPanStart.x + (event.clientX - fullscreenDragStart.x),
-			y: fullscreenPanStart.y - (event.clientY - fullscreenDragStart.y)
+			x: fullscreenPanStart.x + dx,
+			y: fullscreenPanStart.y - dy
 		});
 	}
 
@@ -210,51 +304,150 @@
 				if (!full) resetFullscreenInteractionState();
 				return;
 			}
+			const touchTapStart = { x: 0, y: 0 };
+			let touchTapMoved = false;
+			// Track whether the gesture started as a pinch (2-finger)
+			let gestureStartedAsPinch = false;
+
 			const handleTouchStart = (event: TouchEvent) => {
 				if (!full || !works) return;
-				if (event.touches.length === 2) {
+				// Always prevent default in fullscreen so iOS doesn't hijack pinch-to-zoom
+				// before our 2nd-finger touchstart fires. Tap logic lives in touchend.
+				event.preventDefault();
+
+				if (event.touches.length >= 2) {
+					gestureStartedAsPinch = true;
 					fullscreenTouchMode = 'pinch';
 					fullscreenPinchStartDistance = getTouchDistance(event.touches);
 					fullscreenPinchStartZoom = fullscreenZoom;
 					fullscreenTouchCenterStart = getTouchCenter(event.touches);
-					event.preventDefault();
+					fullscreenTouchPanStart = { ...fullscreenPan };
 					return;
 				}
-				if (event.touches.length === 1 && fullscreenZoom > 1) {
-					fullscreenTouchMode = 'pan';
-					fullscreenTouchPanStart = { ...fullscreenPan };
-					fullscreenTouchCenterStart = getTouchCenter(event.touches);
-					event.preventDefault();
+
+				if (event.touches.length === 1) {
+					gestureStartedAsPinch = false;
+					const t = event.touches[0];
+					touchTapStart.x = t.clientX;
+					touchTapStart.y = t.clientY;
+					touchTapMoved = false;
+
+					if (fullscreenZoom > 1) {
+						fullscreenTouchMode = 'pan';
+						fullscreenTouchPanStart = { ...fullscreenPan };
+						fullscreenTouchCenterStart = { x: t.clientX, y: t.clientY };
+					}
 				}
 			};
+
 			const handleTouchMove = (event: TouchEvent) => {
 				if (!full || !works) return;
-				if (fullscreenTouchMode === 'pinch' && event.touches.length === 2) {
-					const nextDistance = getTouchDistance(event.touches);
-					if (fullscreenPinchStartDistance > 0) {
-						setFullscreenZoom(
-							fullscreenPinchStartZoom * (nextDistance / fullscreenPinchStartDistance)
-						);
-					}
+
+				if (fullscreenTouchMode === 'pinch' && event.touches.length >= 2) {
 					event.preventDefault();
+					const nextDistance = getTouchDistance(event.touches);
+					const nextCenter = getTouchCenter(event.touches);
+					if (fullscreenPinchStartDistance > 0) {
+						const nextZoom =
+							fullscreenPinchStartZoom * (nextDistance / fullscreenPinchStartDistance);
+						setFullscreenZoom(nextZoom);
+						// Pan to follow the pinch center as fingers drift across the screen
+						fullscreenPan = clampFullscreenPan({
+							x: fullscreenTouchPanStart.x + (nextCenter.x - fullscreenTouchCenterStart.x),
+							y: fullscreenTouchPanStart.y - (nextCenter.y - fullscreenTouchCenterStart.y)
+						});
+					}
 					return;
 				}
+
 				if (fullscreenTouchMode === 'pan' && event.touches.length === 1 && fullscreenZoom > 1) {
+					event.preventDefault();
 					const center = getTouchCenter(event.touches);
 					fullscreenPan = clampFullscreenPan({
 						x: fullscreenTouchPanStart.x + (center.x - fullscreenTouchCenterStart.x),
 						y: fullscreenTouchPanStart.y - (center.y - fullscreenTouchCenterStart.y)
 					});
-					event.preventDefault();
+				}
+
+				// Track movement for tap-vs-drag detection (single finger)
+				if (event.touches.length === 1) {
+					const t = event.touches[0];
+					if (Math.hypot(t.clientX - touchTapStart.x, t.clientY - touchTapStart.y) > 8) {
+						touchTapMoved = true;
+					}
 				}
 			};
-			const handleTouchEnd = () => {
+
+			const handleTouchEnd = (event: TouchEvent) => {
 				if (!full || !works) return;
-				if (fullscreenTouchMode === 'pinch' && fullscreenZoom > 1) {
-					fullscreenTouchMode = 'pan';
-					fullscreenTouchPanStart = { ...fullscreenPan };
+
+				if (fullscreenTouchMode === 'pinch') {
+					if (fullscreenZoom > 1) {
+						// Fingers lifted but still zoomed — transition to pan for remaining finger
+						fullscreenTouchMode = event.touches.length === 1 ? 'pan' : 'none';
+						if (fullscreenTouchMode === 'pan') {
+							fullscreenTouchPanStart = { ...fullscreenPan };
+							fullscreenTouchCenterStart = {
+								x: event.touches[0].clientX,
+								y: event.touches[0].clientY
+							};
+						}
+					} else {
+						// Pinched all the way back to 1× — close the lightbox
+						fullscreenTouchMode = 'none';
+						touchJustHandled = true;
+						setTimeout(() => (touchJustHandled = false), 600);
+						updateFullscreen(false);
+					}
 					return;
 				}
+
+				// Was a single-touch tap (no significant drag)
+				if (!touchTapMoved && !gestureStartedAsPinch && event.changedTouches.length === 1) {
+					const t = event.changedTouches[0];
+
+					if (fullscreenZoom > 1) {
+						// Tapped while zoomed in: zoom back out to 1×
+						touchJustHandled = true;
+						setTimeout(() => (touchJustHandled = false), 600);
+						setFullscreenZoom(1);
+						fullscreenTouchMode = 'none';
+						return;
+					}
+
+					// At zoom=1: hit-test the mesh using world-to-pixel math.
+					// Camera is at z=600, FOV set so tan(fov/2) = height/2 / 600
+					// → 1 world unit == 1 CSS pixel at z=0 (mesh z ≈ 0).
+					// Mesh center in pixels = viewport center (0,0 world → vw/2, vh/2 screen).
+					const vw = window.innerWidth;
+					const vh = window.innerHeight;
+					const isVideo = (texture as any).isVideoTexture === true;
+					// Mesh half-extents in pixels = world-unit half-extents × scale
+					const halfW = (imageGeo?.parameters.width ?? vw * 0.85) * transform.scale * 0.5;
+					const halfH = (imageGeo?.parameters.height ?? vh * 0.85) * transform.scale * 0.5;
+					// Mesh screen-space center (accounting for pan)
+					const cx = vw / 2 + transform.x + fullscreenPan.x;
+					const cy = vh / 2 - (transform.y + fullscreenPan.y); // y is flipped
+
+					const insideMesh =
+						t.clientX >= cx - halfW &&
+						t.clientX <= cx + halfW &&
+						t.clientY >= cy - halfH &&
+						t.clientY <= cy + halfH;
+
+					touchJustHandled = true;
+					setTimeout(() => (touchJustHandled = false), 600);
+					if (insideMesh) {
+						if (isVideo) {
+							toggleVideoPlayback();
+						} else {
+							toggleFullscreenZoom();
+						}
+					} else {
+						updateFullscreen(false);
+					}
+				}
+
 				fullscreenTouchMode = 'none';
 			};
 			window.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -412,7 +605,15 @@
 		handoffInProgress;
 		untrack(() => {
 			if (loadIn || !initialLoadComplete || handoffInProgress) return;
-			if (works && !hidden && !full) {
+			// When in fullscreen the geometry effect is responsible for re-snapping
+			// after resize (it has the updated imageGeo). Skip here to avoid a race
+			// where this effect fires with stale geometry dimensions.
+			if (works && full) return;
+			// Skip hidden work cards while lightbox is active — they are already at
+			// opacity 0 and don't need repositioning; calling updateImage on them
+			// would kill running opacity tweens and could flash them briefly visible.
+			if (works && hidden) return;
+			if (works && !hidden) {
 				syncWorkTransform();
 				return;
 			}
@@ -462,7 +663,11 @@
 		initialLoadComplete;
 		handoffInProgress;
 		hidden;
-		full;
+		// NOTE: `full` is intentionally NOT tracked here. When the lightbox closes,
+		// updateFullscreen(false) already calls updateImage(0, 0.5) for the smooth
+		// close animation. If `full` were tracked, this effect would re-run and
+		// scheduleSettledWorkReady → syncWorkTransform would do an instant
+		// transform assignment that overrides the 0.5s gsap tween.
 		page.params.slug;
 		untrack(() => {
 			if (!works) return;
@@ -500,9 +705,16 @@
 	// 	untrack(() => console.log(slug, works, 'inverted:', imageMat.uniforms.inverted.value));
 	// });
 
+	// Hero card on a work page (index=0) shares the layout's thumbnail video (id=slug).
+	// Content cards (index ≥ 1) use videos created by ThreeScene with 0-based ids (slug-0, slug-1…).
+	function workVideoId() {
+		if (!works) return slug ?? '';
+		return index === 0 ? (slug ?? '') : `${slug}-${index - 1}`;
+	}
+
 	function updateFullscreen(bool: boolean, updateStore = true) {
 		if (updateStore) optionsStore.fullscreen = bool;
-		const el = document.getElementById(`${slug}${works ? '-' + index : ''}`);
+		const el = document.getElementById(workVideoId());
 		if (el instanceof HTMLVideoElement) {
 			el.muted = !bool;
 			el.currentTime = 0;
@@ -514,6 +726,7 @@
 			gsap.to(img, {
 				scale: 1
 			});
+			swapToHighResTexture();
 			// we have to set timeout here so the click doesn't run this too on the same event loop
 			setTimeout(() => document.addEventListener('click', escapeListener), 0);
 			window.addEventListener('keydown', escapeListener);
@@ -521,6 +734,8 @@
 			resetFullscreenInteractionState();
 			stopFullscreenPointerDrag();
 			cleanupFullscreenTouchListeners();
+			revertToLowResTexture();
+			optionsStore.videoPaused = false;
 			document.removeEventListener('click', escapeListener);
 			window.removeEventListener('keydown', escapeListener);
 		}
@@ -533,6 +748,12 @@
 	function escapeListener(e: KeyboardEvent | MouseEvent) {
 		// Don't handle if gpt is open
 		if (gptStore.opened) return;
+		// If handleClick already processed this event (raycaster hit the mesh),
+		// clear the flag and bail — we don't want to double-close or double-zoom.
+		if (e instanceof MouseEvent && meshHandledClick) {
+			meshHandledClick = false;
+			return;
+		}
 
 		if (
 			(e instanceof KeyboardEvent && e.key.toLowerCase() === 'escape') ||
@@ -586,16 +807,27 @@
 
 	function handleClick(event: IntersectionEvent<'click'>, index: number) {
 		if (hidden) return;
-
+		// Skip synthesized click events that fire ~300ms after a touchend we already handled
+		if (touchJustHandled) {
+			meshHandledClick = true;
+			return;
+		}
+		// Only set the flag when already in fullscreen: the opening click doesn't
+		// need guarding (escapeListener isn't registered yet at that point).
+		if (full) meshHandledClick = true;
 		event.stopPropagation();
 		if (full && works && fullscreenDragMoved) {
 			fullscreenDragMoved = false;
 			return;
 		}
-		// stopPropagation = true;
 		// If in enlarged mode, make it smaller
 		if (full && works) {
-			toggleFullscreenZoom();
+			const isVideo = (texture as any).isVideoTexture === true;
+			if (isVideo) {
+				toggleVideoPlayback();
+			} else {
+				toggleFullscreenZoom();
+			}
 		} else if (full && slug !== 'reels') {
 			updateFullscreen(false);
 		} else if (slug === 'reels' && page.url.hash === '#reels') {
@@ -1076,7 +1308,21 @@
 		}
 		updateAspectUniforms(textureAspectVal);
 		if (works && initialLoadComplete && !loadIn && !handoffInProgress) {
-			queueMicrotask(() => runWhenWorkTargetReady(() => syncWorkTransform()));
+			// Read `full` inside untrack so this effect does NOT subscribe to it.
+			// This prevents the effect from re-running when the lightbox opens/closes,
+			// which would call updateImage(0,0.01) and kill the 0.5s closing tween.
+			// The effect still re-runs for legitimate deps: $size (resize), texture changes.
+			untrack(() => {
+				if (full) {
+					// Geometry was rebuilt due to resize while in fullscreen.
+					updateImage(0, 0.01);
+				} else if (hidden) {
+					// Ensure hidden cards stay at opacity 0 after a geometry rebuild.
+					tweenOpacity(0, 'power2.out');
+				} else {
+					queueMicrotask(() => runWhenWorkTargetReady(() => syncWorkTransform()));
+				}
+			});
 		}
 	});
 
@@ -1131,6 +1377,7 @@
 		clearSettledWorkReadyFrame();
 		stopFullscreenPointerDrag();
 		cleanupFullscreenTouchListeners();
+		revertToLowResTexture();
 	});
 </script>
 
