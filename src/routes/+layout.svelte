@@ -14,7 +14,9 @@
 		animationStore,
 		scrollStore,
 		notificationStore,
-		gptStore
+		gptStore,
+		currentHomeCardSnapshotStore,
+		sharedCardTransitionStore
 	} from '$lib/stores/index.svelte';
 	import { introSectionStore } from '$lib/stores/introSection';
 	import { projectSectionStore } from '$lib/stores/projectSection';
@@ -131,11 +133,23 @@
 			debouncedInertia.restart(true);
 		} else if (e.key === 'Enter') {
 			if (!data.projectsLength) return;
-			if (slug === 'reels') {
-				goto('/#reels');
-			} else {
-				goto(`/work/${slug}`);
+			const targetPath = slug === 'reels' ? '/#reels' : `/work/${slug}`;
+			if (slug !== 'reels') {
+				const snapshot = currentHomeCardSnapshotStore.value;
+				if (snapshot && snapshot.slug === slug) {
+					sharedCardTransitionStore.set({
+						direction: 'to-work',
+						index: snapshot.index,
+						slug: snapshot.slug,
+						geometry: snapshot.geometry,
+						transform: snapshot.transform
+					});
+				}
+				animationStore.homeNavigatingToWork = true;
 			}
+			goto(targetPath).finally(() => {
+				animationStore.homeNavigatingToWork = false;
+			});
 		}
 	}
 

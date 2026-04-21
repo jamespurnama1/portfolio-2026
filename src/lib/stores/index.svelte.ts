@@ -87,6 +87,7 @@ export const countStore = {
 let isAnimating = $state(false);
 let isTransitioning = $state(false);
 let currentCat = $state(['Highlights', 0]);
+let homeNavigatingToWork = $state(false);
 
 export const animationStore = {
 	get isAnimating(): boolean {
@@ -100,6 +101,12 @@ export const animationStore = {
 	},
 	set isTransitioning(val: boolean) {
 		isTransitioning = val;
+	},
+	get homeNavigatingToWork(): boolean {
+		return homeNavigatingToWork;
+	},
+	set homeNavigatingToWork(val: boolean) {
+		homeNavigatingToWork = val;
 	},
 	set currentCat(val: (string | number)[]) {
 		if (val[0]) currentCat = val;

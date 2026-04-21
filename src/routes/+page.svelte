@@ -230,7 +230,15 @@
 	$effect(() => {
 		scrollStore.scroll;
 		categorySection;
-		untrack(() => syncCategorySectionViewportTop());
+		untrack(() => {
+			// During a pending home return the section is not yet pinned and
+			// scroll has not been restored — getBoundingClientRect().top would
+			// return the natural-flow value (~700 px), overwriting the 0 that
+			// prepareHomeReturnScroll() already set.  The rAF in onMount will
+			// call syncCategorySectionViewportTop() once layout is stable.
+			if (homeTransitionStore.pending) return;
+			syncCategorySectionViewportTop();
+		});
 	});
 
 	$effect(() => {
@@ -280,7 +288,13 @@
 			if (projectListHostEl) {
 				projectListHost.set(projectListHostEl);
 			}
-			syncCategorySectionViewportTop();
+			// Only sync from DOM when layout is already stable (normal load).
+			// During a home return, prepareHomeReturnScroll() already set
+			// viewportTop = 0; reading the DOM here would overwrite it with the
+			// natural-flow offset before ScrollTrigger has pinned the section.
+			if (!restoringHomeReturn) {
+				syncCategorySectionViewportTop();
+			}
 
 			const triggers: ScrollTriggerInstance[] = [];
 			if (introSection && ScrollTrigger) {

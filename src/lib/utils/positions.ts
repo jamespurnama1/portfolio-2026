@@ -79,10 +79,16 @@ const applyInertia = (diff: number): number => {
 	return integer + blended * Math.sign(diff);
 };
 
-export const homePos = (index: number, imageGeo: PlaneGeometry, size: size) => {
+export const homePos = (
+	index: number,
+	imageGeo: PlaneGeometry,
+	size: size,
+	viewportTopOverride?: number
+) => {
 	const indexDiff = countStore.inertiaIndex - index;
 	const activeDiff = index + 1 - countStore.activeIndex;
-	const sectionViewportTop = get(projectSectionStore).viewportTop;
+	const sectionViewportTop =
+		viewportTopOverride !== undefined ? viewportTopOverride : get(projectSectionStore).viewportTop;
 	const mobile = size.width <= 768;
 	// Apply smooth inertia interpolation to the position difference
 	const smoothedIndexDiff = applyInertia(indexDiff);

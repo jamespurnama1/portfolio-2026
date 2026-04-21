@@ -541,11 +541,14 @@
 		works;
 		return () => {
 			if (prevInitialLoad !== initialLoadComplete && !handoffInProgress) {
-				transform = initialLoadComplete
+				const nextPos = initialLoadComplete
 					? works
 						? projectPage(index, $size, works, imageGeo, $size.width)
 						: centerPos(index)
 					: initialPos(index);
+				// Preserve current opacity so this positional reset never overrides
+				// the opacity controlled by tweenOpacity / the transition system.
+				transform = { ...nextPos, opacity: transform.opacity };
 				prevInitialLoad = initialLoadComplete;
 			}
 		};
@@ -588,10 +591,23 @@
 		hidden;
 		initialLoadComplete;
 		loadIn;
+		// For works detail cards (index > 0), gate fade-in on the hero card (index 0)
+		// having completed its 0.5s shared-element animation and reported ready.
+		// workRouteReadyStore.count is a reactive $state getter — subscribing here
+		// causes the effect to re-run when the hero calls reportWorkReady().
+		// This prevents detail cards fading in while the hero transition is still playing.
+		workRouteReadyStore.readyCount;
+		// Track homeNavigatingToWork outside untrack so the effect re-runs when it changes.
+		const homeNavToWork = animationStore.homeNavigatingToWork;
 		untrack(() => {
-			if (hidden) {
+			const heroReady =
+				!works || index === 0 || workRouteReadyStore.hasKey(slug ?? '', `${slug}:0`);
+			// During home→work transition (0.3s shrink), non-active home cards should
+			// fade out immediately — they'd otherwise remain at their current opacity.
+			const fadingOutForNavigation = !works && homeNavToWork && !isNavigating;
+			if (hidden || fadingOutForNavigation || (works && index > 0 && !heroReady)) {
 				tweenOpacity(0, 'power2.out');
-			} else if (initialLoadComplete && !loadIn) {
+			} else if (initialLoadComplete && !loadIn && heroReady) {
 				tweenOpacity(1, 'power2.in');
 			}
 		});
@@ -605,6 +621,11 @@
 		handoffInProgress;
 		untrack(() => {
 			if (loadIn || !initialLoadComplete || handoffInProgress) return;
+			// Do not reposition home cards while a return transition is pending.
+			if (homeTransitionStore.pending && !works) return;
+			// Do not reposition/re-opacity home cards while navigating to work —
+			// updateImage would kill the tweenOpacity(0) tween and restore homePos opacity.
+			if (animationStore.homeNavigatingToWork && !works) return;
 			// When in fullscreen the geometry effect is responsible for re-snapping
 			// after resize (it has the updated imageGeo). Skip here to avoid a race
 			// where this effect fires with stale geometry dimensions.
@@ -682,6 +703,15 @@
 		handoffInProgress;
 		untrack(() => {
 			if (loadIn || !initialLoadComplete || handoffInProgress) return;
+			// While a home-return transition is pending, non-returning cards are
+			// pre-placed by effect 976 and hidden (opacity 0). Suppressing the 0.5s
+			// updateImage here prevents a ScrollTrigger.update() pixel-rounding
+			// side-effect from firing a stale-viewportTop tween that would make the
+			// cards visibly slide after the transition reveals them.
+			if (homeTransitionStore.pending && !works) return;
+			// Do not reposition/re-opacity home cards while navigating to work —
+			// updateImage would kill the tweenOpacity(0) tween and restore homePos opacity.
+			if (animationStore.homeNavigatingToWork && !works) return;
 			// Fade out when transitioning to gallery
 			if (loadStore.galleryTransitioning && !works) {
 				gsap.to(transform, {
@@ -774,6 +804,7 @@
 
 		suppressUpdates = true;
 		isNavigating = true;
+		animationStore.homeNavigatingToWork = true;
 
 		gsap.to(transform, {
 			scale: transform.scale * 0.75,
@@ -799,6 +830,7 @@
 				goto(targetPath).finally(() => {
 					isNavigating = false;
 					suppressUpdates = false;
+					animationStore.homeNavigatingToWork = false;
 					updateImage(0, 0.5);
 				});
 			}
@@ -989,9 +1021,14 @@
 			) {
 				return;
 			}
+			// Pre-place at viewportTop=0. During a home-return the category section
+			// hasn't been re-pinned by ScrollTrigger yet, so
+			// projectSectionStore.viewportTop may be a large transient value. Using
+			// the eventual pinned value (0) avoids a visible slide when the cards
+			// become opaque after homeTransitionStore.clear().
 			transform = {
 				...transform,
-				...homePos(index, imageGeo, $size),
+				...homePos(index, imageGeo, $size, 0),
 				opacity: 0
 			};
 		});
@@ -999,10 +1036,8 @@
 
 	function syncWorkTransform() {
 		if (!works || !imageGeo || hidden || full || !workTargetReady()) return;
-		transform = {
-			...transform,
-			...projectPage(index, $size, works, imageGeo, $size.width)
-		};
+		const { opacity: _opacity, ...pos } = projectPage(index, $size, works, imageGeo, $size.width);
+		transform = { ...transform, ...pos };
 	}
 
 	function scrollWorkPageToTop() {
@@ -1050,10 +1085,20 @@
 		} else if (works) {
 			// console.log('[WORK PAGE UPDATE]', index);
 			pos = projectPage(index, $size, works, imageGeo, $size.width);
+			// For detail cards (index > 0), opacity is gated by workRouteReadyStore
+			// via the tweenOpacity effect. Strip it here so the positional snap from
+			// syncInitialPosition / updateImage never races the fade-in gate.
+			if (index > 0) {
+				pos = { ...pos };
+				delete (pos as Partial<typeof pos>).opacity;
+			}
 		}
 
 		if (!data.projectsLength) return;
-		gsap.killTweensOf(transform);
+		// For works detail cards (index > 0), opacity is exclusively controlled by
+		// tweenOpacity. Scope the kill to positional properties only so the fade-in
+		// tween isn't cancelled by a positional updateImage call.
+		gsap.killTweensOf(transform, works && index > 0 ? 'x,y,z,scale' : undefined);
 		gsap.to(transform, {
 			...pos,
 			delay,
@@ -1244,12 +1289,16 @@
 		});
 	});
 
-	// Ensure suppressed updates are released once we land back on the home page
+	// Ensure suppressed updates are released once we land back on the home page.
+	// Only clear the flag when we are NOT in the middle of a navigate-to-work
+	// animation: setting suppressUpdates=true while already on '/' (inside
+	// navigateToWork) would otherwise immediately flip it back to false, which
+	// lets pending updateImage microtasks overwrite the shrink tween.
 	$effect(() => {
 		suppressUpdates;
 		page.url.pathname;
 		untrack(() => {
-			if (!suppressUpdates || page.url.pathname !== '/') return;
+			if (!suppressUpdates || page.url.pathname !== '/' || isNavigating) return;
 			suppressUpdates = false;
 		});
 	});
