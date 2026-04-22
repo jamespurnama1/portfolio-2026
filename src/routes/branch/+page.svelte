@@ -122,7 +122,7 @@
 	</div>
 </section>
 
-<style lang="scss" scoped>
+<style scoped>
 	.branch-page {
 		min-height: 100vh;
 		width: 100%;

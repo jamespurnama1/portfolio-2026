@@ -2,7 +2,7 @@
 	import Loading from '$lib/components/Loading.svelte';
 	import { scale } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
-	import '../app.scss';
+	import '../app.css';
 	// import { Canvas } from '@threlte/core';
 	import Three from '$lib/components/Three.svelte';
 	import Nav from '$lib/components/Nav.svelte';
@@ -595,7 +595,7 @@
 	>
 		{#if showLoadingScreen}
 			<div
-				class="fixed inset-0 z-[200] flex h-screen w-full items-center justify-center p-24 pointer-events-none"
+				class="fixed inset-0 z-200 flex h-screen w-full items-center justify-center p-24 pointer-events-none"
 				transition:scale={{ duration: 500, delay: 500, start: 0.5, easing: quintOut }}
 			>
 				<Loading />

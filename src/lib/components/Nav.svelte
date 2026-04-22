@@ -44,7 +44,7 @@
 		{/if}
 	</nav>
 	<aside
-		class="fixed top-0 right-4 max-md:gap-4 h-full flex flex-col justify-center text-right -z-0 transition-opacity {optionsStore.fullscreen
+		class="fixed top-0 right-4 max-md:gap-4 h-full flex flex-col justify-center text-right z-0 transition-opacity {optionsStore.fullscreen
 			? 'opacity-0 pointer-events-none'
 			: gptStore.opened
 				? 'max-md:opacity-0 max-md:pointer-events-none delay-300'

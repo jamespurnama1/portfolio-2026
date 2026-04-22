@@ -478,7 +478,7 @@
 	</div>
 </section>
 
-<style lang="scss" scoped>
+<style scoped>
 	section {
 		width: 100%;
 		height: 100vh;

@@ -86,7 +86,8 @@
 	</p>
 {/if}
 
-<style lang="scss" scoped>
+<style>
+	@reference "tailwindcss";
 	:global {
 		@media (hover: none) and (pointer: coarse) {
 			.no-touch {

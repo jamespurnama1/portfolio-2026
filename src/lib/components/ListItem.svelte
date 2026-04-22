@@ -165,7 +165,8 @@
 	{/if}
 {/if}
 
-<style lang="scss">
+<style>
+	@reference "tailwindcss";
 	.selected {
 		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 		transition-duration: 0ms;

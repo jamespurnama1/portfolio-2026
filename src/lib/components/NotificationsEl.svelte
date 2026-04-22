@@ -9,7 +9,7 @@
 	<p class="font-mono uppercase text-white text-sm max-md:text-xs">{sub}</p>
 </div>
 
-<style lang="scss" scoped>
+<style>
 	p {
 		text-shadow:
 			0 0 10px rgba(255, 255, 255, 0.7),

@@ -412,10 +412,10 @@
 	id="gpt"
 	class:opacity-0={!loadStore.loaded || (notificationStore.opened && !gptStore.opened)}
 	class="{gptStore.opened
-		? '!-translate-y-1/2 md:!-translate-x-1/2 max-md:w-[90vw]'
+		? '-translate-y-1/2! md:-translate-x-1/2! max-md:w-[90vw]'
 		: optionsStore.fullscreen
-			? 'max-md:-translate-x-0 md:-translate-x-1/2 translate-y-[150svh] w-[75vw] pointer-events-none'
-			: 'max-md:-translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh_-_3.5rem)] w-[75vw]'} fixed min-h-24 top-1/2 max-md:left-auto flex flex-col p-3 pt-0 md:left-1/2 max-md:right-0 hover:translate-y-[calc(50svh_-_5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[transform,opacity] gpt-glow"
+			? 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[150svh] w-[75vw] pointer-events-none'
+			: 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh-3.5rem)] w-[75vw]'} fixed min-h-24 top-1/2 max-md:left-auto flex flex-col p-3 pt-0 md:left-1/2 max-md:right-0 hover:translate-y-[calc(50svh-5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[transform,opacity] gpt-glow"
 >
 	<div class="flex flex-col w-full justify-center items-center">
 		<div class="w-full p-5 max-md:text-xs flex justify-between items-center">
@@ -465,7 +465,7 @@
 	<div class="flex w-full relative items-center p-3 sm:p-5 gap-2 sm:gap-3">
 		<div
 			class:invisible={prompt !== ''}
-			class="absolute pointer-events-none flex-grow text-xl sm:text-2xl md:text-3xl opacity-10 gpt-text"
+			class="absolute pointer-events-none grow text-xl sm:text-2xl md:text-3xl opacity-10 gpt-text"
 		>
 			{placeholder.toString().replaceAll(',', '')}
 		</div>
@@ -479,14 +479,14 @@
 			class:mask-left={inputScrolledRight}
 			class:mask-right={inputScrolledLeft}
 			onscroll={onInputScroll}
-			class="gpt gpt-text overflow-x-scroll text-nowrap flex-grow mx-auto text-xl sm:text-2xl md:text-3xl bg-transparent focus:outline-none active:outline-none placeholder:opacity-50 placeholder:transition-opacity {fetching
+			class="gpt gpt-text overflow-x-scroll text-nowrap grow mx-auto text-xl sm:text-2xl md:text-3xl bg-transparent focus:outline-none active:outline-none placeholder:opacity-50 placeholder:transition-opacity {fetching
 				? 'placeholder:opacity-10'
 				: ''}"
 			{onkeydown}
 		></div>
 		<button
 			disabled={prompt === '' || prompt.charCodeAt(0) === 10}
-			class="right-0 w-4 md:w-8 h-auto disabled:opacity-10 disabled:hover:scale-100 hover:scale-150 flex-shrink-0 transition-[transform_opacity] duration-500"
+			class="right-0 w-4 md:w-8 h-auto disabled:opacity-10 disabled:hover:scale-100 hover:scale-150 shrink-0 transition-[transform_opacity] duration-500"
 			onclick={() => onkeydown()}
 			><img
 				src={caret}
@@ -501,7 +501,7 @@
 	aria-expanded="true"
 	aria-controls="gpt"
 	tabindex="0"
-	class="button fixed z-[29] w-screen h-screen top-0 left-0"
+	class="button fixed z-29 w-screen h-screen top-0 left-0"
 	class:hidden={!gptStore.opened}
 	onclick={(e) => {
 		e.stopPropagation();
@@ -512,7 +512,8 @@
 
 <!-- {/key} -->
 
-<style lang="scss" scoped>
+<style>
+	@reference "tailwindcss";
 	#gpt {
 		background-color: #fff;
 		color: #000;
@@ -520,10 +521,10 @@
 			0 0 10px rgb(255, 255, 255, 0.3),
 			-10px 0 40px rgb(255, 0, 255, 0.3),
 			10px 0 40px rgb(0, 255, 255, 0.3);
+	}
 
-		:global(a) {
-			@apply underline;
-		}
+	#gpt :global(a) {
+		@apply underline;
 	}
 
 	:global(html[data-theme='dark']) #gpt {
@@ -572,17 +573,17 @@
 			rgba(0, 0, 0, 1) 75%,
 			rgba(0, 0, 0, 0) 100%
 		);
-		&-bottom {
-			mask-image: linear-gradient(0deg, rgba(2, 0, 36, 0) 0%, rgba(0, 0, 0, 1) 15%);
-		}
-		&-top {
-			mask-image: linear-gradient(0deg, rgba(0, 0, 0, 1) 75%, rgba(0, 0, 0, 0) 100%);
-		}
-		&-left {
-			mask-image: linear-gradient(90deg, rgba(2, 0, 36, 0) 0%, rgba(0, 0, 0, 1) 15%);
-		}
-		&-right {
-			mask-image: linear-gradient(90deg, rgba(0, 0, 0, 1) 75%, rgba(0, 0, 0, 0) 100%);
-		}
+	}
+	.mask-bottom {
+		mask-image: linear-gradient(0deg, rgba(2, 0, 36, 0) 0%, rgba(0, 0, 0, 1) 15%);
+	}
+	.mask-top {
+		mask-image: linear-gradient(0deg, rgba(0, 0, 0, 1) 75%, rgba(0, 0, 0, 0) 100%);
+	}
+	.mask-left {
+		mask-image: linear-gradient(90deg, rgba(2, 0, 36, 0) 0%, rgba(0, 0, 0, 1) 15%);
+	}
+	.mask-right {
+		mask-image: linear-gradient(90deg, rgba(0, 0, 0, 1) 75%, rgba(0, 0, 0, 0) 100%);
 	}
 </style>

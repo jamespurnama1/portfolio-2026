@@ -1078,7 +1078,7 @@
 ></aside>
 <aside
 	style={`height: ${progress}px`}
-	class="fixed top-0 right-0 w-3 bg-gradient-to-b from-stone-700 to-stone-100/0 dark:from-slate-300 dark:to-slate-900/0 origin-top overflow-hidden pointer-events-none"
+	class="fixed top-0 right-0 w-3 bg-linear-to-b from-stone-700 to-stone-100/0 dark:from-slate-300 dark:to-slate-900/0 origin-top overflow-hidden pointer-events-none"
 >
 	<img bind:this={caretEl} src={caret} alt="scroll caret" class="absolute w-3 right-0 -top-5" />
 </aside>
@@ -1153,7 +1153,7 @@
 
 {#if showNextProjectOverlay}
 	<aside
-		class="fixed left-0 bottom-0 h-[100dvh] w-full gradient dark:invert-0 invert pointer-events-none"
+		class="fixed left-0 bottom-0 h-dvh w-full gradient dark:invert-0 invert pointer-events-none"
 		class:z-40={!nextProjectTransitionActive}
 		class:z-50={nextProjectTransitionActive}
 	>
@@ -1179,7 +1179,7 @@
 			style={`transform: translateY(40px); opacity: 0; will-change: transform, opacity; padding-bottom: max(10rem,18vh);`}
 		>
 			<div
-				class="flex items-center justify-center text-white mix-blend-difference font-mono uppercase text-xs gap-5 min-h-[1rem]"
+				class="flex items-center justify-center text-white mix-blend-difference font-mono uppercase text-xs gap-5 min-h-4"
 				style="text-shadow: 0 0 24px rgba(0, 0, 0, 0.18);"
 			>
 				<p class="text-base">&gt;</p>

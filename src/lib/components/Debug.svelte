@@ -73,7 +73,7 @@
 	/>
 </Pane>
 
-<style lang="scss">
+<style>
 	:global(.tp-dfwv) {
 		position: fixed !important;
 		z-index: 999;

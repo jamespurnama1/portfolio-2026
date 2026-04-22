@@ -106,7 +106,7 @@
 	{/if}
 </ul>
 
-<style lang="postcss" scoped>
+<style scoped>
 	ul {
 		mask-image: linear-gradient(
 			0deg,
