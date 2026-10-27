@@ -42,7 +42,7 @@
 			<span class="wave" class:wave--on={ambient.on} aria-hidden="true">
 				<i></i><i></i><i></i><i></i><i></i>
 			</span>
-			<span>{ambient.on ? 'MUSIC ON' : 'MUSIC OFF'}</span>
+			<span><ScrambleText text={ambient.on ? 'MUSIC ON' : 'MUSIC OFF'} /></span>
 		</button>
 		<button
 			class="max-md:hidden"
