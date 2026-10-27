@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { useThrelte, useLoader, T } from '@threlte/core';
-	import { pointerInteractivity } from '$lib/utils/interactivity';
+	import { pointerInteractivity } from '#lib/utils/interactivity.js';
 	import {
 		VideoTexture,
 		Texture,
@@ -13,15 +13,15 @@
 		LinearFilter,
 		LinearMipmapLinearFilter
 	} from 'three';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { countStore, loadStore } from '$lib/stores/index.svelte';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { countStore, loadStore } from '#lib/stores/index.svelte.js';
 	import { untrack, onDestroy, onMount } from 'svelte';
 	import Cards from './Cards.svelte';
 	import IntroGridScene from './IntroGridScene.svelte';
 	import { page } from '$app/state';
 	import type { PageData } from '../../routes/$types';
 	import { beforeNavigate } from '$app/navigation';
-	import { isMobile, isMobileSafari } from '$lib/utils/device';
+	import { isMobile, isMobileSafari } from '#lib/utils/device.js';
 
 	let {
 		data,
@@ -391,6 +391,7 @@
 </script>
 
 <T.PerspectiveCamera bind:ref={perspectiveCamera} makeDefault position={[0, 0, cameraZ]} {fov} />
+
 {#if page.url.pathname === '/'}
 	<IntroGridScene {mouse} />
 {/if}

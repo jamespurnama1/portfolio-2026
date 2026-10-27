@@ -1,13 +1,13 @@
 <script lang="ts">
-	import Loading from '$lib/components/Loading.svelte';
+	import Loading from '#lib/components/Loading.svelte';
 	import { scale } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 	import '../app.css';
 	// import { Canvas } from '@threlte/core';
-	import Three from '$lib/components/Three.svelte';
-	import Nav from '$lib/components/Nav.svelte';
-	import Footer from '$lib/components/Footer.svelte';
-	import Debug from '$lib/components/Debug.svelte';
+	import Three from '#lib/components/Three.svelte';
+	import Nav from '#lib/components/Nav.svelte';
+	import Footer from '#lib/components/Footer.svelte';
+	import Debug from '#lib/components/Debug.svelte';
 	import {
 		countStore,
 		loadStore,
@@ -20,31 +20,31 @@
 		focusCursor,
 		currentHomeCardSnapshotStore,
 		sharedCardTransitionStore
-	} from '$lib/stores/index.svelte';
-	import { introSectionStore } from '$lib/stores/introSection';
-	import { projectSectionStore } from '$lib/stores/projectSection';
-	import { projectListHost } from '$lib/stores/projectListHost';
-	import { galleryScrollStore } from '$lib/stores/galleryScroll';
+	} from '#lib/stores/index.svelte.js';
+	import { introSectionStore } from '#lib/stores/introSection.js';
+	import { projectSectionStore } from '#lib/stores/projectSection.js';
+	import { projectListHost } from '#lib/stores/projectListHost.js';
+	import { galleryScrollStore } from '#lib/stores/galleryScroll.js';
 	import { gsap } from 'gsap';
-	import { checkSavedTheme } from '$lib/utils/theme';
+	import { checkSavedTheme } from '#lib/utils/theme.js';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate, afterNavigate, goto } from '$app/navigation';
-	import { homeNav } from '$lib/stores/homeNav';
-	import { reelViewer, viewerStore } from '$lib/stores/viewer.svelte';
-	import MediaViewer from '$lib/components/MediaViewer.svelte';
-	import IntroStack from '$lib/components/IntroStack.svelte';
-	import { sfx } from '$lib/utils/sfx';
-	import { namnam } from '$lib/utils/easterEggs';
-	import ProjectList from '$lib/components/ProjectList.svelte';
+	import { homeNav } from '#lib/stores/homeNav.js';
+	import { reelViewer, viewerStore } from '#lib/stores/viewer.svelte.js';
+	import MediaViewer from '#lib/components/MediaViewer.svelte';
+	import IntroStack from '#lib/components/IntroStack.svelte';
+	import { sfx } from '#lib/utils/sfx.js';
+	import { namnam } from '#lib/utils/easterEggs.js';
+	import ProjectList from '#lib/components/ProjectList.svelte';
 	import { type PageData } from './$types.js';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import Notifications from '$lib/components/Notifications.svelte';
-	import GPT from '$lib/components/gpt.svelte';
-	import { browser, dev } from '$app/environment';
-	import { isSafariUserAgent, isMobile } from '$lib/utils/device';
-	import { initAnalytics } from '$lib/utils/analytics';
-	import { ambient } from '$lib/utils/ambient.svelte';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import Notifications from '#lib/components/Notifications.svelte';
+	import GPT from '#lib/components/gpt.svelte';
+	import { browser, dev } from '$app/env';
+	import { isSafariUserAgent, isMobile } from '#lib/utils/device.js';
+	import { initAnalytics } from '#lib/utils/analytics.js';
+	import { ambient } from '#lib/utils/ambient.svelte.js';
 
 	// Initialize theme before first render to prevent flash of wrong colors on mobile
 	if (browser) checkSavedTheme();
@@ -142,6 +142,7 @@
 		const scrollKeys = [' ', 'PageUp', 'PageDown', 'Home', 'End'];
 		const navKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 		const onHome = page.url.pathname === '/';
+
 		if (
 			!(onControl && (e.key === 'Enter' || e.key === ' ')) &&
 			((onHome && (navKeys.includes(e.key) || scrollKeys.includes(e.key))) || e.key === 'Enter')
@@ -204,6 +205,7 @@
 		let index =
 			data.categoriesLength!.findIndex((x, i) => {
 				const nextNum = data.categoriesLength![i + 1] || Infinity;
+
 				return goTo + 1 > x && goTo + 1 <= nextNum;
 			}) + 1;
 		if (prev !== index) {
@@ -213,19 +215,18 @@
 		}
 	}
 
-	// Navigation Animation
-	beforeNavigate(({ to }) => {
-		if (to?.url.pathname.includes('work')) {
-			animationStore.isTransitioning = true;
-			// document.documentElement.classList.remove('overflow-hidden');
-		} else {
-			// document.documentElement.classList.add('overflow-hidden');
-		}
-	});
-
 	const tl = gsap.timeline();
 
-	afterNavigate(({ from, to }) => {
+	// Navigation Animation
+beforeNavigate(({ to, shallow }) => {
+	if (shallow) return;
+	if (to?.url.pathname.includes('work')) {
+		animationStore.isTransitioning = true;
+	}
+});
+
+afterNavigate(({ from, to, shallow }) => {
+	if (shallow) return;
 		const fromPath = from?.url.pathname;
 		const toPath = to?.url.pathname;
 		if (!loadStore.loaded || fromPath === toPath) return;

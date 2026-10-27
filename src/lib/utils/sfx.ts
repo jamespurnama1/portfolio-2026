@@ -1,9 +1,9 @@
-import tinkUrl from '$lib/sound/tink.mp3';
-import tink2Url from '$lib/sound/tink2.mp3';
-import welcomeUrl from '$lib/sound/welcome.mp3';
-import notifyUrl from '$lib/sound/notify.mp3';
-import chatUrl from '$lib/sound/chat.mp3';
-import closeUrl from '$lib/sound/close.mp3';
+import tinkUrl from '#lib/sound/tink.mp3';
+import tink2Url from '#lib/sound/tink2.mp3';
+import welcomeUrl from '#lib/sound/welcome.mp3';
+import notifyUrl from '#lib/sound/notify.mp3';
+import chatUrl from '#lib/sound/chat.mp3';
+import closeUrl from '#lib/sound/close.mp3';
 
 const SAMPLE_URLS = {
 	tink: tinkUrl,

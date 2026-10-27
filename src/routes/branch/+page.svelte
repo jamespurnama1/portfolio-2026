@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { cursorSnapStore } from '$lib/stores/index.svelte';
-	import ScrambleText from '$lib/components/ScrambleText.svelte';
+	import { cursorSnapStore } from '#lib/stores/index.svelte.js';
+	import ScrambleText from '#lib/components/ScrambleText.svelte';
 	import { cubicOut } from 'svelte/easing';
 	import { onDestroy } from 'svelte';
-	import { sfx } from '$lib/utils/sfx';
+	import { sfx } from '#lib/utils/sfx.js';
 
 	// Blur + rise; global so it also plays when the whole route is swapped.
 	function rise(node: Element, { delay = 0, duration = 600, y = 28 } = {}) {

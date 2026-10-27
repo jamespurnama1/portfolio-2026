@@ -2,10 +2,10 @@
 	import { onMount } from 'svelte';
 	import { gsap } from 'gsap';
 	import { afterNavigate } from '$app/navigation';
-	import Awards from '$lib/components/Awards.svelte';
-	import type { MediaAsset, Post } from '$lib/types';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { placeholderStyle } from '$lib/utils/placeholder';
+	import Awards from '#lib/components/Awards.svelte';
+	import type { MediaAsset, Post } from '#lib/types/index.js';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { placeholderStyle } from '#lib/utils/placeholder.js';
 
 	let {
 		index,
@@ -44,11 +44,13 @@
 		if (isHeroSection && !optionsStore.dark && imageLight?.url) return imageLight.url;
 		return image?.url ?? imageLight?.url;
 	});
+
 	const displayLqip = $derived(
 		isHeroSection && !optionsStore.dark && imageLight?.url
 			? imageLight.lqip
 			: (image?.lqip ?? imageLight?.lqip)
 	);
+
 	// Sanity asset URLs embed the pixel size, which lets the browser reserve space before load.
 	const intrinsicSize = $derived.by(() => {
 		const match = displayImageSrc?.match(/-(\d+)x(\d+)\.[a-z]+/i);

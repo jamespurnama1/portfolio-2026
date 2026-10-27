@@ -26,27 +26,27 @@
 		sharedCardTransitionStore,
 		scrollStore,
 		workRouteReadyStore
-	} from '$lib/stores/index.svelte';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { viewerStore, reelViewer } from '$lib/stores/viewer.svelte';
-	import { gateTransform, GATE_MAX_CARDS } from '$lib/utils/introGate';
-	import { perfStore } from '$lib/stores/perf.svelte';
-	import { isMobile, isMobileSafari } from '$lib/utils/device';
+	} from '#lib/stores/index.svelte.js';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { viewerStore, reelViewer } from '#lib/stores/viewer.svelte.js';
+	import { gateTransform, GATE_MAX_CARDS } from '#lib/utils/introGate.js';
+	import { perfStore } from '#lib/stores/perf.svelte.js';
+	import { isMobile, isMobileSafari } from '#lib/utils/device.js';
 	import fragmentShader from '../shaders/glitchFragment.glsl?raw';
 	import vertexShader from '../shaders/vertexBend.glsl?raw';
 	import gsap from 'gsap';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { homePos, centerPos, projectPage, initialPos, fullscreen } from '$lib/utils/positions';
+	import { homePos, centerPos, projectPage, initialPos, fullscreen } from '#lib/utils/positions.js';
 	import {
 		createCardMotionState,
 		indexOffsetToMotionProgress,
 		stepCardMotion,
 		velocityToMotionProgress
-	} from '$lib/utils/cardMotion';
+	} from '#lib/utils/cardMotion.js';
 	import { type PageData } from '../../routes/$types';
-	import { introSectionStore } from '$lib/stores/introSection';
+	import { introSectionStore } from '#lib/stores/introSection.js';
 
 	let easeFactor = 0.02;
 	// Debounced timer that re-evaluates homePos() 250ms after scrolling stops.
@@ -643,25 +643,17 @@
 
 	const baseHidden = $derived(
 		// gpt modal opened
-		gptStore.opened ||
-			// while the landing page is restoring after a shared return, only the returning card may render
+		gptStore.opened || // while the landing page is restoring after a shared return, only the returning card may render
 			(!works &&
 				page.url.pathname === '/' &&
 				homeTransitionStore.pending &&
-				!isReturningHomeCard) ||
-			// intro section owns the homepage hero before the cards take over
-			(home && ($introSectionStore.active || $introSectionStore.progress < 1)) ||
-			// not current project in the work page - hide ALL home cards on work pages
-			(!works && page.url.pathname.includes('work')) ||
-			// on home but before current index
-			(index < countStore.activeIndex && page.url.pathname === '/' && !isReturningHomeCard) ||
-			// in fullscreen but not this image
-			(optionsStore.fullscreen && !full && !viewerStore.active) ||
-			// during gallery transition
-			loadStore.galleryTransitioning ||
-			// in gallery page TODO: change this
-			page.route.id?.includes('gallery') ||
-			// on home but before current index (only applies to home page)
+				!isReturningHomeCard) || // intro section owns the homepage hero before the cards take over
+			(home && ($introSectionStore.active || $introSectionStore.progress < 1)) || // not current project in the work page - hide ALL home cards on work pages
+			(!works && page.url.pathname.includes('work')) || // on home but before current index
+			(index < countStore.activeIndex && page.url.pathname === '/' && !isReturningHomeCard) || // in fullscreen but not this image
+			(optionsStore.fullscreen && !full && !viewerStore.active) || // during gallery transition
+			loadStore.galleryTransitioning || // in gallery page TODO: change this
+			page.route.id?.includes('gallery') || // on home but before current index (only applies to home page)
 			(page.url.pathname === '/' && index < countStore.activeIndex && !isReturningHomeCard)
 	);
 	const hidden = $derived(gateActive ? gptStore.opened : baseHidden);
@@ -1018,9 +1010,7 @@
 	function heroTransitionTargetReady() {
 		if (!works || index !== 0) return true;
 		const mediaEl = document.getElementById(`media-${index}`) as
-			| HTMLImageElement
-			| HTMLVideoElement
-			| null;
+			HTMLImageElement | HTMLVideoElement | null;
 		if (!mediaEl || !imageGeo) return false;
 		const rect = mediaEl.getBoundingClientRect();
 		return rect.width > 32 && rect.height > 32;
@@ -1029,9 +1019,7 @@
 	function workTargetReady() {
 		if (!works) return true;
 		const mediaEl = document.getElementById(`media-${index}`) as
-			| HTMLImageElement
-			| HTMLVideoElement
-			| null;
+			HTMLImageElement | HTMLVideoElement | null;
 		if (!mediaEl || !imageGeo) return false;
 		const rect = mediaEl.getBoundingClientRect();
 		return rect.width > 24 && rect.height > 24;
@@ -1555,7 +1543,9 @@
 
 	// exit transition to home
 	let isNavigating = false;
-	beforeNavigate(({ to, cancel }) => {
+
+	beforeNavigate(({ to, cancel, shallow, type }) => {
+		if (shallow && type === 'goto') return;
 		if (!to) return;
 		if (!home && index === 0 && to.url.pathname === '/' && !isNavigating) {
 			suppressUpdates = true;
@@ -1590,7 +1580,7 @@
 								opacity: transform.opacity
 							}
 						});
-						goto('/', { noScroll: true }).then(() => {
+						goto('/', { reset: false }).then(() => {
 							isNavigating = false;
 							suppressUpdates = false;
 						});

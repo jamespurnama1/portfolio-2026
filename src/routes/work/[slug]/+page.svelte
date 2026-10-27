@@ -9,18 +9,18 @@
 		loadStore,
 		sharedCardTransitionStore,
 		workRouteReadyStore
-	} from '$lib/stores/index.svelte';
-	import Section from '$lib/components/Section.svelte';
-	import ScrambleText from '$lib/components/ScrambleText.svelte';
+	} from '#lib/stores/index.svelte.js';
+	import Section from '#lib/components/Section.svelte';
+	import ScrambleText from '#lib/components/ScrambleText.svelte';
 	import { gsap } from 'gsap';
 	import { onMount, tick, untrack } from 'svelte';
 	import { type PageData } from './$types';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { viewerStore, type ViewerMedia } from '$lib/stores/viewer.svelte';
-	import type { Post } from '$lib/types';
-	import caret from '$lib/images/caret.svg';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { viewerStore, type ViewerMedia } from '#lib/stores/viewer.svelte.js';
+	import type { Post } from '#lib/types/index.js';
+	import caret from '#lib/images/caret.svg';
 	import chroma from 'chroma-js';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import type { ScrollTrigger as ScrollTriggerInstance } from 'gsap/ScrollTrigger';
 
 	const { data }: { data: Required<PageData> } = $props();
@@ -314,6 +314,7 @@
 			])
 			.colors(3)
 	);
+
 	const displayedNextTitle = $derived(
 		frozenNextTitle ||
 			(typeof nextProjectIndex === 'number' ? (data.projects[nextProjectIndex]?.title ?? '') : '')
@@ -321,19 +322,24 @@
 	const displayedNextColors = $derived(
 		nextTransitionActive && frozenNextColors.length ? frozenNextColors : nextColorScale
 	);
+
 	// Overlay content renders un-inverted in both themes, so pick text by the gradient's own lightness.
 	const textColor = $derived.by(() => {
 		const colors = [base, base, ...displayedNextColors];
 		const lum = colors.reduce((sum, c) => sum + chroma(c).luminance(), 0) / colors.length;
 		return lum > 0.5 ? '#000' : '#fff';
 	});
+
 	const heroMediaUrl = $derived(
 		current ? withSanityImageParams(current.thumbnail?.asset?.url) : ''
 	);
+
 	const heroLightImageUrl = $derived(
 		current ? withSanityImageParams(current.thumbnailImage?.asset?.url) : ''
 	);
+
 	const heroHasVideo = $derived(/\.(mp4|webm)$/i.test(heroMediaUrl));
+
 	const heroImage = $derived(
 		heroMediaUrl && !heroHasVideo
 			? {
@@ -653,7 +659,7 @@
 		labelScramble = true;
 		window.setTimeout(() => (labelScramble = false), 720);
 		enteringNext = true;
-		await Promise.all([goto(`/work/${target.slug.current}`, { noScroll: true }), wait(1500)]);
+		await Promise.all([goto(`/work/${target.slug.current}`, { reset: false }), wait(1500)]);
 		await tick();
 		window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 		lastBendY = -1;

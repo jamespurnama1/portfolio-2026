@@ -1,10 +1,10 @@
 <script lang="ts">
-	import type { Award, Post } from '$lib/types';
+	import type { Award, Post } from '#lib/types/index.js';
 	import { fade, fly } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { sfx } from '$lib/utils/sfx';
+	import { sfx } from '#lib/utils/sfx.js';
 
 	let currAward = $state('');
 	let mounted = $state(false);

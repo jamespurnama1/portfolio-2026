@@ -7,18 +7,18 @@
 		loadStore,
 		notificationStore,
 		projectsStore
-	} from '$lib/stores/index.svelte';
-	import { optionsStore } from '$lib/stores/options.svelte';
+	} from '#lib/stores/index.svelte.js';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { onMount, tick, untrack } from 'svelte';
 	import { gsap } from 'gsap';
-	import caret from '$lib/images/caret.svg';
-	import x_img from '$lib/images/x.svg';
+	import caret from '#lib/images/caret.svg';
+	import x_img from '#lib/images/x.svg';
 	import { error } from '@sveltejs/kit';
 	import { goto } from '$app/navigation';
 	import type { LayoutData } from '../../routes/$types';
 	import { marked } from 'marked';
-	import { sfx } from '$lib/utils/sfx';
-	import { track } from '$lib/utils/analytics';
+	import { sfx } from '#lib/utils/sfx.js';
+	import { track } from '#lib/utils/analytics.js';
 
 	let userMessageCount = 0;
 	let highIntentSent = false;

@@ -1,6 +1,6 @@
 /** @type {import('./$types').PageServerLoad} */
-import { sanityLoad } from '$lib/utils/sanityClient';
-import type { Data, Landing, Post, SanityReference } from '$lib/types';
+import { sanityLoad } from '#lib/utils/sanityClient.js';
+import type { Data, Landing, Post, SanityReference } from '#lib/types/index.js';
 import { error } from '@sveltejs/kit';
 
 export async function load() {

@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import OpenAI from 'openai';
-import { OPENAI_API_KEY, GMAIL_SEND, GMAIL_PASSWORD, PROMPT_ID } from '$env/static/private';
+import { OPENAI_API_KEY, GMAIL_SEND, GMAIL_PASSWORD, PROMPT_ID } from '$app/env/private';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import * as nodemailer from 'nodemailer';
 import type {

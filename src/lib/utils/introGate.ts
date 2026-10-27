@@ -1,4 +1,4 @@
-import { arrowScreen, introGateStore } from '$lib/stores/index.svelte';
+import { arrowScreen, introGateStore } from '#lib/stores/index.svelte.js';
 
 export const GATE_MAX_CARDS = 8;
 

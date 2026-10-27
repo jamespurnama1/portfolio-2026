@@ -4,7 +4,7 @@
 	// Supports weights 100-900
 	import '@fontsource-variable/hanken-grotesk';
 	import gsap from 'gsap';
-	import { loadStore } from '$lib/stores/index.svelte';
+	import { loadStore } from '#lib/stores/index.svelte.js';
 	import { onMount, untrack } from 'svelte';
 
 	const error = 200;

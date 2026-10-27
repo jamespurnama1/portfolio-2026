@@ -5,7 +5,7 @@
 	import type { PageData } from '../../routes/$types';
 	import fragmentShader from '../shaders/glitchFragment.glsl?raw';
 	import vertexShader from '../shaders/vertex.glsl?raw';
-	import { optionsStore } from '$lib/stores/options.svelte';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
 
 	let {
 		texture,

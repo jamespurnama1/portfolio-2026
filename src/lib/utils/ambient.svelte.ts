@@ -1,6 +1,6 @@
-import { getAudioContext } from '$lib/utils/sfx';
-import { soundPrefs } from '$lib/utils/soundPrefs.svelte';
-import { introGateStore } from '$lib/stores/index.svelte';
+import { getAudioContext } from '#lib/utils/sfx.js';
+import { soundPrefs } from '#lib/utils/soundPrefs.svelte.js';
+import { introGateStore } from '#lib/stores/index.svelte.js';
 
 type Graph = {
 	master: GainNode;

@@ -3,9 +3,9 @@
 	import { TextureLoader, type Texture, SRGBColorSpace } from 'three';
 	import { spring, type Spring } from 'svelte/motion';
 	import { untrack, onDestroy } from 'svelte';
-	import { loadStore, countStore } from '$lib/stores/index.svelte';
-	import type { Gallery } from '$lib/types';
-	import { pointerInteractivity } from '$lib/utils/interactivity';
+	import { loadStore, countStore } from '#lib/stores/index.svelte.js';
+	import type { Gallery } from '#lib/types/index.js';
+	import { pointerInteractivity } from '#lib/utils/interactivity.js';
 
 	let {
 		data,

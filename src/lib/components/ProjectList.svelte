@@ -1,11 +1,11 @@
 <script lang="ts">
 	import type { PageData } from '../../routes/$types';
-	import { type Post, type SanityReference } from '$lib/types';
-	import { page } from '$app/stores';
-	import { optionsStore } from '$lib/stores/options.svelte';
+	import { type Post, type SanityReference } from '#lib/types/index.js';
+	import { page } from '$app/state';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { onMount, untrack } from 'svelte';
 	import ListItem from './ListItem.svelte';
-	import { countStore, gptStore } from '$lib/stores/index.svelte';
+	import { countStore, gptStore } from '#lib/stores/index.svelte.js';
 	import { gsap } from 'gsap';
 
 	const { data }: { data: Required<PageData> } = $props();
@@ -14,11 +14,13 @@
 	const posts = $state([]) as Array<Post>;
 	const categoryItems = $derived(data.catItems ?? []);
 	const projectsLength = $derived(data.projectsLength ?? data.projects?.length ?? 0);
+
 	const activeIndex = $derived(
 		posts[countStore.activeIndex]
 			? (posts[countStore.activeIndex].catIndex as number)
 			: countStore.activeIndex
 	);
+
 	let sel = $state() as HTMLLIElement;
 	let selHeight = $state(44);
 	// let selHeight = $derived(sel ? sel.getBoundingClientRect().height : 44);
@@ -33,7 +35,7 @@
 		});
 		if (!categoryItems.length) return;
 		categoryItems.forEach((category, catIndex) => {
-			list.push({ content: `> ${category.title} >`, catIndex: catIndex });
+			list.push({ content: `> ${category.title} >`, catIndex });
 			category.items.forEach((item: Post | SanityReference<Post>, postIndex: number): void => {
 				(item as Post).index = catIndex
 					? (data.categoriesLength?.[catIndex - 1] ?? 0) + postIndex
@@ -101,7 +103,7 @@
 				{selHeight}
 				{activeIndex}
 				active={typeof item.content !== 'string' && (item as Post).index === countStore.activeIndex}
-			></ListItem>
+			/>
 		{/each}
 	{/if}
 </ul>

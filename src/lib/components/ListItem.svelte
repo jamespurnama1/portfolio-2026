@@ -5,16 +5,16 @@
 		currentHomeCardSnapshotStore,
 		loadStore,
 		sharedCardTransitionStore
-	} from '$lib/stores/index.svelte';
-	import type { Post } from '$lib/types';
+	} from '#lib/stores/index.svelte.js';
+	import type { Post } from '#lib/types/index.js';
 	import { cubicInOut } from 'svelte/easing';
 	import { fade, fly } from 'svelte/transition';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
-	import Awards from '$lib/components/Awards.svelte';
-	import { sfx } from '$lib/utils/sfx';
-	import { reelViewer } from '$lib/stores/viewer.svelte';
+	import Awards from '#lib/components/Awards.svelte';
+	import { sfx } from '#lib/utils/sfx.js';
+	import { reelViewer } from '#lib/stores/viewer.svelte.js';
 	import { page } from '$app/state';
-	import caret from '$lib/images/caret.svg';
+	import caret from '#lib/images/caret.svg';
 
 	const {
 		item,
@@ -34,13 +34,16 @@
 
 	let hidden = $state(false);
 
-	beforeNavigate(({ to }) => {
+	beforeNavigate(({ to, shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		if (to && to.url.pathname === '/' && countStore.activeIndex === (item as Post).index) {
 			hidden = true;
 		}
 	});
 
-	afterNavigate(() => {
+	afterNavigate(({ shallow, type }) => {
+		if (shallow && type === 'goto') return;
 		if (!hidden) return;
 		requestAnimationFrame(() => {
 			hidden = false;
@@ -162,7 +165,9 @@
 					transition:fade
 					class="font-mono text-xs font-normal text-white uppercase mt-8 absolute max-md:text-center max-md:w-full"
 				>
-					{(item as Post).type}&emsp;&emsp;{(item as Post).role[0]}&emsp;&emsp;{(item as Post).year}
+					{(item as Post).type}
+					{(item as Post).role[0]}
+					{(item as Post).year}
 				</p>
 			{/if}
 		</li>

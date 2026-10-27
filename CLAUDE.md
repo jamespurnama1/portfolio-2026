@@ -40,17 +40,17 @@ No test suite is configured.
 
 All stores use Svelte 5 runes. Key stores:
 
-| Store | Purpose |
-|-------|---------|
-| `countStore` | Virtual scroll index (`activeIndex` / `inertiaIndex`) with debounced snap and category tracking |
-| `scrollStore` | Scroll position, velocity, and inertia decay |
-| `animationStore` | Global `isAnimating` / `isTransitioning` flags; gates all scroll/nav interactions |
-| `loadStore` | Page load progress, card loading, gallery transition state |
-| `sharedCardTransitionStore` | Geometry snapshots for shared element transitions between home carousel and work detail |
-| `workRouteReadyStore` | Async asset readiness gated by slug + key |
-| `cursorStore` / `cursorSnapStore` | Custom cursor and magnetic snap state |
-| `gptStore` | GPT modal visibility (Cmd+K / Ctrl+K) |
-| `homeTransitionStore` | Preserves card index when navigating back to home |
+| Store                             | Purpose                                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `countStore`                      | Virtual scroll index (`activeIndex` / `inertiaIndex`) with debounced snap and category tracking |
+| `scrollStore`                     | Scroll position, velocity, and inertia decay                                                    |
+| `animationStore`                  | Global `isAnimating` / `isTransitioning` flags; gates all scroll/nav interactions               |
+| `loadStore`                       | Page load progress, card loading, gallery transition state                                      |
+| `sharedCardTransitionStore`       | Geometry snapshots for shared element transitions between home carousel and work detail         |
+| `workRouteReadyStore`             | Async asset readiness gated by slug + key                                                       |
+| `cursorStore` / `cursorSnapStore` | Custom cursor and magnetic snap state                                                           |
+| `gptStore`                        | GPT modal visibility (Cmd+K / Ctrl+K)                                                           |
+| `homeTransitionStore`             | Preserves card index when navigating back to home                                               |
 
 Additional stores live in `src/lib/stores/`: `cardDimensions.svelte.ts`, `options.svelte.ts`, `threlteSize.ts`, `threlteCamera.ts`, `galleryScroll.ts`, `projectSection.ts`, `introSection.ts`, `projectListHost.ts`.
 

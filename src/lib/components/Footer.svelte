@@ -1,13 +1,13 @@
 <script lang="ts">
-	import logo from '$lib/images/logo.svg';
-	import ScrambleText from '$lib/components/ScrambleText.svelte';
-	import { theme } from '$lib/utils/theme';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { dev } from '$app/environment';
-	import { loadStore } from '$lib/stores/index.svelte';
+	import logo from '#lib/images/logo.svg';
+	import ScrambleText from '#lib/components/ScrambleText.svelte';
+	import { theme } from '#lib/utils/theme.js';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { dev } from '$app/env';
+	import { loadStore } from '#lib/stores/index.svelte.js';
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
-	import { ambient } from '$lib/utils/ambient.svelte';
+	import { ambient } from '#lib/utils/ambient.svelte.js';
 
 	let { revealed = loadStore.loaded }: { revealed?: boolean } = $props();
 </script>

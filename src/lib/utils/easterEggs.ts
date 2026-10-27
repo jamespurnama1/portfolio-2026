@@ -1,4 +1,4 @@
-import { activityStore, notificationStore } from '$lib/stores/index.svelte';
+import { activityStore, notificationStore } from '#lib/stores/index.svelte.js';
 import { gsap } from 'gsap';
 
 const ASCIIArt = [

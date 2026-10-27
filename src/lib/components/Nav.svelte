@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { gptStore, loadStore } from '$lib/stores/index.svelte';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { viewerStore } from '$lib/stores/viewer.svelte';
-	import ScrambleText from '$lib/components/ScrambleText.svelte';
+	import { gptStore, loadStore } from '#lib/stores/index.svelte.js';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { viewerStore } from '#lib/stores/viewer.svelte.js';
+	import ScrambleText from '#lib/components/ScrambleText.svelte';
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
-	import { track } from '$lib/utils/analytics';
+	import { track } from '#lib/utils/analytics.js';
 
 	let { revealed = loadStore.loaded }: { revealed?: boolean } = $props();
 

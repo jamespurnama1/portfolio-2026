@@ -6,8 +6,8 @@ import {
 	loadStore,
 	projectsStore,
 	scrollStore
-} from '$lib/stores/index.svelte';
-import { projectSectionStore } from '$lib/stores/projectSection';
+} from '#lib/stores/index.svelte.js';
+import { projectSectionStore } from '#lib/stores/projectSection.js';
 
 type size = {
 	width: number;

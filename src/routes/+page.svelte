@@ -7,18 +7,18 @@
 		homeTransitionStore,
 		introGateStore,
 		scrollStore
-	} from '$lib/stores/index.svelte';
+	} from '#lib/stores/index.svelte.js';
 	import { scale } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 	import { gsap } from 'gsap';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { beforeNavigate } from '$app/navigation';
-	import { browser } from '$app/environment';
-	import { projectListHost } from '$lib/stores/projectListHost';
-	import { homeNav } from '$lib/stores/homeNav';
-	import { projectSectionStore } from '$lib/stores/projectSection';
-	import { introSectionStore } from '$lib/stores/introSection';
+	import { browser } from '$app/env';
+	import { projectListHost } from '#lib/stores/projectListHost.js';
+	import { homeNav } from '#lib/stores/homeNav.js';
+	import { projectSectionStore } from '#lib/stores/projectSection.js';
+	import { introSectionStore } from '#lib/stores/introSection.js';
 	import type { PageData } from './$types';
 	import type { ScrollTrigger as ScrollTriggerInstance } from 'gsap/ScrollTrigger';
 
@@ -563,8 +563,10 @@
 					...(maxIndex > 0 && !window.matchMedia('(hover: none)').matches
 						? {
 								snap: {
-									snapTo: (value: number) =>
+									snapTo: (
+										value: number
 										// No snapping while a restored position is still settling.
+									) =>
 										performance.now() < homeScrollStore.until
 											? value
 											: Math.round(value * maxIndex) / maxIndex,
@@ -624,10 +626,12 @@
 					lastViewportTop = NaN;
 					syncSectionStores();
 				};
+
 				const layoutKey = () =>
 					[introTriggerRef, categoryTriggerRef]
 						.map((t) => (t ? `${Math.round(t.start)}:${Math.round(t.end)}` : ''))
 						.join('|') + `|${document.documentElement.scrollHeight}`;
+
 				void (async () => {
 					// Pin spacers are measured only once fonts and layout have settled.
 					try {

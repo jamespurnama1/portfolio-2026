@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { loadStore, notificationStore, scrollStore } from '$lib/stores/index.svelte';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { loadStore, notificationStore, scrollStore } from '#lib/stores/index.svelte.js';
 	import {
 		Pane,
 		Button,
@@ -12,8 +12,8 @@
 		ThemeUtils,
 		type Theme
 	} from 'svelte-tweakpane-ui';
-	import { theme } from '$lib/utils/theme';
-	import { perfStore } from '$lib/stores/perf.svelte';
+	import { theme } from '#lib/utils/theme.js';
+	import { perfStore } from '#lib/stores/perf.svelte.js';
 
 	const { pushMessage }: { pushMessage: (speaker: string, message: string) => void } = $props();
 

@@ -1,4 +1,4 @@
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 const SAFARI_REGEX = /^((?!chrome|android).)*safari/i;
 

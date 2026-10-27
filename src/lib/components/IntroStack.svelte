@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { gsap } from 'gsap';
 	import { onMount, untrack } from 'svelte';
-	import { introGateStore } from '$lib/stores/index.svelte';
-	import { sfx } from '$lib/utils/sfx';
-	import { ambient } from '$lib/utils/ambient.svelte';
-	import { gatePointer } from '$lib/utils/introGate';
+	import { introGateStore } from '#lib/stores/index.svelte.js';
+	import { sfx } from '#lib/utils/sfx.js';
+	import { ambient } from '#lib/utils/ambient.svelte.js';
+	import { gatePointer } from '#lib/utils/introGate.js';
 
 	let groupEl = $state<HTMLElement>();
 	let hintEl = $state<HTMLElement>();

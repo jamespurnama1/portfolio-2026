@@ -10,14 +10,14 @@
 		MeshPhysicalMaterial,
 		BoxGeometry
 	} from 'three';
-	import { introSectionStore } from '$lib/stores/introSection';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { perfStore } from '$lib/stores/perf.svelte';
-	import { loadStore, homeTransitionStore, introGateStore } from '$lib/stores/index.svelte';
+	import { introSectionStore } from '#lib/stores/introSection.js';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { perfStore } from '#lib/stores/perf.svelte.js';
+	import { loadStore, homeTransitionStore, introGateStore } from '#lib/stores/index.svelte.js';
 	import { page } from '$app/state';
 	import { onMount, onDestroy } from 'svelte';
-	import { isMobile } from '$lib/utils/device';
-	import { sfx } from '$lib/utils/sfx';
+	import { isMobile } from '#lib/utils/device.js';
+	import { sfx } from '#lib/utils/sfx.js';
 
 	// Transmission forces an extra full-scene render pass; skip it on mobile.
 	const lite = isMobile;

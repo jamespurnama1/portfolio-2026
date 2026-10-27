@@ -3,8 +3,8 @@
 	import { fly } from 'svelte/transition';
 	import { cubicInOut } from 'svelte/easing';
 	import { untrack } from 'svelte';
-	import { gptStore, notificationStore } from '$lib/stores/index.svelte';
-	import { sfx } from '$lib/utils/sfx';
+	import { gptStore, notificationStore } from '#lib/stores/index.svelte.js';
+	import { sfx } from '#lib/utils/sfx.js';
 
 	let wasNotifying = false;
 	let lastMessage = '';

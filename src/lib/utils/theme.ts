@@ -1,4 +1,4 @@
-import { optionsStore } from '$lib/stores/options.svelte';
+import { optionsStore } from '#lib/stores/options.svelte.js';
 
 export function theme(dark: boolean, setStorage: boolean = false) {
 	if (setStorage) localStorage.setItem('dark-theme', dark.toString());

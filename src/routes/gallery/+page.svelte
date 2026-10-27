@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import type { PageData } from './$types';
-	import { loadStore } from '$lib/stores/index.svelte';
+	import { loadStore } from '#lib/stores/index.svelte.js';
 
 	let { data }: { data: Required<PageData> } = $props();
 

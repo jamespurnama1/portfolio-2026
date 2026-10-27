@@ -1,8 +1,8 @@
 import { createClient } from '@sanity/client';
-import { SANITY_PROJECT_ID, SANITY_DATASET } from '$env/static/private';
-import type { Data } from '$lib/types';
+import { SANITY_PROJECT_ID, SANITY_DATASET } from '$app/env/private';
+import type { Data } from '#lib/types/index.js';
 import { error } from '@sveltejs/kit';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 

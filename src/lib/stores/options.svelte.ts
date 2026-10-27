@@ -1,4 +1,4 @@
-import { isMobileSafari } from '$lib/utils/device';
+import { isMobileSafari } from '#lib/utils/device.js';
 
 let noiseFactor = $state(0.1);
 let noiseScale = $state(0.005);

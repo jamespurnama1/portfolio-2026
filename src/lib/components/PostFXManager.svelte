@@ -15,9 +15,9 @@
 	import fragmentShader from '../shaders/fragment.glsl?raw';
 	import blitFragmentShader from '../shaders/blitFragment.glsl?raw';
 	import vertexShader from '../shaders/vertex.glsl?raw';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { isMobileSafari, isSafari } from '$lib/utils/device';
-	import { perfStore } from '$lib/stores/perf.svelte';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { isMobileSafari, isSafari } from '#lib/utils/device.js';
+	import { perfStore } from '#lib/stores/perf.svelte.js';
 
 	let { children, mouse } = $props();
 	let orthoCamera = $state<OrthographicCamera>();
@@ -286,10 +286,19 @@
 			}
 			const hidden: Array<{ obj: Mesh; visible: boolean }> = [];
 			scene.traverse((obj: Object3D) => {
-				const mesh = obj as Mesh;
-				if (mesh.isMesh && mesh.userData?.skipPostFX) {
-					hidden.push({ obj: mesh, visible: mesh.visible });
-					mesh.visible = false;
+				// Safer runtime and compile-time check
+				if (obj.isObject3D && (obj as Mesh).isMesh) {
+					const mesh = obj as Mesh;
+
+					if (mesh.userData?.skipPostFX) {
+						hidden.push({ obj: mesh, visible: mesh.visible });
+
+						// If you just want to hide it from the PostFX camera without breaking
+						// shadow maps or matrix updates, consider using layers instead of visibility toggles:
+						// mesh.layers.disable(postFXLayerChannel);
+
+						mesh.visible = false;
+					}
 				}
 			});
 			perfStore.measureSync(`scene${i}:draw`, gl, () => {

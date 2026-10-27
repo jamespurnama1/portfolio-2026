@@ -1,6 +1,6 @@
 export const prerender = true;
 
-import { loadStore, projectsStore } from '$lib/stores/index.svelte';
+import { loadStore, projectsStore } from '#lib/stores/index.svelte.js';
 
 export async function load({ data }) {
 	projectsStore.projectsLength = data.projectsLength as number;

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { gsap } from 'gsap';
 	import { onMount, tick, untrack } from 'svelte';
-	import { viewerStore, type ViewerMedia } from '$lib/stores/viewer.svelte';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { ambient } from '$lib/utils/ambient.svelte';
-	import { placeholderStyle } from '$lib/utils/placeholder';
+	import { viewerStore, type ViewerMedia } from '#lib/stores/viewer.svelte.js';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { ambient } from '#lib/utils/ambient.svelte.js';
+	import { placeholderStyle } from '#lib/utils/placeholder.js';
 
 	let mediaEl = $state<HTMLElement>();
 	let backdropEl = $state<HTMLElement>();

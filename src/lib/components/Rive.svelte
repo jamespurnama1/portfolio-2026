@@ -8,9 +8,9 @@
 		introGateStore,
 		focusCursor,
 		loadStore
-	} from '$lib/stores/index.svelte';
-	import { introSectionStore } from '$lib/stores/introSection';
-	import { isSafari } from '$lib/utils/device';
+	} from '#lib/stores/index.svelte.js';
+	import { introSectionStore } from '#lib/stores/introSection.js';
+	import { isSafari } from '#lib/utils/device.js';
 	import RiveCanvas, { type SMIInput, type StateMachineInstance } from '@rive-app/canvas-advanced';
 	import { onMount } from 'svelte';
 	import { gsap } from 'gsap';
@@ -209,7 +209,7 @@
 		canvasContainer.appendChild(riveCanvas);
 		const rive = await RiveCanvas({
 			// Loads Wasm bundle
-			locateFile: () => `https://unpkg.com/@rive-app/canvas-advanced@2.32.0/rive.wasm`
+			locateFile: () => `https://unpkg.com/@rive-app/canvas-advanced@2.47.1/rive.wasm`
 		});
 		riveRef = rive;
 		riveRenderer = rive.makeRenderer(riveCanvas);

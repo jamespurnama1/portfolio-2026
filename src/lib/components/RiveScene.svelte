@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { T, useThrelte } from '@threlte/core';
-	import Rive from '$lib/components/Rive.svelte';
+	import Rive from '#lib/components/Rive.svelte';
 	import {
 		CanvasTexture,
 		Texture,
@@ -19,11 +19,11 @@
 		homeTransitionStore,
 		introGateStore,
 		loadStore
-	} from '$lib/stores/index.svelte';
-	import { introSectionStore } from '$lib/stores/introSection';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { viewerStore } from '$lib/stores/viewer.svelte';
-	import { perfStore } from '$lib/stores/perf.svelte';
+	} from '#lib/stores/index.svelte.js';
+	import { introSectionStore } from '#lib/stores/introSection.js';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { viewerStore } from '#lib/stores/viewer.svelte.js';
+	import { perfStore } from '#lib/stores/perf.svelte.js';
 	import { page } from '$app/state';
 	import gsap from 'gsap';
 
@@ -578,12 +578,17 @@
 		rotation.y={caretPos.rotationY}
 		rotation.z={caretPos.rotation}
 	>
-		<T.Mesh bind:ref={elementMesh} rotation.z={meshLocalRoll} raycast={() => null}>
-			<T
-				is={elementMesh?.scale}
-				x={Math.max(canvasViewport.width || $size.width, 1)}
-				y={Math.max(canvasViewport.height || $size.height, 1) * meshLocalScaleY}
-			/>
+		<!-- 1. Bind the scale property directly to the Mesh instead of using a nested <T is=...> -->
+		<T.Mesh
+			bind:ref={elementMesh}
+			rotation.z={meshLocalRoll}
+			raycast={() => null}
+			scale={[
+				Math.max(canvasViewport.width || $size.width, 1),
+				Math.max(canvasViewport.height || $size.height, 1) * meshLocalScaleY,
+				1
+			]}
+		>
 			<T.PlaneGeometry args={[1, 1]} />
 			<T.MeshBasicMaterial
 				bind:ref={elementMaterial}

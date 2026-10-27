@@ -9,13 +9,13 @@
 	import { WebGLRenderer } from 'three';
 	import { page } from '$app/state';
 	import { untrack, onMount, onDestroy, type SvelteComponent } from 'svelte';
-	import PostFXManager from '$lib/components/PostFXManager.svelte';
-	import PostFXScene from '$lib/components/PostFXScene.svelte';
-	import ThrelteSizeProvider from '$lib/components/ThrelteSizeProvider.svelte';
-	import { threlteSize } from '$lib/stores/threlteSize';
-	import { optionsStore } from '$lib/stores/options.svelte';
-	import { loadStore } from '$lib/stores/index.svelte';
-	import { isMobileSafari } from '$lib/utils/device';
+	import PostFXManager from '#lib/components/PostFXManager.svelte';
+	import PostFXScene from '#lib/components/PostFXScene.svelte';
+	import ThrelteSizeProvider from '#lib/components/ThrelteSizeProvider.svelte';
+	import { threlteSize } from '#lib/stores/threlteSize.js';
+	import { optionsStore } from '#lib/stores/options.svelte.js';
+	import { loadStore } from '#lib/stores/index.svelte.js';
+	import { isMobileSafari } from '#lib/utils/device.js';
 
 	let riveSceneInstance: SvelteComponent | undefined = $state();
 	let isTouchDevice = $state(false);
