@@ -64,7 +64,7 @@
 			class="max-md:hidden"
 			href="/branch"
 			transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 800 }}
-			><p class="text-right leading-none"><ScrambleText text="v4.0.0" /></p></a
+			><p class="text-right leading-none"><ScrambleText text="v4.0.1" /></p></a
 		>
 	</span>
 </footer>
