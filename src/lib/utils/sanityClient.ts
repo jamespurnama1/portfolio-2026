@@ -2,6 +2,28 @@ import { createClient } from '@sanity/client';
 import { SANITY_PROJECT_ID, SANITY_DATASET } from '$env/static/private';
 import type { Data } from '$lib/types';
 import { error } from '@sveltejs/kit';
+import { dev } from '$app/environment';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+const DEV_CACHE_PATH = join(process.cwd(), 'static/dev/cache.json');
+
+/** Replace cdn.sanity.io URLs with local /dev/assets/<filename> paths */
+function localizeUrls(obj: unknown): unknown {
+	if (typeof obj === 'string') {
+		if (obj.startsWith('https://cdn.sanity.io/')) {
+			return '/dev/assets/' + obj.split('/').pop();
+		}
+		return obj;
+	}
+	if (Array.isArray(obj)) return obj.map(localizeUrls);
+	if (obj !== null && typeof obj === 'object') {
+		return Object.fromEntries(
+			Object.entries(obj as Record<string, unknown>).map(([k, v]) => [k, localizeUrls(v)])
+		);
+	}
+	return obj;
+}
 
 export const client = createClient({
 	projectId: SANITY_PROJECT_ID,
@@ -11,6 +33,15 @@ export const client = createClient({
 });
 
 export async function sanityLoad() {
+	if (dev) {
+		try {
+			const raw = JSON.parse(readFileSync(DEV_CACHE_PATH, 'utf-8'));
+			return localizeUrls(raw) as Data;
+		} catch {
+			console.warn('[dev] Failed to read static/dev/cache.json — falling back to Sanity');
+		}
+	}
+
 	const data: Data = await client.fetch(`{
   "gallery": *[_type == "gallery"][] {
       media[] {
@@ -37,13 +68,15 @@ export async function sanityLoad() {
     _id,
     url,
     originalFilename,
-    size
+    size,
+    "lqip": metadata.lqip
   },
   "imageLight": imageLight.asset->{
     _id,
     url,
     originalFilename,
-    size
+    size,
+    "lqip": metadata.lqip
   },
   "video": video.asset->{
     _id,

@@ -87,10 +87,33 @@ export const homePos = (
 	const smallSize = mobile ? 0.5 : 0.3;
 	let baseScale = mobile ? 1.5 : 1;
 
-	let scale =
-		Math.abs(smoothedIndexDiff) < 1
-			? Math.max(smallSize, baseScale - Math.abs(smoothedIndexDiff))
-			: smallSize;
+	let scale: number;
+	if (mobile) {
+		// Inertia-based scale: active card grows as scroll settles.
+		// Use distance to the NEAREST integer so e.g. inertiaIndex=1.9 is treated
+		// as "close to 2" (dist=0.1) rather than "far from 0" (old formula gave 0).
+		const frac = Math.abs(countStore.inertiaIndex % 1);
+		const distToNearestInt = Math.min(frac, 1 - frac); // 0 at integers, 0.5 midway
+		// Dampen scale boost only above a velocity threshold (1.5 units/sec).
+		// Below that threshold the scroll has effectively settled — apply full scale.
+		// This prevents the end-of-snap residual velocity (~0.1–0.3 units/sec) from
+		// leaving the active card slightly undersized after the snap animation ends.
+		// Fast flings (>1.5 u/s) are still suppressed so cards don't pop to baseScale
+		// as inertiaIndex sweeps through integers at speed.
+		const vel = countStore.inertiaVelocity;
+		const velocityDampen = vel <= 1.5 ? 1 : Math.max(0, 1 - (vel - 1.5) / 3.5);
+		const settledFactor = Math.max(0, 1 - distToNearestInt * 2) * velocityDampen;
+		const effectiveBase = smallSize + (baseScale - smallSize) * settledFactor;
+		scale =
+			Math.abs(smoothedIndexDiff) < 1
+				? Math.max(smallSize, effectiveBase - Math.abs(smoothedIndexDiff))
+				: smallSize;
+	} else {
+		scale =
+			Math.abs(smoothedIndexDiff) < 1
+				? Math.max(smallSize, baseScale - Math.abs(smoothedIndexDiff))
+				: smallSize;
+	}
 
 	const cardWidth = imageGeo.parameters.width * scale;
 	const cardHeight = imageGeo.parameters.height * scale;

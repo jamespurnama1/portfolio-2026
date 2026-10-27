@@ -6,6 +6,7 @@
 	let { data, preferImageThumbnails = false }: { data: PageData; preferImageThumbnails?: boolean } =
 		$props();
 	import { Canvas } from '@threlte/core';
+	import { WebGLRenderer } from 'three';
 	import { page } from '$app/state';
 	import { untrack, onMount, onDestroy, type SvelteComponent } from 'svelte';
 	import PostFXManager from '$lib/components/PostFXManager.svelte';
@@ -13,10 +14,10 @@
 	import ThrelteSizeProvider from '$lib/components/ThrelteSizeProvider.svelte';
 	import { threlteSize } from '$lib/stores/threlteSize';
 	import { optionsStore } from '$lib/stores/options.svelte';
-	import { gptStore, loadStore } from '$lib/stores/index.svelte';
+	import { loadStore } from '$lib/stores/index.svelte';
+	import { isMobileSafari } from '$lib/utils/device';
 
 	let riveSceneInstance: SvelteComponent | undefined = $state();
-	let showStudio = $state(false);
 	let isTouchDevice = $state(false);
 	let hasPointerPosition = $state(false);
 
@@ -37,13 +38,6 @@
 		// 	window.removeEventListener('keydown', handleKey);
 		// document.removeEventListener('mousemove', onMouseMove);
 	});
-
-	function handleKey(e: KeyboardEvent) {
-		if (e.key === '`') {
-			if (gptStore.opened) return;
-			showStudio = !showStudio;
-		}
-	}
 
 	export function getRiveSceneInstance() {
 		return riveSceneInstance;
@@ -89,20 +83,18 @@
 
 	onMount(() => {
 		isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-		window.addEventListener('keydown', handleKey);
 		if (!isTouchDevice) {
 			document.addEventListener('mousemove', onMouseMove);
 		}
 		window.addEventListener('pointermove', onPointerMoveForCursorRestore);
 		return () => {
-			window.removeEventListener('keydown', handleKey);
 			document.removeEventListener('mousemove', onMouseMove);
 			window.removeEventListener('pointermove', onPointerMoveForCursorRestore);
 		};
 	});
 
 	// Track which scene is currently rendered
-	let showGallery = $state(page.url.pathname.includes('gallery') && data.gallery);
+	let showGallery = $state(untrack(() => page.url.pathname.includes('gallery') && data.gallery));
 	let showCanvas = $state(!page.url.pathname.includes('gallery'));
 
 	// $inspect(showGallery, showCanvas);
@@ -168,63 +160,40 @@
 	// });
 </script>
 
-<Canvas>
+<Canvas
+	createRenderer={(canvas) =>
+		new WebGLRenderer({
+			canvas,
+			// Disable MSAA on mobile Safari — ~30-50% fragment cost reduction.
+			// Desktop keeps antialias for sharp edges on high-DPI screens.
+			antialias: !isMobileSafari,
+			alpha: true,
+			powerPreference: 'high-performance'
+		})}
+>
 	<ThrelteSizeProvider />
-	{#if showStudio && import.meta.env.MODE === 'development'}
-		{#await import('@threlte/studio') then { Studio }}
-			<Studio>
-				{#key `${size.width}-${size.height}`}
-					<PostFXManager {mouse}>
-						{#if showGallery}
-							{#key `gallery-${optionsStore.dark}`}
-								<PostFXScene enabled={true}>
-									<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
-								</PostFXScene>
-							{/key}
-						{:else if showCanvas}
-							{#key `canvas-${optionsStore.dark}`}
-								<PostFXScene enabled={true}>
-									<ThreeScene {data} {preferImageThumbnails} {mouse} />
-								</PostFXScene>
-							{/key}
-							<PostFXScene
-								enabled={true}
-								beforeRender={(delta: number) => {
-									// Custom rendering logic for this scene
-									riveSceneInstance!.beforeRender(delta);
-								}}
-							>
-								<RiveScene {mouse} bind:this={riveSceneInstance} showCursor={cursorVisible} />
-							</PostFXScene>
-						{/if}
-					</PostFXManager>
-				{/key}
-			</Studio>
-		{/await}
-	{:else}
-		<PostFXManager {mouse}>
-			{#if showGallery}
-				{#key `gallery-${optionsStore.dark}`}
-					<PostFXScene enabled={true}>
-						<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
-					</PostFXScene>
-				{/key}
-			{:else if showCanvas}
-				{#key `canvas-${optionsStore.dark}`}
-					<PostFXScene enabled={true}>
-						<ThreeScene {data} {preferImageThumbnails} {mouse} />
-					</PostFXScene>
-				{/key}
-			{/if}
-			<PostFXScene
-				enabled={true}
-				beforeRender={(delta: number) => {
-					// Custom rendering logic for this scene
-					riveSceneInstance!.beforeRender(delta);
-				}}
-			>
-				<RiveScene {mouse} bind:this={riveSceneInstance} showCursor={cursorVisible} />
-			</PostFXScene>
-		</PostFXManager>
-	{/if}
+	<PostFXManager {mouse}>
+		{#if showGallery}
+			{#key `gallery-${optionsStore.dark}`}
+				<PostFXScene enabled={true}>
+					<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
+				</PostFXScene>
+			{/key}
+		{:else if showCanvas}
+			{#key `canvas-${optionsStore.dark}`}
+				<PostFXScene enabled={true}>
+					<ThreeScene {data} {preferImageThumbnails} {mouse} />
+				</PostFXScene>
+			{/key}
+		{/if}
+		<PostFXScene
+			enabled={true}
+			beforeRender={(delta: number) => {
+				// Custom rendering logic for this scene
+				riveSceneInstance!.beforeRender(delta);
+			}}
+		>
+			<RiveScene {mouse} bind:this={riveSceneInstance} showCursor={cursorVisible} />
+		</PostFXScene>
+	</PostFXManager>
 </Canvas>

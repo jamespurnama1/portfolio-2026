@@ -4,6 +4,20 @@
 	import { cubicInOut } from 'svelte/easing';
 	import { untrack } from 'svelte';
 	import { gptStore, notificationStore } from '$lib/stores/index.svelte';
+	import { sfx } from '$lib/utils/sfx';
+
+	let wasNotifying = false;
+	let lastMessage = '';
+	$effect(() => {
+		const opened = notificationStore.opened;
+		const message = notificationStore.message;
+		untrack(() => {
+			// Also covers a new message replacing one that is already showing.
+			if (opened && (!wasNotifying || message !== lastMessage)) sfx.notify();
+			wasNotifying = opened;
+			lastMessage = message;
+		});
+	});
 
 	$effect(() => {
 		notificationStore.opened;
@@ -37,7 +51,7 @@
 		tabindex="0"
 		role="button"
 		transition:fly={{ y: 200, duration: 500, easing: cubicInOut }}
-		class="notification fixed w-[75vw] md:w-[70vw] lg:w-[60vw] top-full -translate-y-[3.5rem] hover:-translate-y-[5rem] transition-transform md:left-1/2 max-md:right-0 max-md:left-auto max-md:-translate-x-0 md:-translate-x-1/2 z-50 glow h-1/2 show flex justify-start duration-500"
+		class="notification fixed w-[75vw] md:w-[70vw] lg:w-[60vw] top-full -translate-y-14 hover:-translate-y-20 transition-transform md:left-1/2 max-md:w-[50vw] max-md:top-auto max-md:bottom-0 max-md:h-auto max-md:min-h-14 max-md:translate-y-0 max-md:hover:translate-y-0 max-md:right-0 max-md:left-auto max-md:translate-x-0 md:-translate-x-1/2 z-50 glow md:h-1/2 show flex justify-start duration-500"
 	>
 		<NotificationsEl message={notificationStore.message} sub={notificationStore.sub} />
 	</div>

@@ -7,7 +7,6 @@
 		gptStore,
 		homeTransitionStore,
 		loadStore,
-		scrollStore,
 		sharedCardTransitionStore,
 		workRouteReadyStore
 	} from '$lib/stores/index.svelte';
@@ -17,70 +16,79 @@
 	import { onMount, tick, untrack } from 'svelte';
 	import { type PageData } from './$types';
 	import { optionsStore } from '$lib/stores/options.svelte';
+	import { viewerStore, type ViewerMedia } from '$lib/stores/viewer.svelte';
 	import type { Post } from '$lib/types';
 	import caret from '$lib/images/caret.svg';
 	import chroma from 'chroma-js';
-	import { cardDimensionsStore } from '$lib/stores/cardDimensions.svelte';
 	import { browser } from '$app/environment';
 	import type { ScrollTrigger as ScrollTriggerInstance } from 'gsap/ScrollTrigger';
 
 	const { data }: { data: Required<PageData> } = $props();
-	let caretEl = $state() as HTMLImageElement;
-	let innerWidth = $state(0);
-	let scrollHeight = $state(0);
-	let innerHeight = $state(0);
-	let animating = true;
-	let tl = gsap.timeline();
+
 	let ScrollTrigger: typeof import('gsap/ScrollTrigger').ScrollTrigger | null = null;
-	let canvasContainerEl = $state<HTMLElement | null>(null);
-	let scrollTriggerRefreshFrame = $state<number | null>(null);
+	const tl = gsap.timeline();
+	let innerWidth = $state(0);
+	let articleEl = $state<HTMLElement | null>(null);
+	let canvasContainerEl: HTMLElement | null = null;
+	let current = $state() as Post | undefined;
+
+	// Hero card handoff + native media fallback
 	let nativeMediaFallbackVisible = $state(false);
-	let nativeMediaFallbackHideFrame = $state<number | null>(null);
-	let nativeMediaFallbackHideTimeout = $state<number | null>(null);
-	// Suppress hero native fallback during shared element transition to prevent duplicate image
+	let nativeMediaFallbackHideFrame: number | null = null;
+	let nativeMediaFallbackHideTimeout: number | null = null;
 	const _initPendingTransition = browser ? sharedCardTransitionStore.value : null;
 	let suppressHeroFallbackDuringHandoff = $state(
 		_initPendingTransition?.direction === 'to-work' &&
 			_initPendingTransition?.slug === page.params.slug
 	);
-	let nextProjectVisualProgressAnimated = $state(0);
-	let nextProjectVisualProgressFrame = $state<number | null>(null);
-	let articleEl = $state<HTMLElement | null>(null);
-	let bottomSentinelEl = $state<HTMLElement | null>(null);
-	let nextProjectOverlayEl = $state<HTMLElement | null>(null);
-	let nextProjectOverlayCopyEl = $state<HTMLElement | null>(null);
-	let bottomSentinelDistance = $state(Infinity);
-	let nextProjectTriggerProgress = $state(0);
-	let nextProjectNavigationPending = $state(false);
-	let nextProjectThresholdReached = $state(false);
-	let touchTrackingActive = $state(false);
-	let touchStartY = $state<number | null>(null);
-	let touchStartProgress = $state(0);
-	let lastTouchY = $state(0);
-	let pointerDecayTimeout = $state<number | null>(null);
-	let pointerDecayFrame = $state<number | null>(null);
-	let lastPointerDecayTime = $state(0);
-	let nextProjectTransitionActive = $state(false);
-	let nextProjectTransitionEntering = $state(false);
-	let transitionNextProjectTitle = $state('');
-	let transitionNextColorScale = $state<string[]>([]);
-	let nextProjectPreviewScale = $state(0.34);
-	let nextProjectPreviewOpacity = $state(0);
-	let nextProjectPreviewCopyY = $state(40);
-	let nextProjectPreviewCopyOpacity = $state(0);
-	let nextProjectCancelAnimating = $state(false);
-	let transitionScrollLocked = $state(false);
-	let nextProjectStatusScrambleActive = $state(false);
-	let nextProjectStatusScrambleTimeout = $state<number | null>(null);
-	let nextProjectStatusPhase = $state<'prompt' | 'opening'>('prompt');
-	const NEXT_PROJECT_ENGAGE_ZONE = 96;
-	const NEXT_PROJECT_RESET_ZONE = 420;
-	const NEXT_PROJECT_POINTER_THRESHOLD = 100;
-	const NEXT_PROJECT_TOUCH_THRESHOLD = 360;
-	const NEXT_PROJECT_POINTER_MIN_LINES = 0.35;
-	const NEXT_PROJECT_POINTER_MAX_TRIGGER_LINES = 3.2;
-	const NEXT_PROJECT_POINTER_IDLE_MS = 500;
-	const NEXT_PROJECT_POINTER_DECAY_PER_SECOND = 1.8;
+
+	// Native media opens in the shared viewer (see MediaViewer.svelte)
+
+	// Next project pull gesture. Plain variables: updated per frame without reactivity.
+	let nextTransitionActive = $state(false);
+	let frozenNextTitle = $state('');
+	let frozenNextColors = $state<string[]>([]);
+	let overlayEl: HTMLElement | undefined = $state();
+	let panelEl: HTMLElement | undefined = $state();
+	let labelText = $state('Scroll to view next project');
+	let labelScramble = $state(false);
+	let progressBarEl: HTMLElement | undefined = $state();
+	let caretEl: HTMLElement | undefined = $state();
+	let scrollLocked = false;
+	let enteringNext = false;
+	let navigatingNext = false;
+
+	const WHEEL_PULL_DISTANCE = 1500;
+	const TOUCH_PULL_DISTANCE = 420;
+	const BOTTOM_EPSILON = 6;
+	const WHEEL_ARM_GAP_MS = 180;
+	const SLOW_SCROLL_PEAK = 70;
+	const SLOW_SCROLL_WINDOW_MS = 600;
+	const WHEEL_IDLE_RESET_MS = 700;
+	const MAX_TOUCH_ARM_SPEED = 1.5;
+
+	let docHeight = 0;
+	let pull = 0;
+	let pullShown = 0;
+	let pullArmed = false;
+	let wheelArmed = false;
+	let lastWheelAt = 0;
+	let wheelHistory: { t: number; d: number }[] = [];
+	let textEl: HTMLElement | undefined = $state();
+	const textState = { y: 60 };
+	let touchActive = false;
+	let touchOriginY = NaN;
+	let touchLastY = 0;
+	let touchLastT = 0;
+	let lastScrollY = -1;
+	let isTouchDevice = false;
+	let bendEls: { el: HTMLElement; top: number; left: number; h: number }[] = [];
+	let bend = 0;
+	let bendApplied = false;
+	let lastBendY = -1;
+	// 1 = sheet parked below the screen, 0 = covering it, -1 = parked above
+	const sheet = { offset: 1 };
+
 	const sanityImageParams = $derived.by(() => {
 		const fallbackWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
 		const baseWidth = innerWidth || fallbackWidth;
@@ -95,266 +103,42 @@
 		return `${url}${url.includes('?') ? '&' : '?'}${sanityImageParams}`;
 	}
 
-	function getViewportScrollTop() {
-		const scrollRoot = document.scrollingElement ?? document.documentElement;
-		return Math.max(window.scrollY, scrollRoot?.scrollTop ?? 0);
+	function getScrollTop() {
+		return window.scrollY;
 	}
 
-	function getBottomSentinelDistance() {
-		if (!bottomSentinelEl) {
-			const scrollRoot = document.scrollingElement ?? document.documentElement;
-			const fallbackScrollHeight = Math.max(
-				scrollRoot?.scrollHeight ?? 0,
-				document.documentElement.scrollHeight,
-				innerHeight
-			);
-			return Math.max(0, fallbackScrollHeight - (getViewportScrollTop() + innerHeight));
-		}
-		const rect = bottomSentinelEl.getBoundingClientRect();
-		return rect.bottom - innerHeight;
-	}
-
-	function getDocumentScrollHeight() {
-		const scrollRoot = document.scrollingElement ?? document.documentElement;
-		return Math.max(
-			scrollRoot?.scrollHeight ?? 0,
-			document.documentElement.scrollHeight,
-			innerHeight
-		);
-	}
-
-	function updateScrollMetrics() {
-		scrollStore.scroll = getViewportScrollTop();
-		scrollHeight = getDocumentScrollHeight();
-		bottomSentinelDistance = getBottomSentinelDistance();
-	}
-
-	function vibrateThreshold(reached: boolean) {
-		if (typeof navigator === 'undefined' || !('vibrate' in navigator)) return;
-		navigator.vibrate(reached ? 16 : 8);
-	}
-
-	function setNextProjectTriggerProgress(nextProgress: number, triggerNavigation = true) {
-		const previousProgress = nextProjectTriggerProgress;
-		if (nextProgress > 0 && nextProjectCancelAnimating) {
-			nextProjectCancelAnimating = false;
-			gsap.killTweensOf([nextProjectOverlayEl, nextProjectOverlayCopyEl]);
-		}
-		const clampedProgress = Math.min(1, Math.max(0, nextProgress));
-		const reached = clampedProgress >= 1;
-		if (reached !== nextProjectThresholdReached) {
-			nextProjectThresholdReached = reached;
-			vibrateThreshold(reached);
-		}
-		nextProjectTriggerProgress = clampedProgress;
-		if (
-			clampedProgress === 0 &&
-			previousProgress > 0 &&
-			!nextProjectTransitionActive &&
-			!nextProjectTransitionEntering &&
-			!nextProjectNavigationPending
-		) {
-			startNextProjectCancelAnimation();
-		}
-		if (reached && triggerNavigation) {
-			void triggerNextProjectNavigation();
-		}
-	}
-
-	function stopPointerDecay() {
-		if (pointerDecayTimeout !== null) {
-			window.clearTimeout(pointerDecayTimeout);
-			pointerDecayTimeout = null;
-		}
-		if (pointerDecayFrame !== null) {
-			window.cancelAnimationFrame(pointerDecayFrame);
-			pointerDecayFrame = null;
-		}
-	}
-
-	function startPointerDecay() {
-		if (typeof window === 'undefined' || nextProjectNavigationPending || touchTrackingActive)
-			return;
-		stopPointerDecay();
-		lastPointerDecayTime = performance.now();
-		const decay = (now: number) => {
-			const elapsedMs = now - lastPointerDecayTime;
-			lastPointerDecayTime = now;
-			const decayAmount = (elapsedMs / 1000) * NEXT_PROJECT_POINTER_DECAY_PER_SECOND;
-			if (nextProjectTriggerProgress <= 0 || bottomSentinelDistance > NEXT_PROJECT_RESET_ZONE) {
-				setNextProjectTriggerProgress(0, false);
-				pointerDecayFrame = null;
-				return;
-			}
-			setNextProjectTriggerProgress(nextProjectTriggerProgress - decayAmount, false);
-			if (nextProjectTriggerProgress <= 0) {
-				pointerDecayFrame = null;
-				return;
-			}
-			pointerDecayFrame = window.requestAnimationFrame(decay);
-		};
-		pointerDecayTimeout = window.setTimeout(() => {
-			pointerDecayTimeout = null;
-			pointerDecayFrame = window.requestAnimationFrame(decay);
-		}, NEXT_PROJECT_POINTER_IDLE_MS);
-	}
-
-	function normalizeWheelToLines(event: WheelEvent) {
-		if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY;
-		if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * 24;
-		return event.deltaY / 16;
-	}
-
-	function clearNextProjectStatusScrambleTimeout() {
-		if (!browser || nextProjectStatusScrambleTimeout === null) return;
-		window.clearTimeout(nextProjectStatusScrambleTimeout);
-		nextProjectStatusScrambleTimeout = null;
-	}
-
-	function stopNextProjectStatusScramble() {
-		clearNextProjectStatusScrambleTimeout();
-		nextProjectStatusScrambleActive = false;
-	}
-
-	function triggerNextProjectStatusScramble(durationMs = 680) {
-		if (!browser) return;
-		stopNextProjectStatusScramble();
-		requestAnimationFrame(() => {
-			nextProjectStatusScrambleActive = true;
-			nextProjectStatusScrambleTimeout = window.setTimeout(() => {
-				nextProjectStatusScrambleActive = false;
-				nextProjectStatusScrambleTimeout = null;
-			}, durationMs);
-		});
-	}
-
-	function startNextProjectCancelAnimation() {
-		if (
-			nextProjectCancelAnimating ||
-			nextProjectTransitionActive ||
-			nextProjectTransitionEntering ||
-			!nextProjectOverlayEl ||
-			!nextProjectOverlayCopyEl
-		) {
-			return;
-		}
-		nextProjectCancelAnimating = true;
-		gsap.killTweensOf([nextProjectOverlayEl, nextProjectOverlayCopyEl]);
-		gsap
-			.timeline({
-				defaults: { ease: 'power2.inOut' },
-				onComplete: () => {
-					nextProjectCancelAnimating = false;
-					if (nextProjectOverlayEl) {
-						gsap.set(nextProjectOverlayEl, { clearProps: 'transform,opacity' });
+	function measureDocument() {
+		const root = document.scrollingElement ?? document.documentElement;
+		docHeight = Math.max(root?.scrollHeight ?? 0, document.documentElement.scrollHeight);
+		// Layout positions come from offsetTop so transforms already applied don't feed back.
+		bendEls = articleEl
+			? Array.from(articleEl.querySelectorAll<HTMLElement>('section > div')).map((el) => {
+					let top = 0;
+					let left = 0;
+					let node: HTMLElement | null = el;
+					while (node) {
+						top += node.offsetTop;
+						left += node.offsetLeft;
+						node = node.offsetParent as HTMLElement | null;
 					}
-					if (nextProjectOverlayCopyEl) {
-						gsap.set(nextProjectOverlayCopyEl, { clearProps: 'transform,opacity' });
-					}
-				}
-			})
-			.to(
-				nextProjectOverlayCopyEl,
-				{ y: nextProjectPreviewCopyY + 72, opacity: 0, duration: 0.34, overwrite: 'auto' },
-				0
-			)
-			.to(
-				nextProjectOverlayEl,
-				{
-					scaleY: 0.22,
-					opacity: 0,
-					duration: 0.34,
-					transformOrigin: '50% 100%',
-					overwrite: 'auto'
-				},
-				0.04
-			);
+					return { el, top, left, h: el.offsetHeight };
+				})
+			: [];
 	}
 
-	function resetNextProjectTrigger() {
-		stopPointerDecay();
-		const shouldAnimateOut =
-			!nextProjectTransitionActive &&
-			!nextProjectTransitionEntering &&
-			nextProjectTriggerProgress > 0;
-		if (nextProjectThresholdReached) {
-			vibrateThreshold(false);
-		}
-		nextProjectThresholdReached = false;
-		nextProjectTriggerProgress = 0;
-		nextProjectNavigationPending = false;
-		nextProjectStatusPhase = 'prompt';
-		stopNextProjectStatusScramble();
-		touchTrackingActive = false;
-		touchStartY = null;
-		touchStartProgress = 0;
-		if (!nextProjectTransitionActive) {
-			gsap.killTweensOf([articleEl, nextProjectOverlayEl, nextProjectOverlayCopyEl]);
-			if (articleEl) gsap.set(articleEl, { clearProps: 'transform,opacity' });
-			if (shouldAnimateOut) {
-				startNextProjectCancelAnimation();
-			} else if (!nextProjectCancelAnimating) {
-				if (nextProjectOverlayEl)
-					gsap.set(nextProjectOverlayEl, { clearProps: 'transform,opacity' });
-				if (nextProjectOverlayCopyEl)
-					gsap.set(nextProjectOverlayCopyEl, { clearProps: 'transform,opacity' });
-			}
-		}
+	function getMediaEls() {
+		return articleEl
+			? Array.from(
+					articleEl.querySelectorAll<HTMLElement>('img[id^="media-"], video[id^="media-"]')
+				)
+			: [];
 	}
 
-	function setCanvasTransitionHidden(hidden: boolean) {
-		if (!browser) return;
-		if (!canvasContainerEl) return;
-		gsap.killTweensOf(canvasContainerEl);
-		gsap.to(canvasContainerEl, {
-			autoAlpha: hidden ? 0 : 1,
-			duration: hidden ? 0.18 : 0.28,
-			ease: hidden ? 'power2.out' : 'power2.inOut',
-			overwrite: 'auto'
-		});
+	function distanceToBottom() {
+		return docHeight - (getScrollTop() + window.innerHeight);
 	}
 
-	function preventTransitionScroll(event: Event) {
-		if (!transitionScrollLocked) return;
-		event.preventDefault();
-	}
-
-	function preventTransitionKeyScroll(event: KeyboardEvent) {
-		if (!transitionScrollLocked) return;
-		if (
-			event.key === 'ArrowUp' ||
-			event.key === 'ArrowDown' ||
-			event.key === 'PageUp' ||
-			event.key === 'PageDown' ||
-			event.key === 'Home' ||
-			event.key === 'End' ||
-			event.key === ' ' ||
-			event.code === 'Space'
-		) {
-			event.preventDefault();
-		}
-	}
-
-	function setTransitionScrollLocked(locked: boolean) {
-		if (!browser || transitionScrollLocked === locked) return;
-		transitionScrollLocked = locked;
-		if (locked) {
-			window.addEventListener('wheel', preventTransitionScroll, { passive: false });
-			window.addEventListener('touchmove', preventTransitionScroll, { passive: false });
-			window.addEventListener('keydown', preventTransitionKeyScroll, { passive: false });
-		} else {
-			window.removeEventListener('wheel', preventTransitionScroll);
-			window.removeEventListener('touchmove', preventTransitionScroll);
-			window.removeEventListener('keydown', preventTransitionKeyScroll);
-		}
-		if (locked) {
-			document.documentElement.style.overflow = 'hidden';
-			document.body.style.overflow = 'hidden';
-		} else {
-			document.documentElement.style.overflow = '';
-			document.body.style.overflow = '';
-		}
-	}
+	/* ---------- native media fallback ---------- */
 
 	function clearNativeMediaFallbackHide() {
 		if (!browser) return;
@@ -374,10 +158,8 @@
 	}
 
 	function beginWorkRouteReadyTracking() {
-		const expectedDetailCount = (current?.content ?? []).filter(
-			(item) => item?.image || item?.imageLight || item?.video
-		).length;
-		workRouteReadyStore.begin(page.params.slug ?? '', 1 + expectedDetailCount);
+		// Only the hero is a WebGL card; detail media is native.
+		workRouteReadyStore.begin(page.params.slug ?? '', 1);
 	}
 
 	function scheduleHideNativeMediaFallback() {
@@ -389,8 +171,7 @@
 		const checkReady = () => {
 			if (
 				loadStore.cardLoading ||
-				nextProjectTransitionActive ||
-				nextProjectTransitionEntering ||
+				nextTransitionActive ||
 				workRouteReadyStore.slug !== page.params.slug ||
 				!workRouteReadyStore.isReady
 			) {
@@ -406,75 +187,96 @@
 		nativeMediaFallbackHideFrame = window.requestAnimationFrame(checkReady);
 	}
 
-	function scheduleScrollTriggerRefresh() {
-		if (!browser || !ScrollTrigger || scrollTriggerRefreshFrame !== null) return;
-		scrollTriggerRefreshFrame = window.requestAnimationFrame(() => {
-			scrollTriggerRefreshFrame = null;
-			ScrollTrigger?.refresh();
+	function setCanvasTransitionHidden(hidden: boolean) {
+		if (!browser || !canvasContainerEl) return;
+		gsap.killTweensOf(canvasContainerEl);
+		gsap.to(canvasContainerEl, {
+			autoAlpha: hidden ? 0 : 1,
+			duration: hidden ? 0.18 : 0.28,
+			ease: hidden ? 'power2.out' : 'power2.inOut',
+			overwrite: 'auto'
 		});
 	}
 
-	function stopNextProjectVisualSmoothing() {
-		if (!browser || nextProjectVisualProgressFrame === null) return;
-		window.cancelAnimationFrame(nextProjectVisualProgressFrame);
-		nextProjectVisualProgressFrame = null;
+	/* ---------- scroll lock during project change ---------- */
+
+	function preventScroll(event: Event) {
+		if (event.cancelable) event.preventDefault();
+	}
+
+	function preventKeyScroll(event: KeyboardEvent) {
+		if (
+			['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key) ||
+			event.code === 'Space'
+		) {
+			event.preventDefault();
+		}
+	}
+
+	function setScrollLocked(locked: boolean) {
+		if (!browser || scrollLocked === locked) return;
+		scrollLocked = locked;
+		if (locked) {
+			window.addEventListener('wheel', preventScroll, { passive: false });
+			window.addEventListener('touchmove', preventScroll, { passive: false });
+			window.addEventListener('keydown', preventKeyScroll, { passive: false });
+			document.body.style.overflow = 'hidden';
+		} else {
+			window.removeEventListener('wheel', preventScroll);
+			window.removeEventListener('touchmove', preventScroll);
+			window.removeEventListener('keydown', preventKeyScroll);
+			document.body.style.overflow = '';
+		}
 	}
 
 	function finalizeWorkTransitionVisibility() {
-		if (!browser) {
-			animationStore.isTransitioning = false;
-			nativeMediaFallbackVisible = false;
-			return;
-		}
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
-				setTransitionScrollLocked(false);
+				setScrollLocked(false);
 				animationStore.isTransitioning = false;
 				scheduleHideNativeMediaFallback();
 			});
 		});
 	}
 
-	// const mapper = gsap.utils.mapRange(0, 300, 0, 100);
-	// const mapper2 = gsap.utils.mapRange(0, 300, 88, 15);
-	//
-	// $effect(() => {
-	// 	scrollStore.overScroll;
-	// 	untrack(() => {
-	// 		if (animating || delay) return;
-	// 		// gsap.killTweensOf('section');
-	// 		gsap.set('section', {
-	// 			y: `-${(Math.log10(scrollStore.overScroll / 100) + 1.5) * 100}`,
-	// 			onUpdate: () => {
-	// 				// try to reset to 0 if not scrolling
-	// 				if (scrollStore.overScroll < 4000) return;
-	// 				// scrolled past 1000 pixels
-	// 				// gsap.set('html', { overflowY: 'hidden' });
-	// 				delay = true;
-	// 				gsap.to('.gradient', {
-	// 					opacity: 0,
-	// 					duration: 0.5
-	// 				});
-	// 				gsap.to('section', {
-	// 					y: '100%',
-	// 					opacity: 0,
-	// 					duration: 0.5,
-	// 					onComplete: () => {
-	// 						animating = true;
-	// 						countStore.inertiaIndex = currIndex! + 1;
-	// 						goto(`/work/${data.projects[currIndex! + 1].slug.current}`);
-	// 					}
-	// 				});
-	// 			}
-	// 		});
-	// 		// on scroll
-	// 		gsap.set('.gradient', {
-	// 			opacity: mapper(Math.max(0, Math.log10(scrollStore.overScroll / 10)))
-	// 		});
-	// 	});
-	// });
+	/* ---------- media viewer ---------- */
 
-	let current = $state() as Post | undefined;
+	function describeMedia(el: HTMLElement): ViewerMedia {
+		const isVideo = el instanceof HTMLVideoElement;
+		const img = el as HTMLImageElement;
+		const ratio = isVideo
+			? el.videoWidth && el.videoHeight
+				? el.videoWidth / el.videoHeight
+				: undefined
+			: img.naturalWidth && img.naturalHeight
+				? img.naturalWidth / img.naturalHeight
+				: undefined;
+		return {
+			id: el.id,
+			url: (isVideo ? el.currentSrc || el.src : img.currentSrc) || img.src,
+			isVideo,
+			alt: img.alt ?? '',
+			lqip: el.dataset.lqip || undefined,
+			ratio,
+			rect: () => el.getBoundingClientRect(),
+			hide: (hidden) => (el.style.visibility = hidden ? 'hidden' : ''),
+			ensureVisible: () => {
+				const r = el.getBoundingClientRect();
+				if (r.bottom < 0 || r.top > window.innerHeight) {
+					window.scrollTo({
+						top: window.scrollY + r.top - window.innerHeight / 2 + r.height / 2,
+						behavior: 'auto'
+					});
+				}
+			}
+		};
+	}
+
+	function openViewer(el: HTMLElement) {
+		viewerStore.open(describeMedia(el), () => getMediaEls().map(describeMedia));
+	}
+
+	/* ---------- derived project data ---------- */
 
 	function updateCurrent() {
 		current = data.projects.find((x) => x.slug.current === page.params.slug);
@@ -484,246 +286,6 @@
 		}
 		if (typeof currIndex === 'number') countStore.inertiaIndex = currIndex;
 	}
-
-	async function triggerNextProjectNavigation() {
-		if (
-			nextProjectNavigationPending ||
-			typeof currIndex !== 'number' ||
-			typeof nextProjectIndex !== 'number'
-		) {
-			return;
-		}
-		transitionNextProjectTitle = data.projects[nextProjectIndex].title;
-		transitionNextColorScale = [...nextColorScale];
-		showNativeMediaFallback();
-		workRouteReadyStore.reset();
-		setTransitionScrollLocked(true);
-		setCanvasTransitionHidden(true);
-		nextProjectTransitionActive = true;
-		nextProjectNavigationPending = true;
-		nextProjectStatusPhase = 'prompt';
-		await tick();
-		await new Promise<void>((resolve) => {
-			if (!articleEl || !nextProjectOverlayEl || !nextProjectOverlayCopyEl) {
-				resolve();
-				return;
-			}
-			gsap.killTweensOf([articleEl, nextProjectOverlayEl, nextProjectOverlayCopyEl]);
-			gsap.set(nextProjectOverlayEl, {
-				opacity: Math.max(nextProjectPreviewOpacity, 0.24),
-				scaleY: nextProjectPreviewScale,
-				transformOrigin: '50% 100%'
-			});
-			gsap.set(nextProjectOverlayCopyEl, {
-				y: nextProjectPreviewCopyY,
-				opacity: Math.max(nextProjectPreviewCopyOpacity, 0.72)
-			});
-			gsap
-				.timeline({ defaults: { ease: 'power3.inOut' }, onComplete: resolve })
-				.to(articleEl, { yPercent: -100, opacity: 0, duration: 2.44, ease: 'power3.in' }, 0)
-				.to(nextProjectOverlayEl, { scaleY: 1, opacity: 1, duration: 2.96 }, 0)
-				.to(
-					nextProjectOverlayCopyEl,
-					{ y: nextProjectTransitionCenterY, opacity: 1, duration: 2.96 },
-					0.04
-				)
-				.call(
-					() => {
-						nextProjectStatusPhase = 'opening';
-						triggerNextProjectStatusScramble();
-					},
-					[],
-					1.72
-				);
-		});
-		window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-		updateScrollMetrics();
-		nextProjectTransitionEntering = true;
-		await goto(`/work/${data.projects[nextProjectIndex].slug.current}`, { noScroll: true });
-	}
-
-	function updateNextProjectTrigger(delta: number, threshold: number) {
-		if (typeof currIndex !== 'number' || typeof nextProjectIndex !== 'number') return;
-		const normalizedDelta = Math.sign(delta) * Math.min(Math.abs(delta), 48);
-		setNextProjectTriggerProgress(
-			nextProjectTriggerProgress + normalizedDelta / Math.max(threshold, 1)
-		);
-	}
-
-	function getPointerTriggerDelta(event: WheelEvent) {
-		const deltaLines = normalizeWheelToLines(event);
-		const magnitude = Math.abs(deltaLines);
-		if (magnitude < NEXT_PROJECT_POINTER_MIN_LINES) return 0;
-		if (deltaLines > 0 && magnitude > NEXT_PROJECT_POINTER_MAX_TRIGGER_LINES) return 0;
-		const clamped = Math.min(magnitude, NEXT_PROJECT_POINTER_MAX_TRIGGER_LINES);
-		return Math.sign(deltaLines) * clamped;
-	}
-
-	function handleBottomWheel(event: WheelEvent) {
-		if (page.url.pathname !== `/work/${page.params.slug}`) return;
-		if (
-			nextProjectNavigationPending ||
-			nextProjectTransitionActive ||
-			nextProjectTransitionEntering
-		) {
-			event.preventDefault();
-			return;
-		}
-		if (typeof currIndex !== 'number' || typeof nextProjectIndex !== 'number') return;
-		const distanceToBottom = getBottomSentinelDistance();
-		if (distanceToBottom <= NEXT_PROJECT_ENGAGE_ZONE) {
-			const pointerDelta = getPointerTriggerDelta(event);
-			if (event.deltaY > 0) {
-				event.preventDefault();
-				if (pointerDelta > 0) {
-					updateNextProjectTrigger(pointerDelta, NEXT_PROJECT_POINTER_THRESHOLD);
-					startPointerDecay();
-				}
-				return;
-			}
-			if (event.deltaY < 0 && nextProjectTriggerProgress > 0 && pointerDelta < 0) {
-				updateNextProjectTrigger(pointerDelta, NEXT_PROJECT_POINTER_THRESHOLD);
-				startPointerDecay();
-			}
-			return;
-		}
-		if (distanceToBottom > NEXT_PROJECT_RESET_ZONE && nextProjectTriggerProgress > 0) {
-			resetNextProjectTrigger();
-		}
-	}
-
-	function handleBottomTouchStart(event: TouchEvent) {
-		if (page.url.pathname !== `/work/${page.params.slug}`) return;
-		if (
-			nextProjectNavigationPending ||
-			nextProjectTransitionActive ||
-			nextProjectTransitionEntering
-		) {
-			event.preventDefault();
-			return;
-		}
-		if (typeof currIndex !== 'number' || typeof nextProjectIndex !== 'number') return;
-		if (getBottomSentinelDistance() > NEXT_PROJECT_ENGAGE_ZONE) {
-			touchTrackingActive = false;
-			return;
-		}
-		lastTouchY = event.touches[0]?.clientY ?? 0;
-		touchStartY = lastTouchY;
-		touchStartProgress = nextProjectTriggerProgress;
-		touchTrackingActive = true;
-	}
-
-	function handleBottomTouchMove(event: TouchEvent) {
-		if (!touchTrackingActive) return;
-		if (
-			nextProjectNavigationPending ||
-			nextProjectTransitionActive ||
-			nextProjectTransitionEntering
-		) {
-			event.preventDefault();
-			return;
-		}
-		if (page.url.pathname !== `/work/${page.params.slug}`) return;
-		if (typeof currIndex !== 'number' || typeof nextProjectIndex !== 'number') return;
-		const currentTouchY = event.touches[0]?.clientY ?? lastTouchY;
-		const originY = touchStartY ?? currentTouchY;
-		const deltaFromOrigin = originY - currentTouchY;
-		const nextProgress =
-			touchStartProgress + deltaFromOrigin / Math.max(NEXT_PROJECT_TOUCH_THRESHOLD, 1);
-		lastTouchY = currentTouchY;
-		if (deltaFromOrigin < 0 && nextProgress <= 0) {
-			touchTrackingActive = false;
-			touchStartY = currentTouchY;
-			touchStartProgress = 0;
-			setNextProjectTriggerProgress(0, false);
-			return;
-		}
-		event.preventDefault();
-		setNextProjectTriggerProgress(nextProgress, false);
-	}
-
-	function handleBottomTouchEnd() {
-		touchTrackingActive = false;
-		touchStartY = null;
-		touchStartProgress = nextProjectTriggerProgress;
-		if (!nextProjectNavigationPending && nextProjectTriggerProgress >= 1) {
-			void triggerNextProjectNavigation();
-			return;
-		}
-		if (!nextProjectNavigationPending && nextProjectTriggerProgress < 1) {
-			setNextProjectTriggerProgress(0);
-		}
-	}
-
-	let delay = $state(false);
-
-	afterNavigate(({ to }) => {
-		if (to?.url.pathname.includes('work')) {
-			window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-		}
-		updateCurrent();
-		beginWorkRouteReadyTracking();
-		showNativeMediaFallback();
-		if (nextProjectTransitionEntering) {
-			nextProjectStatusPhase = 'opening';
-			stopNextProjectStatusScramble();
-			void (async () => {
-				updateScrollMetrics();
-				await tick();
-				scheduleScrollTriggerRefresh();
-				if (!articleEl || !nextProjectOverlayEl || !nextProjectOverlayCopyEl) {
-					nextProjectTransitionActive = false;
-					nextProjectTransitionEntering = false;
-					transitionNextProjectTitle = '';
-					transitionNextColorScale = [];
-					animateIn();
-					return;
-				}
-				gsap.killTweensOf([articleEl, nextProjectOverlayEl, nextProjectOverlayCopyEl]);
-				gsap.set(articleEl, { yPercent: 100, opacity: 0 });
-				gsap.set(nextProjectOverlayEl, {
-					opacity: 1,
-					scaleY: 1,
-					transformOrigin: '50% 100%'
-				});
-				gsap.set(nextProjectOverlayCopyEl, { y: nextProjectTransitionCenterY, opacity: 1 });
-				gsap
-					.timeline({ defaults: { ease: 'power3.out' } })
-					.to(articleEl, { yPercent: 0, opacity: 1, duration: 2.56 }, 1.72)
-					.to(
-						nextProjectOverlayCopyEl,
-						{ y: nextProjectTransitionCenterY - 72, opacity: 0, duration: 1.08 },
-						0.72
-					)
-					.to(
-						nextProjectOverlayEl,
-						{
-							opacity: 0,
-							scaleY: 1.02,
-							duration: 1.68,
-							onComplete: () => {
-								setCanvasTransitionHidden(false);
-								finalizeWorkTransitionVisibility();
-								nextProjectTransitionActive = false;
-								nextProjectTransitionEntering = false;
-								transitionNextProjectTitle = '';
-								transitionNextColorScale = [];
-								animateIn();
-							}
-						},
-						1.08
-					);
-			})();
-		} else {
-			nextProjectStatusPhase = 'prompt';
-			stopNextProjectStatusScramble();
-			setCanvasTransitionHidden(false);
-			animationStore.isTransitioning = false;
-			scheduleHideNativeMediaFallback();
-			animateIn();
-		}
-		setTimeout(() => (delay = false), 3000);
-	});
 
 	const base = $derived(optionsStore.dark ? '#000000' : '#ffffff');
 	const currIndex = $derived(current ? data.projects.map((x) => x._id).indexOf(current._id) : null);
@@ -752,6 +314,19 @@
 			])
 			.colors(3)
 	);
+	const displayedNextTitle = $derived(
+		frozenNextTitle ||
+			(typeof nextProjectIndex === 'number' ? (data.projects[nextProjectIndex]?.title ?? '') : '')
+	);
+	const displayedNextColors = $derived(
+		nextTransitionActive && frozenNextColors.length ? frozenNextColors : nextColorScale
+	);
+	// Overlay content renders un-inverted in both themes, so pick text by the gradient's own lightness.
+	const textColor = $derived.by(() => {
+		const colors = [base, base, ...displayedNextColors];
+		const lum = colors.reduce((sum, c) => sum + chroma(c).luminance(), 0) / colors.length;
+		return lum > 0.5 ? '#000' : '#fff';
+	});
 	const heroMediaUrl = $derived(
 		current ? withSanityImageParams(current.thumbnail?.asset?.url) : ''
 	);
@@ -790,41 +365,426 @@
 			: undefined
 	);
 
-	$effect(() => {
-		page.url.pathname;
-		untrack(() => {
-			if (!page.url.pathname.includes('work')) return;
-			requestAnimationFrame(() => {
-				updateScrollMetrics();
+	/* ---------- next project pull gesture ---------- */
+
+	function isWorkRoute() {
+		return page.url.pathname === `/work/${page.params.slug}`;
+	}
+
+	function canPull() {
+		return (
+			!navigatingNext &&
+			!viewerStore.active &&
+			!gptStore.opened &&
+			!optionsStore.fullscreen &&
+			typeof nextProjectIndex === 'number'
+		);
+	}
+
+	function normalizeWheel(event: WheelEvent) {
+		if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 17;
+		if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * 53;
+		return event.deltaY;
+	}
+
+	function onWheel(event: WheelEvent) {
+		if (!isWorkRoute()) return;
+		if (navigatingNext) {
+			event.preventDefault();
+			return;
+		}
+		if (!canPull()) return;
+		const now = performance.now();
+		const gap = now - lastWheelAt;
+		lastWheelAt = now;
+		const delta = normalizeWheel(event);
+		wheelHistory.push({ t: now, d: Math.abs(delta) });
+		wheelHistory = wheelHistory.filter((h) => now - h.t <= SLOW_SCROLL_WINDOW_MS);
+		if (distanceToBottom() > BOTTOM_EPSILON) {
+			pull = 0;
+			wheelArmed = false;
+			return;
+		}
+		if (delta < 0) {
+			if (pull > 0) {
+				event.preventDefault();
+				pull = Math.max(0, pull + delta / WHEEL_PULL_DISTANCE);
+			}
+			wheelArmed = pull > 0;
+			return;
+		}
+		// A fresh gesture, or a slow scroll arriving at the bottom, may pull. A fast scroll
+		// (large recent deltas, back-to-back events) landing on the bottom must not trigger.
+		if (!wheelArmed) {
+			const peak = Math.max(...wheelHistory.map((h) => h.d));
+			if (gap <= WHEEL_ARM_GAP_MS && peak > SLOW_SCROLL_PEAK) return;
+			wheelArmed = true;
+		}
+		event.preventDefault();
+		pull += Math.min(delta, 60) / WHEEL_PULL_DISTANCE;
+		if (pull >= 1) void triggerNextProject();
+	}
+
+	function onTouchStart(event: TouchEvent) {
+		if (!isWorkRoute()) return;
+		if (navigatingNext) {
+			event.preventDefault();
+			return;
+		}
+		touchActive = true;
+		touchOriginY = NaN;
+		touchLastY = event.touches[0]?.clientY ?? 0;
+		touchLastT = performance.now();
+	}
+
+	function onTouchMove(event: TouchEvent) {
+		if (!touchActive || !isWorkRoute()) return;
+		if (navigatingNext) {
+			event.preventDefault();
+			return;
+		}
+		if (!canPull()) return;
+		const y = event.touches[0]?.clientY ?? touchLastY;
+		const now = performance.now();
+		const speed = Math.abs(y - touchLastY) / Math.max(now - touchLastT, 1);
+		touchLastY = y;
+		touchLastT = now;
+		if (distanceToBottom() > BOTTOM_EPSILON) {
+			touchOriginY = NaN;
+			pull = 0;
+			return;
+		}
+		if (Number.isNaN(touchOriginY)) {
+			// A fast flick that merely reaches the bottom must not start a pull.
+			if (speed > MAX_TOUCH_ARM_SPEED) return;
+			touchOriginY = y;
+		}
+		const dragged = touchOriginY - y;
+		if (dragged <= 0) {
+			pull = 0;
+			touchOriginY = y;
+			return;
+		}
+		if (event.cancelable) event.preventDefault();
+		pull = Math.min(1.25, dragged / TOUCH_PULL_DISTANCE);
+	}
+
+	function onTouchEnd() {
+		if (!touchActive) return;
+		touchActive = false;
+		touchOriginY = NaN;
+		if (navigatingNext) return;
+		if (pull >= 1) {
+			void triggerNextProject();
+		} else {
+			pull = 0;
+		}
+	}
+
+	function renderText(y: number) {
+		if (textEl) textEl.style.transform = `translate3d(0, ${y}vh, 0)`;
+	}
+
+	// The text slides in over the first half of the pull, then stays put.
+	function textYForPull(p: number) {
+		return (1 - Math.min(1, Math.max(0, p * 2))) * 60;
+	}
+
+	function renderSheet(offset: number) {
+		if (!overlayEl || !panelEl) return;
+		overlayEl.style.display = Math.abs(offset) >= 0.999 ? 'none' : '';
+		panelEl.style.transform = `translate3d(0, ${offset * 120}vh, 0)`;
+	}
+
+	function renderPull() {
+		if (navigatingNext) return;
+		renderSheet(1 - Math.min(1, Math.max(0, pullShown)));
+		textState.y = textYForPull(pullShown);
+		renderText(textState.y);
+		const armed = pull >= 1;
+		if (armed !== pullArmed) {
+			pullArmed = armed;
+			if (armed && isTouchDevice) navigator.vibrate?.(12);
+			labelText = armed
+				? isTouchDevice
+					? 'Release to open next project'
+					: 'Opening next project'
+				: idleLabel();
+		}
+	}
+
+	function idleLabel() {
+		return isTouchDevice ? 'Pull up for next project' : 'Scroll to view next project';
+	}
+
+	// The page is rolled into one cylinder seen from inside. Its radius shrinks as scroll speed
+	// rises. Each element's top and bottom edge are placed on the cylinder and the element is
+	// stretched between them, so neighbours stay joined and share one vanishing point.
+	function clearBend() {
+		for (const item of bendEls) {
+			item.el.style.transform = '';
+			item.el.style.transformOrigin = '';
+		}
+	}
+
+	function applyBend(velocity: number, dt: number) {
+		// Too heavy to look smooth on touch devices.
+		if (isTouchDevice) return;
+		const target = Math.min(1, Math.abs(velocity) / 1400);
+		bend += (target - bend) * Math.min(1, dt * 10);
+		if (bend < 0.01) {
+			if (bendApplied) {
+				clearBend();
+				bendApplied = false;
+			}
+			return;
+		}
+		const vh = window.innerHeight;
+		const vw = window.innerWidth;
+		const scrollY = window.scrollY;
+		const radius = (vh * 1.1) / bend;
+		const reach = Math.min(radius * 1.2, vh * 2);
+		const persp = radius * 1.6;
+		const clampS = (s: number) => Math.max(-reach, Math.min(reach, s));
+		const surfaceY = (s: number) => radius * Math.sin(clampS(s) / radius);
+		const surfaceZ = (s: number) => radius * (1 - Math.cos(clampS(s) / radius));
+		for (const { el, top, left, h } of bendEls) {
+			const a1 = top - scrollY - vh / 2;
+			const a2 = a1 + h;
+			if (a2 < -vh * 0.75 || a1 > vh * 0.75) {
+				el.style.transform = '';
+				continue;
+			}
+			const dy = (surfaceY(a2) - surfaceY(a1)) / h;
+			const dz = (surfaceZ(a2) - surfaceZ(a1)) / h;
+			const ty = surfaceY(a1) - a1 * dy;
+			const tz = surfaceZ(a1) - a1 * dz;
+			// Origin sits on the viewport centre so every element shares one vanishing point.
+			el.style.transformOrigin = `${vw / 2 - left}px ${-a1}px`;
+			el.style.transform = `perspective(${persp}px) matrix3d(1,0,0,0, 0,${dy},${dz},0, 0,0,1,0, 0,${ty},${tz},1)`;
+		}
+		bendApplied = true;
+	}
+
+	function renderScrollIndicator(y: number) {
+		if (!progressBarEl || !caretEl) return;
+		const max = Math.max(1, docHeight - window.innerHeight);
+		const p = Math.min(1, Math.max(0, y / max));
+		progressBarEl.style.transform = `scaleY(${p})`;
+		caretEl.style.transform = `translate3d(0, ${p * window.innerHeight - 20}px, 0) rotate(${
+			y < lastScrollY ? 180 : 0
+		}deg)`;
+	}
+
+	function frameTick(_time: number, deltaTime: number) {
+		if (!isWorkRoute()) return;
+		const y = getScrollTop();
+		const dt = Math.min(deltaTime, 64) / 1000;
+		if (y !== lastScrollY) {
+			renderScrollIndicator(y);
+			lastScrollY = y;
+		}
+		const velocity = lastBendY < 0 ? 0 : (y - lastBendY) / Math.max(dt, 0.001);
+		lastBendY = y;
+		applyBend(velocity, dt);
+		if (
+			!touchActive &&
+			!navigatingNext &&
+			pull > 0 &&
+			performance.now() - lastWheelAt > WHEEL_IDLE_RESET_MS
+		) {
+			pull = Math.max(0, pull - dt * 1.6);
+			if (pull === 0) wheelArmed = false;
+		}
+		const diff = pull - pullShown;
+		if (Math.abs(diff) > 0.001) {
+			pullShown += diff * Math.min(1, dt * 14);
+			renderPull();
+		} else if (pullShown !== pull) {
+			pullShown = pull;
+			renderPull();
+		}
+	}
+
+	function wait(ms: number) {
+		return new Promise<void>((resolve) => setTimeout(resolve, ms));
+	}
+
+	async function triggerNextProject() {
+		if (navigatingNext || typeof nextProjectIndex !== 'number') return;
+		const target = data.projects[nextProjectIndex];
+		navigatingNext = true;
+		frozenNextTitle = target.title;
+		frozenNextColors = [...nextColorScale];
+		nextTransitionActive = true;
+		showNativeMediaFallback();
+		setScrollLocked(true);
+		// Hide the canvas first so the old hero card can't re-appear when readiness resets.
+		setCanvasTransitionHidden(true);
+		const sheetTo = (offset: number, duration: number) =>
+			gsap.to(sheet, {
+				offset,
+				duration,
+				ease: 'power3.inOut',
+				onUpdate: () => renderSheet(sheet.offset)
 			});
+
+		// 1. gradient slides in over the page, the text moves to the centre, the project lifts away
+		sheet.offset = 1 - Math.min(1, pullShown);
+		textState.y = textYForPull(pullShown);
+		gsap.killTweensOf(sheet);
+		gsap.killTweensOf(textState);
+		const textTo = (y: number, duration: number) =>
+			gsap.to(textState, {
+				y,
+				duration,
+				ease: 'power3.inOut',
+				onUpdate: () => renderText(textState.y)
+			});
+		if (articleEl) {
+			gsap.to(articleEl, { y: '-25vh', opacity: 0, duration: 0.8, ease: 'power2.in' });
+		}
+		void textTo(-30, 0.8);
+		await sheetTo(0, 0.8);
+
+		// 2. label scrambles to "Opening project" and the next page loads behind the cover
+		workRouteReadyStore.reset();
+		labelText = 'Opening project';
+		labelScramble = true;
+		window.setTimeout(() => (labelScramble = false), 720);
+		enteringNext = true;
+		await Promise.all([goto(`/work/${target.slug.current}`, { noScroll: true }), wait(1500)]);
+		await tick();
+		window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+		lastBendY = -1;
+		bend = 0;
+		measureDocument();
+
+		// 3. cover and text slide up and away while the next project rises in from below
+		if (articleEl) {
+			gsap.fromTo(
+				articleEl,
+				{ y: '100vh', opacity: 1 },
+				{ y: 0, duration: 1.1, ease: 'power3.inOut', clearProps: 'transform,opacity' }
+			);
+		}
+		void textTo(-150, 1.1);
+		await sheetTo(-1, 1.1);
+
+		sheet.offset = 1;
+		renderSheet(1);
+		textState.y = 60;
+		renderText(60);
+		pull = 0;
+		pullShown = 0;
+		pullArmed = false;
+		wheelArmed = false;
+		labelText = idleLabel();
+		nextTransitionActive = false;
+		frozenNextTitle = '';
+		frozenNextColors = [];
+		enteringNext = false;
+		navigatingNext = false;
+		lastWheelAt = performance.now();
+		finalizeWorkTransitionVisibility();
+		// The hero card re-syncs once the article is back at rest; reveal the canvas after that.
+		window.setTimeout(() => setCanvasTransitionHidden(false), 350);
+		animateIn();
+	}
+
+	function resetPull() {
+		pull = 0;
+		pullShown = 0;
+		wheelArmed = false;
+		touchActive = false;
+		touchOriginY = NaN;
+		renderPull();
+	}
+
+	/* ---------- lifecycle ---------- */
+
+	afterNavigate(({ to }) => {
+		if (to?.url.pathname.includes('work')) {
+			window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+		}
+		updateCurrent();
+		beginWorkRouteReadyTracking();
+		showNativeMediaFallback();
+		if (!enteringNext) {
+			resetPull();
+			setCanvasTransitionHidden(false);
+			animationStore.isTransitioning = false;
+			scheduleHideNativeMediaFallback();
+			animateIn();
+		}
+	});
+
+	function animateIn() {
+		measureDocument();
+		gsap.to('.gradient-top', { opacity: 1, delay: 1 });
+		gsap.to('.gradient-top', { opacity: 0, delay: 4 });
+	}
+
+	beforeNavigate(({ to }) => {
+		viewerStore.requestClose(true);
+		if (to?.url.pathname === '/' && typeof currIndex === 'number') {
+			animationStore.isTransitioning = true;
+			homeTransitionStore.requestHomeReturn(currIndex);
+		} else if (!navigatingNext) {
+			scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+		}
+		tl.time(0).kill();
+		const trigger1 = ScrollTrigger?.getById('trigger1');
+		if (trigger1) trigger1.kill(true);
+	});
+
+	$effect(() => {
+		if (!browser || !articleEl) return;
+		const observer = new ResizeObserver(() => measureDocument());
+		observer.observe(articleEl);
+		measureDocument();
+		return () => observer.disconnect();
+	});
+
+	// Clear shared-transition suppression once the hero card has settled
+	$effect(() => {
+		const currentSlug = page.params.slug ?? '';
+		const ready = workRouteReadyStore.hasKey(currentSlug, `${currentSlug}:0`);
+		untrack(() => {
+			if (ready && suppressHeroFallbackDuringHandoff) {
+				suppressHeroFallbackDuringHandoff = false;
+			}
 		});
 	});
 
 	onMount(() => {
-		let cleanup: (() => void) | undefined;
+		isTouchDevice = window.matchMedia('(hover: none)').matches;
+		labelText = idleLabel();
+		let cancelled = false;
+
+		window.addEventListener('wheel', onWheel, { passive: false });
+		window.addEventListener('touchstart', onTouchStart, { passive: false });
+		window.addEventListener('touchmove', onTouchMove, { passive: false });
+		window.addEventListener('touchend', onTouchEnd, { passive: true });
+		window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+		window.addEventListener('resize', measureDocument, { passive: true });
+		gsap.ticker.add(frameTick);
 
 		void (async () => {
-			if (!browser) return;
 			const scrollTriggerModule = await import('gsap/ScrollTrigger');
+			if (cancelled) return;
 			ScrollTrigger = scrollTriggerModule.ScrollTrigger;
 			gsap.registerPlugin(ScrollTrigger);
 			window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 			animateIn();
 			updateCurrent();
-			updateScrollMetrics();
 			await tick();
-			updateScrollMetrics();
-			window.addEventListener('wheel', handleBottomWheel, { passive: false });
-			window.addEventListener('touchstart', handleBottomTouchStart, { passive: true });
-			window.addEventListener('touchmove', handleBottomTouchMove, { passive: false });
-			window.addEventListener('touchend', handleBottomTouchEnd, { passive: true });
-			window.addEventListener('resize', updateScrollMetrics, { passive: true });
+			measureDocument();
 			canvasContainerEl = document.querySelector('.canvas-container') as HTMLElement | null;
 			beginWorkRouteReadyTracking();
 			showNativeMediaFallback();
 			animationStore.isTransitioning = false;
 			scheduleHideNativeMediaFallback();
-			scheduleScrollTriggerRefresh();
 			requestAnimationFrame(() => {
 				const projectListTargets = gsap.utils.toArray<HTMLElement>('ul > li > *');
 				if (!projectListTargets.length) return;
@@ -840,231 +800,23 @@
 					y: -300
 				});
 			});
-
-			cleanup = () => {
-				window.removeEventListener('wheel', handleBottomWheel);
-				window.removeEventListener('touchstart', handleBottomTouchStart);
-				window.removeEventListener('touchmove', handleBottomTouchMove);
-				window.removeEventListener('touchend', handleBottomTouchEnd);
-				window.removeEventListener('resize', updateScrollMetrics);
-				clearNativeMediaFallbackHide();
-				clearNextProjectStatusScrambleTimeout();
-				setTransitionScrollLocked(false);
-				if (scrollTriggerRefreshFrame !== null) {
-					window.cancelAnimationFrame(scrollTriggerRefreshFrame);
-					scrollTriggerRefreshFrame = null;
-				}
-				stopNextProjectVisualSmoothing();
-				workRouteReadyStore.reset();
-			};
 		})();
 
 		return () => {
-			clearNextProjectStatusScrambleTimeout();
-			setTransitionScrollLocked(false);
+			cancelled = true;
+			window.removeEventListener('wheel', onWheel);
+			window.removeEventListener('touchstart', onTouchStart);
+			window.removeEventListener('touchmove', onTouchMove);
+			window.removeEventListener('touchend', onTouchEnd);
+			window.removeEventListener('touchcancel', onTouchEnd);
+			window.removeEventListener('resize', measureDocument);
+			gsap.ticker.remove(frameTick);
+			clearNativeMediaFallbackHide();
+			setScrollLocked(false);
 			setCanvasTransitionHidden(false);
-			cleanup?.();
+			viewerStore.requestClose(true);
+			workRouteReadyStore.reset();
 		};
-	});
-
-	const progress = $derived(
-		gsap.utils.mapRange(0, scrollHeight, 0, innerHeight, scrollStore.scroll)
-	);
-	const nextProjectRevealProgress = $derived.by(() => {
-		if (!Number.isFinite(bottomSentinelDistance)) return 0;
-		return Math.min(
-			1,
-			Math.max(0, (NEXT_PROJECT_RESET_ZONE - bottomSentinelDistance) / NEXT_PROJECT_RESET_ZONE)
-		);
-	});
-	const nextProjectVisualProgress = $derived.by(() => {
-		const quarticReveal =
-			nextProjectRevealProgress > 0 ? 1 - Math.pow(1 - nextProjectRevealProgress, 4) : 0;
-		const revealLead = quarticReveal > 0 ? 0.5 + quarticReveal * 0.42 : 0;
-		return Math.max(revealLead, nextProjectTriggerProgress);
-	});
-	$effect(() => {
-		nextProjectVisualProgress;
-		untrack(() => {
-			if (!browser) {
-				nextProjectVisualProgressAnimated = nextProjectVisualProgress;
-				return;
-			}
-			if (nextProjectVisualProgressFrame !== null) return;
-			const step = () => {
-				const delta = nextProjectVisualProgress - nextProjectVisualProgressAnimated;
-				if (Math.abs(delta) < 0.002) {
-					nextProjectVisualProgressAnimated = nextProjectVisualProgress;
-					nextProjectVisualProgressFrame = null;
-					return;
-				}
-				nextProjectVisualProgressAnimated += delta * 0.24;
-				nextProjectVisualProgressFrame = window.requestAnimationFrame(step);
-			};
-			nextProjectVisualProgressFrame = window.requestAnimationFrame(step);
-		});
-	});
-	const nextProjectOverlayOpacity = $derived(
-		nextProjectVisualProgressAnimated > 0 ? 0.42 + nextProjectVisualProgressAnimated * 0.5 : 0
-	);
-	const nextProjectOverlayScaleY = $derived(Math.max(0.34, nextProjectVisualProgressAnimated));
-	const nextProjectCopyOpacity = $derived(
-		nextProjectTransitionActive ? 1 : Math.min(1, 0.5 + nextProjectVisualProgressAnimated * 0.7)
-	);
-	const nextProjectCopyY = $derived(Math.round(44 - nextProjectVisualProgressAnimated * 104));
-	const nextProjectTransitionCenterY = $derived(-Math.round(innerHeight * 0.28));
-	const nextProjectStatusText = $derived.by(() => {
-		if (nextProjectStatusPhase === 'opening') return 'Opening Project';
-		return 'Scroll To View Next Project';
-	});
-	const displayedNextProjectTitle = $derived(
-		transitionNextProjectTitle ||
-			(typeof nextProjectIndex === 'number' && data.projects[nextProjectIndex]
-				? data.projects[nextProjectIndex].title
-				: '')
-	);
-	const displayedNextColorScale = $derived(
-		nextProjectTransitionActive && transitionNextColorScale.length
-			? transitionNextColorScale
-			: nextColorScale
-	);
-	const showNextProjectOverlay = $derived(
-		typeof currIndex === 'number' &&
-			typeof nextProjectIndex === 'number' &&
-			(nextProjectVisualProgress > 0 || nextProjectTransitionActive || nextProjectCancelAnimating)
-	);
-
-	$effect(() => {
-		nextProjectOverlayEl;
-		nextProjectOverlayCopyEl;
-		nextProjectOverlayScaleY;
-		nextProjectOverlayOpacity;
-		nextProjectCopyOpacity;
-		nextProjectCopyY;
-		nextProjectTransitionActive;
-		untrack(() => {
-			if (
-				!nextProjectOverlayEl ||
-				!nextProjectOverlayCopyEl ||
-				nextProjectTransitionActive ||
-				nextProjectCancelAnimating
-			) {
-				return;
-			}
-			nextProjectPreviewScale = nextProjectOverlayScaleY;
-			nextProjectPreviewOpacity = nextProjectOverlayOpacity;
-			nextProjectPreviewCopyY = nextProjectCopyY;
-			nextProjectPreviewCopyOpacity = nextProjectCopyOpacity;
-			gsap.to(nextProjectOverlayEl, {
-				scaleY: nextProjectOverlayScaleY,
-				opacity: nextProjectOverlayOpacity,
-				duration: 0.16,
-				ease: 'power2.out',
-				transformOrigin: '50% 100%',
-				overwrite: 'auto'
-			});
-			gsap.to(nextProjectOverlayCopyEl, {
-				y: nextProjectCopyY,
-				opacity: nextProjectCopyOpacity,
-				duration: 0.18,
-				ease: 'power2.out',
-				overwrite: 'auto'
-			});
-		});
-	});
-
-	let caretMoving = $state(false);
-	let prevScroll = $state(0);
-	$effect(() => {
-		scrollStore.scroll;
-		untrack(() => {
-			// if scrolling up
-			if (prevScroll > scrollStore.scroll && !caretMoving) {
-				gsap.set(caretEl, {
-					y: `${innerHeight}px`,
-					rotate: '180deg'
-				});
-				gsap.to(caretEl, {
-					y: 0,
-					clearProps: 'transform',
-					duration: 0.75,
-					onStart: () => {
-						caretMoving = true;
-					},
-					onComplete: () => {
-						caretMoving = false;
-					}
-				});
-			} else if (!caretMoving) {
-				gsap.to(caretEl, {
-					y: `${innerHeight}px`,
-					clearProps: 'transform',
-					duration: 0.75,
-					onStart: () => {
-						caretMoving = true;
-					},
-					onComplete: () => {
-						caretMoving = false;
-					}
-				});
-			}
-			prevScroll = scrollStore.scroll;
-			if (bottomSentinelDistance > NEXT_PROJECT_RESET_ZONE && nextProjectTriggerProgress > 0) {
-				resetNextProjectTrigger();
-			}
-		});
-	});
-
-	$effect(() => {
-		$cardDimensionsStore;
-		current?._id;
-		untrack(() => {
-			if (!browser || !page.url.pathname.includes('work')) return;
-			requestAnimationFrame(() => updateScrollMetrics());
-		});
-	});
-
-	// Clear shared-transition suppression flag once the hero card has settled
-	$effect(() => {
-		const currentSlug = page.params.slug ?? '';
-		const ready = workRouteReadyStore.hasKey(currentSlug, `${currentSlug}:0`);
-		untrack(() => {
-			if (ready && suppressHeroFallbackDuringHandoff) {
-				suppressHeroFallbackDuringHandoff = false;
-			}
-		});
-	});
-
-	function animateIn() {
-		updateScrollMetrics();
-		resetNextProjectTrigger();
-
-		gsap.to('.gradient-top', {
-			opacity: 1,
-			delay: 1
-		});
-		gsap.to('.gradient-top', {
-			opacity: 0,
-			delay: 4,
-			onComplete: () => {
-				animating = false;
-			}
-		});
-	}
-
-	beforeNavigate(({ to }) => {
-		if (!nextProjectNavigationPending) {
-			resetNextProjectTrigger();
-		}
-		if (to?.url.pathname === '/' && typeof currIndex === 'number') {
-			animationStore.isTransitioning = true;
-			homeTransitionStore.requestHomeReturn(currIndex);
-		} else if (!nextProjectNavigationPending) {
-			scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-		}
-		tl.time(0).kill();
-		const trigger1 = ScrollTrigger?.getById('trigger1');
-		if (trigger1) trigger1.kill(true);
 	});
 </script>
 
@@ -1077,130 +829,97 @@
 	class="fixed top-0 h-[40vh] w-full gradient-top -z-30 opacity-0 dark:invert-0 invert"
 ></aside>
 <aside
-	style={`height: ${progress}px`}
-	class="fixed top-0 right-0 w-3 bg-linear-to-b from-stone-700 to-stone-100/0 dark:from-slate-300 dark:to-slate-900/0 origin-top overflow-hidden pointer-events-none"
->
-	<img bind:this={caretEl} src={caret} alt="scroll caret" class="absolute w-3 right-0 -top-5" />
-</aside>
+	bind:this={progressBarEl}
+	class="fixed top-0 right-0 h-dvh w-3 origin-top bg-linear-to-b from-stone-700 to-stone-100/0 dark:from-slate-300 dark:to-slate-900/0 pointer-events-none will-change-transform"
+	style="transform: scaleY(0);"
+></aside>
+<img
+	bind:this={caretEl}
+	src={caret}
+	alt=""
+	aria-hidden="true"
+	class="fixed top-0 right-0 w-3 pointer-events-none will-change-transform"
+/>
 <article
 	bind:this={articleEl}
 	class="relative overflow-hidden self-start w-full transition-opacity duration-300"
-	class:opacity-0={optionsStore.fullscreen ||
+	class:opacity-0={(optionsStore.fullscreen && !viewerStore.active) ||
 		gptStore.opened ||
-		(animationStore.isTransitioning &&
-			!nextProjectTransitionActive &&
-			!nextProjectTransitionEntering)}
+		(animationStore.isTransitioning && !nextTransitionActive)}
 	class:pointer-events-none={optionsStore.fullscreen || gptStore.opened}
 >
 	{#if current && typeof currIndex === 'number'}
 		{@const currentSlug = page.params.slug ?? ''}
+		{@const heroReady = workRouteReadyStore.hasKey(currentSlug, `${currentSlug}:0`)}
 		{@const heroFallbackVisible =
-			nativeMediaFallbackVisible &&
-			!workRouteReadyStore.hasKey(currentSlug, `${currentSlug}:0`) &&
-			!suppressHeroFallbackDuringHandoff}
+			nativeMediaFallbackVisible && !heroReady && !suppressHeroFallbackDuringHandoff}
 		<Section
 			heading={data.projects[currIndex].title}
 			index={0}
 			image={heroImage}
 			imageLight={heroImageLight}
 			video={heroVideo}
-			forceVisibleMedia={heroFallbackVisible}
+			forceVisibleMedia={heroReady || heroFallbackVisible}
 			awardsItem={current}
+			onOpen={(media) => openViewer(media.source)}
 		/>
-		{#each current.content as item, index}
-			{#if data.projects && data.projects[currIndex] && data.projects[currIndex].content && data.projects[currIndex].content[index]}
-				<!-- Calculate imageWidth and imageHeight inside the block -->
-				{@const contentItem = data.projects[currIndex].content[index]}
-				{@const detailFallbackVisible =
-					nativeMediaFallbackVisible &&
-					!workRouteReadyStore.hasKey(currentSlug, `${currentSlug}:${index + 1}`)}
-				{@const imageWidth = $cardDimensionsStore[index]?.width ?? 0}
-				{@const imageHeight = $cardDimensionsStore[index]?.height ?? 0}
-				{@const maxSize = Math.min(innerWidth * 0.6, 600)}
-				<Section
-					index={index + 1}
-					body={item.body}
-					heading={item.headline}
-					bottom={item.caption}
-					image={contentItem.image}
-					video={contentItem.video}
-					imageLight={contentItem.imageLight}
-					imageCaption={contentItem.caption}
-					forceVisibleMedia={detailFallbackVisible}
-					{imageWidth}
-					{imageHeight}
-					{maxSize}
-				/>
-			{/if}
+		{#each current.content as item, index (`${currentSlug}-${index}`)}
+			<Section
+				index={index + 1}
+				body={item.body}
+				heading={item.headline}
+				bottom={item.caption}
+				image={item.image}
+				video={item.video}
+				imageLight={item.imageLight}
+				forceVisibleMedia={true}
+				onOpen={(media) => openViewer(media.source)}
+			/>
 		{/each}
 	{/if}
-	<div bind:this={bottomSentinelEl} class="h-0 w-full pointer-events-none"></div>
 </article>
 
-{#if optionsStore.fullscreen}
-	{#if optionsStore.videoPaused}
-		<!-- Paused indicator — purely visual, no pointer events -->
-		<div class="fixed inset-0 z-20 flex items-center justify-center pointer-events-none">
-			<div class="w-16 h-16 rounded-full bg-black/50 flex items-center justify-center">
-				<svg viewBox="0 0 24 24" fill="white" class="w-7 h-7">
-					<rect x="6" y="4" width="4" height="16" rx="1" />
-					<rect x="14" y="4" width="4" height="16" rx="1" />
-				</svg>
-			</div>
-		</div>
-	{/if}
-{/if}
-
-{#if showNextProjectOverlay}
-	<aside
-		class="fixed left-0 bottom-0 h-dvh w-full gradient dark:invert-0 invert pointer-events-none"
-		class:z-40={!nextProjectTransitionActive}
-		class:z-50={nextProjectTransitionActive}
+<aside
+	bind:this={overlayEl}
+	class="fixed inset-0 z-40 gradient dark:invert-0 invert pointer-events-none overflow-hidden"
+	style="display: none;"
+	class:z-50={nextTransitionActive}
+>
+	<div
+		bind:this={panelEl}
+		class="absolute inset-x-0 will-change-transform"
+		style="top: -20vh; height: 140vh; transform: translate3d(0, 120vh, 0); mask-image: linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%);"
 	>
 		<div
-			bind:this={nextProjectOverlayEl}
+			class="absolute inset-0"
 			style={`background-color: ${base};
 				background-image: radial-gradient(at 25% 0%, ${base} 0, transparent 30%),
 				radial-gradient(at 75% 0%, ${base} 0, transparent 75%),
-				radial-gradient(at 51.94% 0%, ${displayedNextColorScale[2]} 0, transparent 100%),
-				radial-gradient(at 87.56% 50%, ${displayedNextColorScale[1]} 0, transparent 30%),
-				radial-gradient(at 15% 88%, ${displayedNextColorScale[0]} 0, transparent 30%);
-				transform-origin: 50% 100%;
-				transform: scaleY(0.34);
-				opacity: 0;
-				will-change: transform, opacity;
-				mask-image: linear-gradient(to bottom, transparent 0%, white ${nextProjectTransitionActive ? '3%' : '20%'}, white 100%);
-				-webkit-mask-image: linear-gradient(to bottom, transparent 0%, white ${nextProjectTransitionActive ? '3%' : '20%'}, white 100%);`}
-			class="absolute inset-0"
+				radial-gradient(at 51.94% 0%, ${displayedNextColors[2]} 0, transparent 100%),
+				radial-gradient(at 87.56% 50%, ${displayedNextColors[1]} 0, transparent 30%),
+				radial-gradient(at 15% 88%, ${displayedNextColors[0]} 0, transparent 30%);`}
 		></div>
-		<div
-			bind:this={nextProjectOverlayCopyEl}
-			class="absolute inset-x-0 bottom-0 z-10 px-6 pb-[max(10rem,18vh)] text-center"
-			style={`transform: translateY(40px); opacity: 0; will-change: transform, opacity; padding-bottom: max(10rem,18vh);`}
-		>
-			<div
-				class="flex items-center justify-center text-white mix-blend-difference font-mono uppercase text-xs gap-5 min-h-4"
-				style="text-shadow: 0 0 24px rgba(0, 0, 0, 0.18);"
-			>
-				<p class="text-base">&gt;</p>
-				<div class="inline-grid grid-cols-[minmax(0,max-content)] grid-rows-1 items-center">
-					<ScrambleText
-						text={nextProjectStatusText}
-						reserveText="Scroll To View Next Project"
-						active={nextProjectStatusScrambleActive}
-						durationMs={680}
-					/>
-				</div>
-				<p class="text-base">&gt;</p>
-			</div>
-			<h4
-				class="text-4xl md:text-6xl font-bold text-white mix-blend-difference"
-				style="text-shadow: 0 0 28px rgba(0, 0, 0, 0.2);"
-			>
-				{displayedNextProjectTitle}
-			</h4>
+	</div>
+	<div
+		bind:this={textEl}
+		class="absolute inset-x-0 bottom-0 flex flex-col items-center gap-4 px-6 text-center will-change-transform"
+		style="padding-bottom: 18vh; transform: translate3d(0, 60vh, 0);"
+		style:color={textColor}
+	>
+		<div class="flex items-center justify-center font-mono uppercase text-xs gap-5 min-h-4">
+			<p class="text-base">&gt;</p>
+			<ScrambleText
+				text={labelText}
+				reserveText="Release to open next project"
+				active={labelScramble}
+				durationMs={700}
+			/>
+			<p class="text-base">&gt;</p>
 		</div>
-	</aside>
-{/if}
+		<h4 class="text-4xl md:text-6xl font-bold">
+			{displayedNextTitle}
+		</h4>
+	</div>
+</aside>
 
-<svelte:window bind:innerWidth bind:innerHeight />
+<svelte:window bind:innerWidth />

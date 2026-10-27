@@ -7,6 +7,8 @@
 		PlaneGeometry,
 		type Texture,
 		Vector2,
+		Vector3,
+		Vector4,
 		TextureLoader,
 		SRGBColorSpace,
 		LinearFilter,
@@ -20,11 +22,16 @@
 		gptStore,
 		homeTransitionStore,
 		loadStore,
+		introGateStore,
 		sharedCardTransitionStore,
 		scrollStore,
 		workRouteReadyStore
 	} from '$lib/stores/index.svelte';
 	import { optionsStore } from '$lib/stores/options.svelte';
+	import { viewerStore, reelViewer } from '$lib/stores/viewer.svelte';
+	import { gateTransform, GATE_MAX_CARDS } from '$lib/utils/introGate';
+	import { perfStore } from '$lib/stores/perf.svelte';
+	import { isMobile, isMobileSafari } from '$lib/utils/device';
 	import fragmentShader from '../shaders/glitchFragment.glsl?raw';
 	import vertexShader from '../shaders/vertexBend.glsl?raw';
 	import gsap from 'gsap';
@@ -42,6 +49,11 @@
 	import { introSectionStore } from '$lib/stores/introSection';
 
 	let easeFactor = 0.02;
+	// Debounced timer that re-evaluates homePos() 250ms after scrolling stops.
+	// At that point inertiaVelocity has decayed to 0, ensuring the active card
+	// reaches its full baseScale even if end-of-snap residual velocity caused
+	// the immediate updateImage call to target a slightly undersized scale.
+	let _scaleSettleTimer: ReturnType<typeof setTimeout> | null = null;
 	let imageMat = $state() as ShaderMaterial;
 	let imageGeo = $state() as PlaneGeometry;
 	let {
@@ -71,6 +83,76 @@
 	}
 	const initialSharedTransition = resolveSharedTransition();
 	const shouldCoverTexture = $derived(home && !!homeAspectRatio);
+	// Video textures re-upload every frame while rendered; skip rendering when offscreen.
+	const isVideoCard = $derived((texture as any)?.isVideoTexture === true);
+	let viewerHidden = $state(false);
+
+	// During the first-visit intro the card is driven by introGate (trail, then the row of cards).
+	const gateActive = $derived(home && !works && introGateStore.phase !== 'done');
+	let gateWasActive = false;
+	let gateRy = $state(0);
+
+	function applyGate() {
+		if (!imageGeo) return;
+		if (!gateWasActive) {
+			gsap.killTweensOf(transform);
+			gateWasActive = true;
+		}
+		const count = Math.min(data.projects.length, GATE_MAX_CARDS);
+		const g = gateTransform(
+			index,
+			count,
+			imageGeo.parameters.width,
+			$size.width,
+			$size.height,
+			performance.now()
+		);
+		transform.x = g.x;
+		transform.y = g.y;
+		transform.z = g.z;
+		transform.scale = g.scale;
+		transform.opacity = g.opacity;
+		gateRy = g.ry;
+	}
+
+	// The landing reel opens in the shared media viewer instead of navigating.
+	function openReelViewer() {
+		const video = (texture as any)?.image as HTMLVideoElement | undefined;
+		const url = video?.currentSrc || video?.src;
+		if (!url || !imageGeo) return;
+		viewerStore.open({
+			id: 'reel',
+			url,
+			isVideo: true,
+			alt: 'Reel',
+			ratio: video?.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9,
+			rect: () => {
+				const w = imageGeo.parameters.width * transform.scale;
+				const h = imageGeo.parameters.height * transform.scale;
+				return new DOMRect(
+					$size.width / 2 + transform.x - w / 2,
+					$size.height / 2 - transform.y - h / 2,
+					w,
+					h
+				);
+			},
+			hide: (hidden) => (viewerHidden = hidden)
+		});
+	}
+
+	onMount(() => {
+		if (!home || works || !(slug === 'reels' || index === 0)) return;
+		reelViewer.open = openReelViewer;
+		return () => {
+			if (reelViewer.open === openReelViewer) reelViewer.open = null;
+		};
+	});
+	// Once the hero has settled, the native element takes over and the WebGL card fades out.
+	const nativeTakeover = $derived(
+		works &&
+			index === 0 &&
+			workRouteReadyStore.hasKey(page.params.slug ?? '', `${page.params.slug}:0`)
+	);
 	let sharedTransitionTarget = $state(initialSharedTransition);
 	let handoffInProgress = $state(Boolean(initialSharedTransition));
 	const isReturningHomeCard = $derived(
@@ -93,6 +175,8 @@
 	let mousePosition = { x: 0.5, y: 0.5 };
 	let targetMousePosition = { x: 0.5, y: 0.5 };
 	let prevPosition = { x: 0.5, y: 0.5 };
+	// Cache to avoid emitting a Svelte reactive write on every RAF when the card is settled
+	const _snapshotCache = { x: NaN, y: NaN, z: NaN, scale: NaN, opacity: NaN, gw: NaN, gh: NaN };
 	let transform = $state(
 		initialSharedTransition
 			? { ...initialSharedTransition.transform }
@@ -515,10 +599,10 @@
 	function updateAspectUniforms(textureAspectValue?: number) {
 		if (!imageMat) return;
 		if (typeof textureAspectValue === 'number' && isFinite(textureAspectValue)) {
-			imageMat.uniforms.textureAspect.value = textureAspectValue;
+			imageMat.uniforms.u_params1.value.x = textureAspectValue;
 		}
 		if (geometryArgs[0] && geometryArgs[1]) {
-			imageMat.uniforms.planeAspect.value = geometryArgs[0] / geometryArgs[1];
+			imageMat.uniforms.u_params1.value.y = geometryArgs[0] / geometryArgs[1];
 		}
 		imageMat.uniformsNeedUpdate = true;
 	}
@@ -529,6 +613,9 @@
 			? [initialSharedTransition.geometry.width, initialSharedTransition.geometry.height]
 			: [1000, 1000 / (16 / 9)]
 	);
+	// When card bend is disabled, 1×1 segments are sufficient (2 triangles vs 2048).
+	// Reactive so toggling disableCardBend in Debug updates segments live.
+	const geoSegments = $derived(optionsStore.disableCardBend ? 1 : 32);
 
 	// const currentProject = $derived(page.params.slug || index === countStore.activeIndex || works);
 
@@ -554,7 +641,7 @@
 		};
 	});
 
-	const hidden = $derived(
+	const baseHidden = $derived(
 		// gpt modal opened
 		gptStore.opened ||
 			// while the landing page is restoring after a shared return, only the returning card may render
@@ -569,7 +656,7 @@
 			// on home but before current index
 			(index < countStore.activeIndex && page.url.pathname === '/' && !isReturningHomeCard) ||
 			// in fullscreen but not this image
-			(optionsStore.fullscreen && !full) ||
+			(optionsStore.fullscreen && !full && !viewerStore.active) ||
 			// during gallery transition
 			loadStore.galleryTransitioning ||
 			// in gallery page TODO: change this
@@ -577,8 +664,10 @@
 			// on home but before current index (only applies to home page)
 			(page.url.pathname === '/' && index < countStore.activeIndex && !isReturningHomeCard)
 	);
+	const hidden = $derived(gateActive ? gptStore.opened : baseHidden);
 
 	function tweenOpacity(targetOpacity: number, ease: string) {
+		if (gateActive) return;
 		gsap.killTweensOf(transform, 'opacity');
 		gsap.to(transform, {
 			opacity: targetOpacity,
@@ -599,7 +688,12 @@
 		workRouteReadyStore.readyCount;
 		// Track homeNavigatingToWork outside untrack so the effect re-runs when it changes.
 		const homeNavToWork = animationStore.homeNavigatingToWork;
+		nativeTakeover;
 		untrack(() => {
+			if (nativeTakeover && !hidden) {
+				tweenOpacity(0, 'power2.inOut');
+				return;
+			}
 			const heroReady =
 				!works || index === 0 || workRouteReadyStore.hasKey(slug ?? '', `${slug}:0`);
 			// During home→work transition (0.3s shrink), non-active home cards should
@@ -722,7 +816,17 @@
 			}
 			// console.log('[HOMEPAGE UPDATE]', index);
 			// const duration = !works && page.url.pathname.includes('work') ? 0.01 : 0.5
-			queueMicrotask(() => updateImage(0, 0.5));
+			queueMicrotask(() => updateImage(0, isMobileSafari ? 0.1 : 0.5));
+			// After scroll settles, re-run homePos() with cleared inertiaVelocity so the
+			// active card always reaches its full baseScale. This timer resets on every
+			// inertiaIndex change and only fires when scrolling stops for 250ms.
+			if (!works && !page.url.pathname.includes('work') && !page.url.pathname.includes('gallery')) {
+				if (_scaleSettleTimer !== null) clearTimeout(_scaleSettleTimer);
+				_scaleSettleTimer = setTimeout(() => {
+					_scaleSettleTimer = null;
+					updateImage(0, 0.25);
+				}, 250);
+			}
 		});
 	});
 
@@ -838,7 +942,7 @@
 	}
 
 	function handleClick(event: IntersectionEvent<'click'>, index: number) {
-		if (hidden) return;
+		if (hidden || gateActive) return;
 		// Skip synthesized click events that fire ~300ms after a touchend we already handled
 		if (touchJustHandled) {
 			meshHandledClick = true;
@@ -874,7 +978,7 @@
 			}
 
 			if (slug === 'reels' || index === 0) {
-				goto('/#reels');
+				openReelViewer();
 			} else {
 				navigateToWork(`/work/${slug}`);
 			}
@@ -903,7 +1007,7 @@
 
 	function handleMove(event: IntersectionEvent<'pointermove'>) {
 		// disable hover effect when hidden or fullscreen or in works page
-		if (hidden || full || works) return;
+		if (hidden || full || works || isMobile) return;
 		easeFactor = 0.02;
 		prevPosition = { ...targetMousePosition };
 		targetMousePosition.x = event.uv!.x;
@@ -1037,7 +1141,15 @@
 	function syncWorkTransform() {
 		if (!works || !imageGeo || hidden || full || !workTargetReady()) return;
 		const { opacity: _opacity, ...pos } = projectPage(index, $size, works, imageGeo, $size.width);
-		transform = { ...transform, ...pos };
+		// Mutate the existing proxy in-place rather than reassigning transform.
+		// Reassigning creates a new Svelte 5 reactive proxy, which orphans any
+		// active GSAP tween that targets the old proxy reference — the tween
+		// keeps writing to the old object while useTask reads from the new one,
+		// leaving opacity (and other properties) frozen at the mid-animation value.
+		transform.x = pos.x;
+		transform.y = pos.y;
+		transform.z = pos.z;
+		transform.scale = pos.scale;
 	}
 
 	function scrollWorkPageToTop() {
@@ -1068,7 +1180,7 @@
 
 	// Update image position and scale based on current state
 	function updateImage(delay = 0, duration = 0.01, callback?: () => void) {
-		if (!loadStore.loaded || suppressUpdates) return;
+		if (!loadStore.loaded || suppressUpdates || gateActive) return;
 		let pos;
 		// if homepage
 		if (home) {
@@ -1099,6 +1211,15 @@
 		// tweenOpacity. Scope the kill to positional properties only so the fade-in
 		// tween isn't cancelled by a positional updateImage call.
 		gsap.killTweensOf(transform, works && index > 0 ? 'x,y,z,scale' : undefined);
+		// Per-scroll-tick updates are effectively instant; skip creating a tween per card.
+		if (!delay && duration <= 0.02 && pos) {
+			for (const key of ['x', 'y', 'z', 'scale', 'opacity'] as const) {
+				const value = (pos as Record<string, number | undefined>)[key];
+				if (typeof value === 'number') transform[key] = value;
+			}
+			callback?.();
+			return;
+		}
 		gsap.to(transform, {
 			...pos,
 			delay,
@@ -1116,85 +1237,134 @@
 	// 	})
 	// })
 
-	useTask(() => {
-		mousePosition.x += (targetMousePosition.x - mousePosition.x) * easeFactor;
-		mousePosition.y += (targetMousePosition.y - mousePosition.y) * easeFactor;
-		imageMat.uniforms.scale.value = img.scale;
-		imageMat.uniforms.u_mouse.value.set(mousePosition.x, mousePosition.y);
-		imageMat.uniforms.opacity.value = transform.opacity;
-		imageMat.uniforms.uCoverTexture.value = shouldCoverTexture;
-
-		imageMat.uniforms.u_prevMouse.value.set(prevPosition.x, prevPosition.y);
-
-		aberrationIntensity = works ? 0.0 : Math.max(0.0, aberrationIntensity - 0.02);
-		imageMat.uniforms.u_aberrationIntensity.value = aberrationIntensity;
-
-		const motionProgress = works
-			? Math.abs(scrollStore.velocity) < 60
-				? 0
-				: velocityToMotionProgress(scrollStore.velocity, 1600)
-			: indexOffsetToMotionProgress(countStore.inertiaIndex - countStore.activeIndex);
-
-		// Update screen position for bend calculation
-		// transform.y is world position, scrollStore.scroll is how much we've scrolled
-		// To get viewport position: world Y + scroll offset
-		const viewportY = transform.y + scrollStore.scroll;
-		imageMat.uniforms.uScreenPosition.value.set(transform.x, viewportY);
-		imageMat.uniforms.uScreenCenter.value.set(0, scrollStore.scroll); // Center moves with scroll
-
-		const normalizedX = transform.x / Math.max($size.width / 2, 1);
-		// For taller (portrait) images on work pages, reduce rotation/swivel to near-zero.
-		// aspectRatio < 1 = portrait/tall; scale rotation down proportionally.
-		const aspectRatio = imageGeo ? imageGeo.parameters.width / imageGeo.parameters.height : 1;
-		const rotationScale = works ? Math.min(1, aspectRatio * 1.2) : 1;
-		motionState = stepCardMotion(motionState, {
-			motionProgress,
-			normalizedX,
-			enableRoll: works,
-			bendMax: works ? 52 : 50,
-			rotationMax: works ? 0.012 * rotationScale : 0.15,
-			zoomMax: works ? 0.08 : 0.25,
-			textureRotationMax: works ? 0.028 * rotationScale : 0.1,
-			threshold: works ? 0.055 : 0.1,
-			easingPower: works ? 2.4 : 3
-		});
-		imageMat.uniforms.uBendAmplitude.value = motionState.bendAmount;
-		imageMat.uniforms.uRotation.value = motionState.rotationAmount;
-		imageMat.uniforms.uEnableRoll.value = works;
-		imageMat.uniforms.uTextureZoom.value = motionState.textureZoom;
-		imageMat.uniforms.uTextureRotation.value = motionState.textureRotation;
-		// Only static image textures are uploaded as SRGB8 (hardware-linearized on sample).
-		// VideoTextures are RGBA8 — no hardware linearization — so no re-encoding needed.
+	// Static uniforms: depend only on texture type and dark mode — never change per-frame.
+	// Writing them inside useTask forces a Metal Argument Buffer re-upload every frame per card
+	// even when values are identical. Moved to $effect so they only upload on actual change.
+	$effect(() => {
+		if (!imageMat) return;
 		const isVideoTex = (texture as any).isVideoTexture === true;
-		const needsColorspaceConversion = !isVideoTex;
-		const invertAfterOutput = needsColorspaceConversion && !optionsStore.dark;
-		imageMat.uniforms.uApplyOutputColorSpace.value = needsColorspaceConversion;
-		imageMat.uniforms.uInvertAfterOutputColorSpace.value = invertAfterOutput;
-		imageMat.uniforms.inverted.value = !optionsStore.dark && !invertAfterOutput ? 1.0 : 0.0;
-		if (
-			home &&
-			page.url.pathname === '/' &&
-			index === countStore.activeIndex &&
-			imageGeo &&
-			!hidden
-		) {
-			currentHomeCardSnapshotStore.set({
-				index,
-				slug: slug ?? '',
-				geometry: {
-					width: imageGeo.parameters.width,
-					height: imageGeo.parameters.height
-				},
-				transform: {
-					x: transform.x,
-					y: transform.y,
-					z: transform.z,
-					scale: transform.scale,
-					opacity: transform.opacity
-				}
-			});
-		}
+		const needsColorspace = !isVideoTex;
+		const invertAfter = needsColorspace && !optionsStore.dark;
+		imageMat.uniforms.u_params2.value.w = shouldCoverTexture ? 1.0 : 0.0;
+		imageMat.uniforms.u_flags.value.set(
+			!optionsStore.dark && !invertAfter ? 1.0 : 0.0,
+			needsColorspace ? 1.0 : 0.0,
+			invertAfter ? 1.0 : 0.0
+		);
 		imageMat.uniformsNeedUpdate = true;
+	});
+
+	useTask(() => {
+		if (gateActive) applyGate();
+		else if (gateWasActive) {
+			gateWasActive = false;
+			gateRy = 0;
+			queueMicrotask(() => updateImage(0, 0.01));
+		}
+		perfStore.measure('cards', () => {
+			mousePosition.x += (targetMousePosition.x - mousePosition.x) * easeFactor;
+			mousePosition.y += (targetMousePosition.y - mousePosition.y) * easeFactor;
+
+			// Always update opacity — required for fade-in/out visibility transitions.
+			imageMat.uniforms.u_params1.value.w = transform.opacity;
+
+			// Skip remaining GPU writes when this card is fully invisible.
+			// On Safari/Metal each gl.uniform* call is a separate Argument Buffer write;
+			// with many hidden cards this adds up per frame.
+			if (transform.opacity <= 0.001) {
+				imageMat.uniformsNeedUpdate = true;
+				return;
+			}
+
+			imageMat.uniforms.u_params1.value.z = img.scale;
+			imageMat.uniforms.u_mouse4.value.set(
+				mousePosition.x,
+				mousePosition.y,
+				prevPosition.x,
+				prevPosition.y
+			);
+
+			aberrationIntensity = works ? 0.0 : Math.max(0.0, aberrationIntensity - 0.02);
+			imageMat.uniforms.u_params2.value.x = aberrationIntensity;
+
+			const motionProgress = works
+				? Math.abs(scrollStore.velocity) < 60
+					? 0
+					: velocityToMotionProgress(scrollStore.velocity, 1600)
+				: indexOffsetToMotionProgress(countStore.inertiaIndex - countStore.activeIndex);
+
+			// Update screen position for bend calculation
+			// transform.y is world position, scrollStore.scroll is how much we've scrolled
+			// To get viewport position: world Y + scroll offset
+			const viewportY = transform.y + scrollStore.scroll;
+			imageMat.uniforms.u_screen.value.set(transform.x, viewportY, 0, scrollStore.scroll);
+
+			const normalizedX = transform.x / Math.max($size.width / 2, 1);
+			// For taller (portrait) images on work pages, reduce rotation/swivel to near-zero.
+			// aspectRatio < 1 = portrait/tall; scale rotation down proportionally.
+			const aspectRatio = imageGeo ? imageGeo.parameters.width / imageGeo.parameters.height : 1;
+			const rotationScale = works ? Math.min(1, aspectRatio * 1.2) : 1;
+			motionState = stepCardMotion(motionState, {
+				motionProgress,
+				normalizedX,
+				enableRoll: works,
+				bendMax: works ? 52 : 50,
+				rotationMax: works ? 0.012 * rotationScale : 0.15,
+				zoomMax: works ? 0.08 : 0.25,
+				textureRotationMax: works ? 0.028 * rotationScale : 0.1,
+				threshold: works ? 0.055 : 0.1,
+				easingPower: works ? 2.4 : 3
+			});
+			if (!optionsStore.disableCardBend) {
+				imageMat.uniforms.u_bend.value.x = motionState.bendAmount;
+				imageMat.uniforms.u_bend.value.z = motionState.rotationAmount;
+				imageMat.uniforms.u_params2.value.y = motionState.textureZoom;
+				imageMat.uniforms.u_params2.value.z = motionState.textureRotation;
+			}
+			imageMat.uniforms.u_bend.value.w = works ? 1.0 : 0.0;
+			if (
+				home &&
+				page.url.pathname === '/' &&
+				index === countStore.activeIndex &&
+				imageGeo &&
+				!hidden
+			) {
+				// Guard: only write the Svelte rune when values have actually changed.
+				// JSCore (Safari) is less optimised than V8 for high-frequency reactive
+				// writes on settled (non-animating) state — this avoids 60 no-op writes/s.
+				const gw = imageGeo.parameters.width;
+				const gh = imageGeo.parameters.height;
+				const tx = transform.x,
+					ty = transform.y,
+					tz = transform.z;
+				const ts = transform.scale,
+					to = transform.opacity;
+				if (
+					tx !== _snapshotCache.x ||
+					ty !== _snapshotCache.y ||
+					tz !== _snapshotCache.z ||
+					ts !== _snapshotCache.scale ||
+					to !== _snapshotCache.opacity ||
+					gw !== _snapshotCache.gw ||
+					gh !== _snapshotCache.gh
+				) {
+					_snapshotCache.x = tx;
+					_snapshotCache.y = ty;
+					_snapshotCache.z = tz;
+					_snapshotCache.scale = ts;
+					_snapshotCache.opacity = to;
+					_snapshotCache.gw = gw;
+					_snapshotCache.gh = gh;
+					currentHomeCardSnapshotStore.set({
+						index,
+						slug: slug ?? '',
+						geometry: { width: gw, height: gh },
+						transform: { x: tx, y: ty, z: tz, scale: ts, opacity: to }
+					});
+				}
+			}
+			imageMat.uniformsNeedUpdate = true;
+		});
 	});
 
 	onMount(() => {
@@ -1311,7 +1481,7 @@
 	$effect(() => {
 		if (!texture || !texture.image) return;
 		handoffInProgress;
-		const img = texture.image;
+		const img = texture.image as HTMLVideoElement & HTMLImageElement;
 		const width = img.videoWidth || img.width;
 		const height = img.videoHeight || img.height;
 		let expected;
@@ -1357,6 +1527,10 @@
 				const newGeo = new PlaneGeometry(...geometryArgs);
 				image.geometry = newGeo;
 				imageGeo = newGeo;
+			}
+			// Home cards are placed from the geometry size, so they must follow a resize.
+			if (!works && home && initialLoadComplete && !loadIn && !handoffInProgress) {
+				queueMicrotask(() => updateImage(0, 0.01));
 			}
 		}
 		updateAspectUniforms(textureAspectVal);
@@ -1436,6 +1610,15 @@
 
 <T.Mesh
 	bind:ref={image as Mesh}
+	visible={!viewerHidden &&
+		(gateActive
+			? transform.opacity > 0.001
+			: nativeTakeover && transform.opacity <= 0.001
+				? false
+				: isVideoCard && !works
+					? transform.opacity > 0.001 && Math.abs(index - countStore.inertiaIndex) < 1.6
+					: !hidden || transform.opacity > 0.001)}
+	rotation.y={gateRy}
 	scale={transform.scale * fullscreenZoom}
 	position={[transform.x + fullscreenPan.x, transform.y + fullscreenPan.y, transform.z]}
 	onclick={(e: IntersectionEvent<'click'>) => {
@@ -1449,51 +1632,52 @@
 	onpointerleave={(e: IntersectionEvent<'pointerleave'>) => handleLeave(e)}
 	onpointermove={(e: IntersectionEvent<'pointermove'>) => handleMove(e)}
 >
-	<T.PlaneGeometry bind:ref={imageGeo} args={[...geometryArgs, 32, 32]} />
+	<T.PlaneGeometry bind:ref={imageGeo} args={[...geometryArgs, geoSegments, geoSegments]} />
 
 	<T.ShaderMaterial
 		bind:ref={imageMat}
 		uniforms={{
-			u_mouse: { value: new Vector2() },
-			u_prevMouse: { value: new Vector2() },
-			u_aberrationIntensity: { value: 0.0 },
 			u_texture: { value: texture },
-			uBendAmplitude: { value: 10.0 },
-			uBendStrength: { value: 0.25 },
-			uRotation: { value: 0.0 },
-			uEnableRoll: { value: works },
-			uTextureZoom: { value: 1.0 },
-			uTextureRotation: { value: 0.0 },
-			uScreenPosition: { value: new Vector2(0, 0) },
-			uScreenCenter: { value: new Vector2(0, 0) },
-			textureAspect: {
+			// xy = current mouse position, zw = previous mouse position
+			u_mouse4: { value: new Vector4(0.5, 0.5, 0.5, 0.5) },
+			// x = textureAspect, y = planeAspect, z = scale, w = opacity
+			u_params1: {
+				value: new Vector4(
+					(() => {
+						if (texture && texture.image) {
+							const img = texture.image as HTMLVideoElement & HTMLImageElement;
+							const width = img.videoWidth || img.width;
+							const height = img.videoHeight || img.height;
+							return width && height ? width / height : 16 / 9;
+						}
+						return 16 / 9;
+					})(),
+					geometryArgs && geometryArgs[0] && geometryArgs[1]
+						? geometryArgs[0] / geometryArgs[1]
+						: 16 / 9,
+					1.0,
+					0.0
+				)
+			},
+			// x = aberrationIntensity, y = textureZoom, z = textureRotation, w = coverTexture(0.0/1.0)
+			u_params2: { value: new Vector4(0.0, 1.0, 0.0, shouldCoverTexture ? 1.0 : 0.0) },
+			// x = inverted, y = applyOutputColorSpace, z = invertAfterOutputColorSpace (all 0.0/1.0)
+			u_flags: {
 				value: (() => {
-					if (texture && texture.image) {
-						const width = texture.image.videoWidth || texture.image.width;
-						const height = texture.image.videoHeight || texture.image.height;
-						return width && height ? width / height : 16 / 9;
-					}
-					return 16 / 9;
+					const isVideoTex = (texture as any).isVideoTexture === true;
+					const needsCS = !isVideoTex;
+					const invertAfter = needsCS && !optionsStore.dark;
+					return new Vector3(
+						!optionsStore.dark && !invertAfter ? 1.0 : 0.0,
+						needsCS ? 1.0 : 0.0,
+						invertAfter ? 1.0 : 0.0
+					);
 				})()
 			},
-			planeAspect: {
-				value: (() => {
-					if (geometryArgs && geometryArgs[0] && geometryArgs[1]) {
-						return geometryArgs[0] / geometryArgs[1];
-					}
-					return 16 / 9;
-				})()
-			},
-			uCoverTexture: { value: shouldCoverTexture },
-			uApplyOutputColorSpace: { value: (texture as any).isVideoTexture !== true },
-			uInvertAfterOutputColorSpace: {
-				value: (texture as any).isVideoTexture !== true && !optionsStore.dark
-			},
-			scale: { value: 1 },
-			inverted: {
-				value: !optionsStore.dark && (texture as any).isVideoTexture === true ? 1.0 : 0.0
-			},
-			opacity: { value: 0.0 }
+			// x = bendAmplitude, y = bendStrength, z = rotation, w = enableRoll(0.0/1.0)
+			u_bend: { value: new Vector4(10.0, 0.25, 0.0, works ? 1.0 : 0.0) },
+			// xy = screen position, zw = screen center
+			u_screen: { value: new Vector4(0, 0, 0, 0) }
 		}}
 		transparent={true}
 		depthWrite={false}

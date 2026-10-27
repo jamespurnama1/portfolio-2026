@@ -2,6 +2,14 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+@theme {
+	--color-gold: #f5ca0a;
+	--color-silver: #848484;
+	--color-bronze: #724403;
+	--color-crystal: #efebe5;
+	--color-blue: #020024;
+}
+
 .labelEl {
 	background-color: red;
 	position: absolute;

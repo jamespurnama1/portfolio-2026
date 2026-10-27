@@ -15,15 +15,17 @@ export async function load() {
 	// catItems
 	const catItems = data.category.sort((a, b) => a.index - b.index);
 
-	// Projects
+	// Projects: only posts referenced by landing documents, each used once
+	const seenPostIds = new Set<string>();
 	catItems.forEach((cat) => {
 		const items: Post[] = [];
-		cat.items.forEach((ref) => {
+		(cat.items ?? []).forEach((ref) => {
 			const refId = (ref as SanityReference<Post>)._ref;
-			const matchedPosts = data.post.filter(
-				(project): project is Post => (project as Post)._id !== undefined && (project as Post)._id === refId
-			);
-			items.push(...matchedPosts);
+			if (seenPostIds.has(refId)) return;
+			const matchedPost = data.post.find((project) => (project as Post)._id === refId);
+			if (!matchedPost) return;
+			seenPostIds.add(refId);
+			items.push(matchedPost as Post);
 		});
 		cat.items = items;
 		projects.push(...items);
@@ -36,7 +38,7 @@ export async function load() {
 	});
 
 	// projectsLength
-	projectsLength = data.post.length;
+	projectsLength = projects.length;
 
 	// gallery
 	const gallery = data.gallery || [];

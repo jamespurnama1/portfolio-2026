@@ -11,6 +11,8 @@
 	import { fade, fly } from 'svelte/transition';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import Awards from '$lib/components/Awards.svelte';
+	import { sfx } from '$lib/utils/sfx';
+	import { reelViewer } from '$lib/stores/viewer.svelte';
 	import { page } from '$app/state';
 	import caret from '$lib/images/caret.svg';
 
@@ -117,6 +119,7 @@
 				<Awards class={hidden ? 'opacity-0' : ''} item={item as Post} />
 			{/if}
 			<button
+				onmouseenter={() => sfx.hover()}
 				class:opacity-0={hidden}
 				class:pointer-events-auto={page.url.pathname === '/' || page.url.pathname.includes('work')}
 				class="md:text-left text-center group {active
@@ -132,7 +135,8 @@
 					}
 
 					if (isReelsItem) {
-						goto('/#reels');
+						if (reelViewer.open) reelViewer.open();
+						else goto('/#reels');
 					} else {
 						navigateToWorkFromList(`/work/${targetSlug}`, targetIndex);
 					}

@@ -1,12 +1,20 @@
+import { isMobileSafari } from '$lib/utils/device';
+
 let noiseFactor = $state(0.1);
 let noiseScale = $state(0.005);
-let rgbPersistFactor = $state(0.7);
-let alphaPersistFactor = $state(0.9);
+// Disable the ping-pong ghost/persistence effect on Safari Mobile from the start,
+// so the shader never gets a non-zero value even for the first frame.
+let rgbPersistFactor = $state(isMobileSafari ? 0 : 0.7);
+let alphaPersistFactor = $state(isMobileSafari ? 0 : 0.9);
 let dark = $state(true);
 let showSources = $state(false);
 let fullscreen = $state(false);
 let notification = $state(false);
 let videoPaused = $state(false);
+// Safari Mobile performance opt-outs — toggle in Debug pane.
+// disableIntroScene is enabled for all (not just mobile) when desired.
+let disableIntroScene = $state(false);
+let disableCardBend = $state(isMobileSafari);
 
 export const optionsStore = {
 	get noiseFactor() {
@@ -62,5 +70,17 @@ export const optionsStore = {
 	},
 	set videoPaused(newVal) {
 		videoPaused = newVal;
+	},
+	get disableIntroScene() {
+		return disableIntroScene;
+	},
+	set disableIntroScene(newVal) {
+		disableIntroScene = newVal;
+	},
+	get disableCardBend() {
+		return disableCardBend;
+	},
+	set disableCardBend(newVal) {
+		disableCardBend = newVal;
 	}
 };

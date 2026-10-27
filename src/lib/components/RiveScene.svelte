@@ -13,12 +13,17 @@
 	import { onMount, untrack } from 'svelte';
 	import {
 		animationStore,
+		arrowScreen,
 		cursorSnapStore,
+		focusCursor,
 		homeTransitionStore,
+		introGateStore,
 		loadStore
 	} from '$lib/stores/index.svelte';
 	import { introSectionStore } from '$lib/stores/introSection';
 	import { optionsStore } from '$lib/stores/options.svelte';
+	import { viewerStore } from '$lib/stores/viewer.svelte';
+	import { perfStore } from '$lib/stores/perf.svelte';
 	import { page } from '$app/state';
 	import gsap from 'gsap';
 
@@ -57,12 +62,18 @@
 	function getIntroTarget(scale: number, progress = 1) {
 		const viewportWidth = $size.width || 1440;
 		const viewportHeight = $size.height || 900;
-		const endXOffset = viewportWidth < 768 ? 0 : Math.min(viewportWidth * 0.32, 460);
-		const endYOffset = viewportWidth < 768 ? 0 : Math.min(viewportHeight * 0.02, 18);
-		const startXOffset =
-			endXOffset + (viewportWidth < 768 ? INTRO_IDLE_OFFSET_X * 0.5 : INTRO_IDLE_OFFSET_X);
-		const startYOffset =
-			endYOffset + (viewportWidth < 768 ? INTRO_IDLE_OFFSET_Y * 0.5 : INTRO_IDLE_OFFSET_Y);
+		const isMobileViewport = viewportWidth < 768;
+		const endXOffset = isMobileViewport
+			? viewportWidth * 0.22
+			: Math.min(viewportWidth * 0.32, 460);
+		// Matches the intro grid's centre square (see IntroGridScene offsets)
+		const endYOffset = isMobileViewport
+			? viewportHeight * 0.28 + 36
+			: Math.min(viewportHeight * 0.02, 18);
+		const startXOffset = isMobileViewport ? viewportWidth * 0.2 : endXOffset + INTRO_IDLE_OFFSET_X;
+		const startYOffset = isMobileViewport
+			? viewportHeight * 0.24
+			: endYOffset + INTRO_IDLE_OFFSET_Y;
 		const targetX = MathUtils.lerp(startXOffset, endXOffset, progress);
 		const targetY = MathUtils.lerp(startYOffset, endYOffset, progress);
 		const anchorY = MathUtils.lerp(
@@ -87,6 +98,45 @@
 		};
 	}
 
+	// Same pixels as the WebGL cursor, drawn on a DOM canvas so it can sit above the media viewer.
+	let viewerCursorCanvas: HTMLCanvasElement | undefined;
+
+	function drawViewerCursor() {
+		if (typeof document === 'undefined') return;
+		if (!viewerStore.active || !showCursor || !riveCanvas || riveCanvas.width <= 0) {
+			if (viewerCursorCanvas && viewerCursorCanvas.style.display !== 'none') {
+				viewerCursorCanvas.style.display = 'none';
+			}
+			return;
+		}
+		if (!viewerCursorCanvas) {
+			const created = document.createElement('canvas');
+			created.setAttribute('aria-hidden', 'true');
+			created.style.cssText =
+				'position:fixed;left:0;top:0;z-index:70;pointer-events:none;display:none;';
+			document.body.appendChild(created);
+			viewerCursorCanvas = created;
+		}
+		const el = viewerCursorCanvas;
+		const dpr = window.devicePixelRatio || 1;
+		const w = Math.max(1, $size.width * caretPos.scaleX);
+		const h = Math.max(1, $size.height * caretPos.scaleY);
+		const pw = Math.round(w * dpr);
+		const ph = Math.round(h * dpr);
+		if (el.width !== pw || el.height !== ph) {
+			el.width = pw;
+			el.height = ph;
+			el.style.width = `${w}px`;
+			el.style.height = `${h}px`;
+		}
+		// The arrow is drawn in the top-right corner of the cursor plane.
+		el.style.transform = `translate3d(${arrowScreen.x - w}px, ${arrowScreen.y}px, 0)`;
+		el.style.display = 'block';
+		const ctx = el.getContext('2d');
+		ctx?.clearRect(0, 0, pw, ph);
+		ctx?.drawImage(riveCanvas, 0, 0, pw, ph);
+	}
+
 	function ensureCaretTexture() {
 		if (!riveCanvas || riveCanvas.width <= 0 || riveCanvas.height <= 0) return;
 		const needsRecreate =
@@ -98,6 +148,10 @@
 			caret.minFilter = LinearFilter;
 			caret.magFilter = LinearFilter;
 			caret.generateMipmaps = false;
+			// Safari (especially iOS) premultiplies alpha in canvas readback by default,
+			// which causes the cursor to show a solid background. Set premultiplyAlpha=false
+			// so WebGL uploads the raw RGBA values from the canvas without pre-multiplying.
+			caret.premultiplyAlpha = false;
 			caretTextureWidth = riveCanvas.width;
 			caretTextureHeight = riveCanvas.height;
 			caret.needsUpdate = true;
@@ -129,6 +183,8 @@
 	onMount(() => {
 		ensureCaretTexture();
 		return () => {
+			viewerCursorCanvas?.remove();
+			viewerCursorCanvas = undefined;
 			loadingTimeline?.kill();
 			gsap.killTweensOf(caretPos);
 			caret?.dispose?.();
@@ -165,6 +221,12 @@
 	});
 
 	let meshOpacityTarget = $derived.by(() => {
+		// Normal cursor while waiting on the intro button; it hides while snapped to it.
+		if (introGateStore.phase === 'waiting') {
+			if (!showCursor) return 0;
+			return cursorSnapStore.active ? 0 : 1;
+		}
+		if (focusCursor.active && !viewerStore.active) return 1;
 		const introCursorPhase = page.url.pathname === '/' && $introSectionStore.active;
 		const introCursorOpacity = introCursorPhase
 			? 1 - MathUtils.smoothstep($introSectionStore.progress, 0.16, 0.34)
@@ -174,24 +236,40 @@
 			return introCursorOpacity;
 		}
 
+		// On touch devices the cursor is never visible outside the intro section.
+		// (During intro the cursor is the main visual element on mobile, so we
+		// keep it visible there — now with correct alpha via premultiplyAlpha=false.)
+		if (!showCursor) return 0;
+
+		// The media viewer draws the Rive cursor on a DOM canvas above the media.
+		if (viewerStore.active) return 0;
+
 		if (page.url.pathname === '/branch' && cursorSnapStore.active) {
 			return 0;
 		}
 
-		return showCursor ? 1 : 0;
+		return 1;
 	});
 	let meshOpacity = $state(1);
 	let meshLocalRoll = $derived.by(() => {
 		const introCursorPhase =
-			page.url.pathname === '/' && $introSectionStore.active && $introSectionStore.progress < 0.34;
+			!focusCursor.active &&
+			page.url.pathname === '/' &&
+			$introSectionStore.active &&
+			$introSectionStore.progress < 0.34 &&
+			(introGateStore.phase === 'revealing' || introGateStore.phase === 'done');
 		return introCursorPhase ? CURSOR_LOCAL_ALIGNMENT_ROLL : 0;
 	});
 	let meshLocalScaleY = $derived.by(() => {
 		const introCursorPhase =
-			page.url.pathname === '/' && $introSectionStore.active && $introSectionStore.progress < 0.34;
+			!focusCursor.active &&
+			page.url.pathname === '/' &&
+			$introSectionStore.active &&
+			$introSectionStore.progress < 0.34 &&
+			(introGateStore.phase === 'revealing' || introGateStore.phase === 'done');
 		return introCursorPhase ? CURSOR_LOCAL_ALIGNMENT_SCALE_Y : 1;
 	});
-	let riveTask = $state(() => {}) as (time?: number) => void;
+	let riveTask = $state(() => {}) as (time?: number) => boolean | void;
 
 	export function getCaretPos() {
 		return caretPos;
@@ -228,40 +306,11 @@
 			onRepeat: () => {
 				if (loadStore.load >= 100) {
 					loadingTimeline?.kill();
-					loadStore.loaded = true;
 					if (page.url.pathname === '/') {
-						const introStartRotation = getIntroRotation(0);
-						gsap.set(caretPos, {
-							x: $size.width / 2,
-							y: $size.height / 2,
-							z: INTRO_CURSOR_START_Z,
-							scaleX: INTRO_CURSOR_START_SCALE,
-							scaleY: INTRO_CURSOR_START_SCALE,
-							rotation: 0,
-							rotationX: 0,
-							rotationY: 0
-						});
-						animationStore.isAnimating = false;
-						const introTarget = getIntroTarget(INTRO_CURSOR_START_SCALE, 0);
-						introAutoPositioning = true;
-						gsap.to(caretPos, {
-							duration: 0.75,
-							x: introTarget.x,
-							y: introTarget.y,
-							z: INTRO_CURSOR_START_Z,
-							rotation: introStartRotation.rotation,
-							rotationX: introStartRotation.rotationX,
-							rotationY: introStartRotation.rotationY,
-							ease: 'power3.out',
-							onComplete: () => {
-								introPlacementComplete = true;
-								introAutoPositioning = false;
-							}
-						});
-						gsap.to(optionsStore, {
-							rgbPersistFactor: 0.85
-						});
+						finishIntroSweep();
 					} else {
+						loadStore.loaded = true;
+						introGateStore.phase = 'done';
 						gsap.set(caretPos, {
 							x: -$size.width,
 							y: -$size.height
@@ -272,6 +321,72 @@
 			}
 		});
 	}
+
+	// Last bottom-left to top-right sweep: the card stack trails it and settles mid-screen.
+	function finishIntroSweep() {
+		introGateStore.settled = false;
+		introGateStore.phase = 'finishing';
+		loadStore.loaded = true;
+		gsap.fromTo(
+			caretPos,
+			{ x: -$size.width, y: -$size.height },
+			{
+				x: $size.width / 2,
+				y: $size.height / 2,
+				duration: 2.4,
+				ease: 'power1.inOut',
+				onUpdate: () => {
+					if (!introGateStore.settled && arrowScreen.x >= $size.width * 0.5) {
+						introGateStore.settled = true;
+					}
+				},
+				onComplete: () => {
+					introGateStore.phase = 'waiting';
+					animationStore.isAnimating = false;
+				}
+			}
+		);
+	}
+
+	// After the stack is clicked: the arrow returns from the bottom left to its landing position.
+	function revealIntro() {
+		const introStartRotation = getIntroRotation(0);
+		gsap.killTweensOf(caretPos);
+		gsap.set(caretPos, {
+			x: -$size.width,
+			y: -$size.height,
+			z: INTRO_CURSOR_START_Z,
+			scaleX: INTRO_CURSOR_START_SCALE,
+			scaleY: INTRO_CURSOR_START_SCALE,
+			rotation: 0,
+			rotationX: 0,
+			rotationY: 0
+		});
+		animationStore.isAnimating = false;
+		const introTarget = getIntroTarget(INTRO_CURSOR_START_SCALE, 0);
+		introAutoPositioning = true;
+		gsap.to(caretPos, {
+			duration: 1.3,
+			x: introTarget.x,
+			y: introTarget.y,
+			z: INTRO_CURSOR_START_Z,
+			rotation: introStartRotation.rotation,
+			rotationX: introStartRotation.rotationX,
+			rotationY: introStartRotation.rotationY,
+			ease: 'power3.out',
+			onComplete: () => {
+				introPlacementComplete = true;
+				introAutoPositioning = false;
+			}
+		});
+		gsap.to(optionsStore, { rgbPersistFactor: 0.85 });
+		// Lets the cards finish leaving before the rest of the intro takes over.
+		gsap.delayedCall(1.2, () => (introGateStore.phase = 'done'));
+	}
+
+	$effect(() => {
+		if (introGateStore.phase === 'revealing') untrack(revealIntro);
+	});
 
 	function reset(duration = 0.5) {
 		introPlacementComplete = false;
@@ -298,59 +413,52 @@
 	}
 
 	export function beforeRender(delta: number) {
-		// Update Rive animation first
-		riveTask(delta);
+		perfStore.measure('rive', () => {
+			// Update Rive animation first
+			const riveRendered = riveTask(delta) !== false;
+			arrowScreen.x = $size.width / 2 + caretPos.x + ($size.width * caretPos.scaleX) / 2;
+			arrowScreen.y = $size.height / 2 - caretPos.y - ($size.height * caretPos.scaleY) / 2;
 
-		if (loadStore.loaded && caret && !animationStore.isAnimating) {
-			const mouseSpeed = delta * 10;
-			const branchCursorSnapActive = page.url.pathname === '/branch' && cursorSnapStore.active;
-			const introCursorActive =
-				page.url.pathname === '/' &&
-				!homeTransitionStore.pending &&
-				$introSectionStore.active &&
-				$introSectionStore.progress < 0.34;
+			if (
+				loadStore.loaded &&
+				caret &&
+				!animationStore.isAnimating &&
+				introGateStore.phase !== 'revealing'
+			) {
+				const mouseSpeed = delta * 10;
+				const branchCursorSnapActive =
+					focusCursor.active ||
+					((page.url.pathname === '/branch' || introGateStore.phase === 'waiting') &&
+						cursorSnapStore.active);
+				const introCursorActive =
+					!focusCursor.active &&
+					introGateStore.phase === 'done' &&
+					page.url.pathname === '/' &&
+					!homeTransitionStore.pending &&
+					$introSectionStore.active &&
+					$introSectionStore.progress < 0.34;
 
-			if (introCursorActive) {
-				const introProgress = MathUtils.smoothstep($introSectionStore.progress, 0, 0.34);
-				const hasIntroScrollProgress = $introSectionStore.progress > 0.001;
-				const introIdleLocked = !introAutoPositioning && !hasIntroScrollProgress;
-				const targetScale = MathUtils.lerp(
-					INTRO_CURSOR_START_SCALE,
-					INTRO_CURSOR_END_SCALE,
-					introProgress
-				);
-				const anchoredCenter = getIntroTarget(targetScale, introProgress);
-				const idleTarget = getIntroTarget(INTRO_CURSOR_START_SCALE, 0);
-				const introRotation = getIntroRotation(introProgress);
-				const introZ = MathUtils.lerp(INTRO_CURSOR_START_Z, INTRO_CURSOR_END_Z, introProgress);
-				if (caretPos.x < -$size.width * 0.25 || caretPos.y < -$size.height * 0.25) {
-					caretPos.x = $size.width / 2;
-					caretPos.y = $size.height / 2;
-					caretPos.z = INTRO_CURSOR_START_Z;
-					caretPos.scaleX = INTRO_CURSOR_START_SCALE;
-					caretPos.scaleY = INTRO_CURSOR_START_SCALE;
-				}
-				if (introIdleLocked) {
-					caretPos.x = idleTarget.x;
-					caretPos.y = idleTarget.y;
-					caretPos.z = INTRO_CURSOR_START_Z;
-					caretPos.scaleX = INTRO_CURSOR_START_SCALE;
-					caretPos.scaleY = INTRO_CURSOR_START_SCALE;
-					caretPos.rotation = introRotation.rotation;
-					caretPos.rotationX = introRotation.rotationX;
-					caretPos.rotationY = introRotation.rotationY;
-				} else if (!introAutoPositioning && hasIntroScrollProgress) {
-					introPlacementComplete = true;
-					caretPos.x = anchoredCenter.x;
-					caretPos.y = anchoredCenter.y;
-					caretPos.z = introZ;
-					caretPos.scaleX = targetScale;
-					caretPos.scaleY = targetScale;
-					caretPos.rotation = introRotation.rotation;
-					caretPos.rotationX = introRotation.rotationX;
-					caretPos.rotationY = introRotation.rotationY;
-				} else {
-					if (!introAutoPositioning) {
+				if (introCursorActive) {
+					const introProgress = MathUtils.smoothstep($introSectionStore.progress, 0, 0.34);
+					const hasIntroScrollProgress = $introSectionStore.progress > 0.001;
+					const introIdleLocked = !introAutoPositioning && !hasIntroScrollProgress;
+					const targetScale = MathUtils.lerp(
+						INTRO_CURSOR_START_SCALE,
+						INTRO_CURSOR_END_SCALE,
+						introProgress
+					);
+					const anchoredCenter = getIntroTarget(targetScale, introProgress);
+					const idleTarget = getIntroTarget(INTRO_CURSOR_START_SCALE, 0);
+					const introRotation = getIntroRotation(introProgress);
+					const introZ = MathUtils.lerp(INTRO_CURSOR_START_Z, INTRO_CURSOR_END_Z, introProgress);
+					if (caretPos.x < -$size.width * 0.25 || caretPos.y < -$size.height * 0.25) {
+						caretPos.x = $size.width / 2;
+						caretPos.y = $size.height / 2;
+						caretPos.z = INTRO_CURSOR_START_Z;
+						caretPos.scaleX = INTRO_CURSOR_START_SCALE;
+						caretPos.scaleY = INTRO_CURSOR_START_SCALE;
+					}
+					if (introIdleLocked) {
 						caretPos.x = idleTarget.x;
 						caretPos.y = idleTarget.y;
 						caretPos.z = INTRO_CURSOR_START_Z;
@@ -359,43 +467,68 @@
 						caretPos.rotation = introRotation.rotation;
 						caretPos.rotationX = introRotation.rotationX;
 						caretPos.rotationY = introRotation.rotationY;
+					} else if (!introAutoPositioning && hasIntroScrollProgress) {
+						introPlacementComplete = true;
+						caretPos.x = anchoredCenter.x;
+						caretPos.y = anchoredCenter.y;
+						caretPos.z = introZ;
+						caretPos.scaleX = targetScale;
+						caretPos.scaleY = targetScale;
+						caretPos.rotation = introRotation.rotation;
+						caretPos.rotationX = introRotation.rotationX;
+						caretPos.rotationY = introRotation.rotationY;
+					} else {
+						if (!introAutoPositioning) {
+							caretPos.x = idleTarget.x;
+							caretPos.y = idleTarget.y;
+							caretPos.z = INTRO_CURSOR_START_Z;
+							caretPos.scaleX = INTRO_CURSOR_START_SCALE;
+							caretPos.scaleY = INTRO_CURSOR_START_SCALE;
+							caretPos.rotation = introRotation.rotation;
+							caretPos.rotationX = introRotation.rotationX;
+							caretPos.rotationY = introRotation.rotationY;
+						}
 					}
+				} else if (branchCursorSnapActive) {
+					const snapSource = focusCursor.active ? focusCursor : cursorSnapStore;
+					const snapTarget = getClientCursorTarget(
+						snapSource.x,
+						snapSource.y,
+						DEFAULT_CURSOR_SCALE
+					);
+					caretPos.x += (snapTarget.x - caretPos.x) * mouseSpeed * SNAP_FOLLOW_STRENGTH;
+					caretPos.y += (snapTarget.y - caretPos.y) * mouseSpeed * SNAP_FOLLOW_STRENGTH;
+					caretPos.z += (0 - caretPos.z) * mouseSpeed;
+					caretPos.scaleX += (DEFAULT_CURSOR_SCALE - caretPos.scaleX) * mouseSpeed;
+					caretPos.scaleY += (DEFAULT_CURSOR_SCALE - caretPos.scaleY) * mouseSpeed;
+					caretPos.rotation += (0 - caretPos.rotation) * mouseSpeed;
+					caretPos.rotationX += (0 - caretPos.rotationX) * mouseSpeed;
+					caretPos.rotationY += (0 - caretPos.rotationY) * mouseSpeed;
+				} else {
+					introPlacementComplete = false;
+					introAutoPositioning = false;
+					caretPos.x += (mouse.x - caretPos.x) * mouseSpeed;
+					caretPos.y += (mouse.y - caretPos.y) * mouseSpeed;
+					caretPos.z += (0 - caretPos.z) * mouseSpeed * 0.85;
+					caretPos.scaleX += (DEFAULT_CURSOR_SCALE - caretPos.scaleX) * mouseSpeed * 0.85;
+					caretPos.scaleY += (DEFAULT_CURSOR_SCALE - caretPos.scaleY) * mouseSpeed * 0.85;
+					caretPos.rotation += (0 - caretPos.rotation) * mouseSpeed * 0.85;
+					caretPos.rotationX += (0 - caretPos.rotationX) * mouseSpeed * 0.85;
+					caretPos.rotationY += (0 - caretPos.rotationY) * mouseSpeed * 0.85;
 				}
-			} else if (branchCursorSnapActive) {
-				const snapTarget = getClientCursorTarget(
-					cursorSnapStore.x,
-					cursorSnapStore.y,
-					DEFAULT_CURSOR_SCALE
-				);
-				caretPos.x += (snapTarget.x - caretPos.x) * mouseSpeed * SNAP_FOLLOW_STRENGTH;
-				caretPos.y += (snapTarget.y - caretPos.y) * mouseSpeed * SNAP_FOLLOW_STRENGTH;
-				caretPos.z += (0 - caretPos.z) * mouseSpeed;
-				caretPos.scaleX += (DEFAULT_CURSOR_SCALE - caretPos.scaleX) * mouseSpeed;
-				caretPos.scaleY += (DEFAULT_CURSOR_SCALE - caretPos.scaleY) * mouseSpeed;
-				caretPos.rotation += (0 - caretPos.rotation) * mouseSpeed;
-				caretPos.rotationX += (0 - caretPos.rotationX) * mouseSpeed;
-				caretPos.rotationY += (0 - caretPos.rotationY) * mouseSpeed;
-			} else {
-				introPlacementComplete = false;
-				introAutoPositioning = false;
-				caretPos.x += (mouse.x - caretPos.x) * mouseSpeed;
-				caretPos.y += (mouse.y - caretPos.y) * mouseSpeed;
-				caretPos.z += (0 - caretPos.z) * mouseSpeed * 0.85;
-				caretPos.scaleX += (DEFAULT_CURSOR_SCALE - caretPos.scaleX) * mouseSpeed * 0.85;
-				caretPos.scaleY += (DEFAULT_CURSOR_SCALE - caretPos.scaleY) * mouseSpeed * 0.85;
-				caretPos.rotation += (0 - caretPos.rotation) * mouseSpeed * 0.85;
-				caretPos.rotationX += (0 - caretPos.rotationX) * mouseSpeed * 0.85;
-				caretPos.rotationY += (0 - caretPos.rotationY) * mouseSpeed * 0.85;
 			}
-		}
 
-		meshOpacity += (meshOpacityTarget - meshOpacity) * Math.min(1, delta * 12);
+			meshOpacity += (meshOpacityTarget - meshOpacity) * Math.min(1, delta * 12);
+			drawViewerCursor();
 
-		// Update texture after Rive renders
-		if (elementMaterial && caret && riveCanvas.width > 0 && riveCanvas.height > 0) {
-			caret.needsUpdate = true;
-			elementMaterial!.map = caret;
-		}
+			// Update texture after Rive renders.
+			// On Safari: throttle gl.texImage2D upload to 30fps to halve the ~10ms
+			// CPU cost of WebKit's canvas→WebGL readback.
+			if (elementMaterial && caret && riveCanvas.width > 0 && riveCanvas.height > 0) {
+				if (riveRendered) caret.needsUpdate = true;
+				elementMaterial!.map = caret;
+			}
+		});
 	}
 
 	export function categoryAnim(direction: 'up' | 'down') {

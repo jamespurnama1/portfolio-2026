@@ -10,10 +10,27 @@
 		reserveText = text,
 		durationMs = SCRAMBLE_DURATION_MS
 	}: { text: string; active?: boolean; reserveText?: string; durationMs?: number } = $props();
-	let displayedText = $state(text);
+	let displayedText = $state(untrack(() => text));
 	let scrambleTimer: ReturnType<typeof setInterval> | null = null;
 	let stopTimer: ReturnType<typeof setTimeout> | null = null;
 	let wasActive = $state(false);
+	let reserveEl = $state<HTMLSpanElement>();
+	let widths = $state<number[]>([]);
+	let scrambling = $state(false);
+
+	function measureWidths() {
+		const node = reserveEl?.firstChild;
+		if (!node) return [];
+		const range = document.createRange();
+		const result: number[] = [];
+		const length = node.textContent?.length ?? 0;
+		for (let i = 0; i < length; i++) {
+			range.setStart(node, i);
+			range.setEnd(node, i + 1);
+			result.push(range.getBoundingClientRect().width);
+		}
+		return result;
+	}
 
 	function scramble(source: string) {
 		return source
@@ -34,11 +51,14 @@
 			clearTimeout(stopTimer);
 			stopTimer = null;
 		}
+		scrambling = false;
 		displayedText = text;
 	}
 
 	function startScramble() {
 		stopScramble();
+		widths = measureWidths();
+		scrambling = true;
 		displayedText = scramble(text);
 		scrambleTimer = setInterval(() => {
 			displayedText = scramble(text);
@@ -85,8 +105,17 @@
 	onfocus={startScramble}
 	onblur={stopScramble}
 >
-	<span class="scramble-text__reserve" aria-hidden="true">{reserveText}</span>
-	<span class="scramble-text__display">{displayedText}</span>
+	<span class="scramble-text__reserve" aria-hidden="true" bind:this={reserveEl}>{reserveText}</span>
+	<span class="scramble-text__display">
+		{#if scrambling && widths.length === displayedText.length}
+			{#each displayedText.split('') as char, i}<span
+					class="scramble-text__char"
+					style:width="{widths[i]}px">{char}</span
+				>{/each}
+		{:else}
+			{displayedText}
+		{/if}
+	</span>
 </span>
 
 <style>
@@ -111,5 +140,12 @@
 
 	.scramble-text__display {
 		min-width: 100%;
+	}
+
+	.scramble-text__char {
+		display: inline-block;
+		white-space: pre;
+		text-align: center;
+		overflow: visible;
 	}
 </style>

@@ -4,7 +4,7 @@
 	let { message, sub }: { message: string; sub: string } = $props();
 </script>
 
-<div class="w-full p-5 pb-6 flex justify-between">
+<div class="w-full p-5 pb-6 max-md:p-4 flex justify-between">
 	<p class="font-mono upptext-white text-sm max-md:text-xs">{@html marked.parse(message)}</p>
 	<p class="font-mono uppercase text-white text-sm max-md:text-xs">{sub}</p>
 </div>

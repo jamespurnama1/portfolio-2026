@@ -7,7 +7,6 @@ const animatedLoad = $state({
 let loaded = $state(false);
 let cardLoading = $state(false);
 let galleryTransitioning = $state(false);
-const tl = gsap.timeline({ paused: false });
 export const loadStore = {
 	get load() {
 		return animatedLoad.percent;
@@ -16,11 +15,15 @@ export const loadStore = {
 		return load;
 	},
 	set load(newValue) {
-		load = Math.abs(newValue);
-		tl.clear();
-		tl.to(animatedLoad, {
+		load = Math.min(100, Math.abs(newValue));
+		// Server renders always start at 0; the tween only runs in the browser.
+		if (typeof window === 'undefined') return;
+		// A timeline playhead keeps running, so re-adding tweens to it snapped the value; tween directly.
+		gsap.killTweensOf(animatedLoad);
+		gsap.to(animatedLoad, {
 			percent: load,
-			duration: (load - animatedLoad.percent) / 15
+			duration: Math.max(0, (load - animatedLoad.percent) / 15),
+			ease: 'none'
 		});
 	},
 	get cardLoading() {
@@ -45,6 +48,9 @@ export const loadStore = {
 
 let projectsLength = $state(0);
 
+// Home scroll position kept while visiting /branch so going back lands in the same place.
+export const homeScrollStore = { y: 0, pending: false, until: 0 };
+
 export const projectsStore = {
 	get projectsLength(): number {
 		return projectsLength;
@@ -56,6 +62,14 @@ export const projectsStore = {
 
 let inertiaIndex = $state(0);
 let isNewCat = $state(false);
+let isTouchScrolling = $state(false);
+// Rate of inertiaIndex change (index-units per second). Purposely NOT $state — it is
+// read synchronously inside homePos() on every RAF (not via reactive subscription) and
+// writing $state 60×/sec during ScrollTrigger scrub creates unnecessary reactive cascades
+// that stutter on iOS during section-pin transitions.
+let _inertiaVelocity = 0;
+let _lastInertiaValue = 0;
+let _lastInertiaTime = 0;
 
 export const countStore = {
 	set activeIndex(bool: boolean) {
@@ -66,10 +80,29 @@ export const countStore = {
 		return Math.round(Math.max(0, Math.min(inertiaIndex, projectsLength - 1)));
 	},
 	set inertiaIndex(num: number) {
-		inertiaIndex = Math.max(-1, Math.min(num, projectsLength));
+		const clamped = Math.max(-1, Math.min(num, projectsLength));
+		const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+		const dt = now - _lastInertiaTime;
+		if (dt > 0 && dt < 200) {
+			_inertiaVelocity = Math.abs(clamped - _lastInertiaValue) / (dt / 1000);
+		} else {
+			_inertiaVelocity = 0;
+		}
+		_lastInertiaValue = clamped;
+		_lastInertiaTime = now;
+		inertiaIndex = clamped;
 	},
 	get inertiaIndex(): number {
 		return inertiaIndex;
+	},
+	get inertiaVelocity(): number {
+		// If the setter hasn't been called in 200 ms, the scroll has settled.
+		// Return 0 so the velocity-dampen factor in homePos() clears and the active
+		// card can reach its full baseScale. Without this, velocity stays at the last
+		// non-zero value indefinitely after the snap tween ends.
+		const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+		if (now - _lastInertiaTime > 200) return 0;
+		return _inertiaVelocity;
 	},
 	set isNewCat(newVal: boolean) {
 		isNewCat = newVal;
@@ -81,6 +114,12 @@ export const countStore = {
 	},
 	get isNewCat(): boolean {
 		return isNewCat;
+	},
+	get isTouchScrolling(): boolean {
+		return isTouchScrolling;
+	},
+	set isTouchScrolling(val: boolean) {
+		isTouchScrolling = val;
 	}
 };
 
@@ -194,6 +233,32 @@ export const cursorSnapStore = {
 	}
 };
 
+// Keyboard focus pulls the Rive cursor onto the focused element until the mouse moves again.
+let focusCursorActive = $state(false);
+let focusCursorEl: HTMLElement | null = null;
+
+export const focusCursor = {
+	get active(): boolean {
+		return focusCursorActive;
+	},
+	get x(): number {
+		const r = focusCursorEl?.getBoundingClientRect();
+		return r ? r.left + r.width / 2 : 0;
+	},
+	get y(): number {
+		const r = focusCursorEl?.getBoundingClientRect();
+		return r ? r.top + r.height / 2 : 0;
+	},
+	set(el: HTMLElement) {
+		focusCursorEl = el;
+		focusCursorActive = true;
+	},
+	clear() {
+		focusCursorEl = null;
+		focusCursorActive = false;
+	}
+};
+
 let scroll = $state(0);
 let offset = $state(0);
 let velocity = $state(0);
@@ -303,6 +368,28 @@ export const notificationStore = {
 		notifPersistent = newVal;
 	}
 };
+
+let introPhase = $state<'loading' | 'finishing' | 'waiting' | 'revealing' | 'done'>('loading');
+let introSettled = $state(false);
+
+// First-visit intro: loading -> finishing (last arrow sweep) -> waiting (click the stack) -> revealing -> done
+export const introGateStore = {
+	get phase() {
+		return introPhase;
+	},
+	set phase(value: 'loading' | 'finishing' | 'waiting' | 'revealing' | 'done') {
+		introPhase = value;
+	},
+	get settled() {
+		return introSettled;
+	},
+	set settled(value: boolean) {
+		introSettled = value;
+	}
+};
+
+// Arrow position in screen pixels, written every frame by the cursor scene (not reactive on purpose).
+export const arrowScreen = { x: -9999, y: -9999 };
 
 let pendingHomeReturn = $state(false);
 let pendingHomeReturnIndex = $state(0);

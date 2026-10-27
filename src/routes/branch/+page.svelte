@@ -1,7 +1,20 @@
 <script lang="ts">
 	import { cursorSnapStore } from '$lib/stores/index.svelte';
 	import ScrambleText from '$lib/components/ScrambleText.svelte';
+	import { cubicOut } from 'svelte/easing';
 	import { onDestroy } from 'svelte';
+	import { sfx } from '$lib/utils/sfx';
+
+	// Blur + rise; global so it also plays when the whole route is swapped.
+	function rise(node: Element, { delay = 0, duration = 600, y = 28 } = {}) {
+		return {
+			delay,
+			duration,
+			easing: cubicOut,
+			css: (t: number) =>
+				`opacity: ${t}; transform: translateY(${(1 - t) * y}px) scale(${0.94 + 0.06 * t}); filter: blur(${(1 - t) * 10}px);`
+		};
+	}
 
 	const branches = [
 		{ label: 'v1.0.0', href: 'https://example.com/v1' },
@@ -55,6 +68,7 @@
 			return;
 		}
 
+		if (activeSnapId !== bestMatch.id) sfx.tick();
 		activeSnapId = bestMatch.id;
 		cursorSnapStore.setTarget({
 			id: bestMatch.id,
@@ -70,6 +84,7 @@
 		}
 		const rect = button.getBoundingClientRect();
 		const id = button.dataset.branchId ?? '';
+		if (activeSnapId !== id) sfx.tick();
 		activeSnapId = id;
 		cursorSnapStore.setTarget({
 			id,
@@ -107,6 +122,8 @@
 		{#each branches as branch, index}
 			<a
 				bind:this={branchButtons[index]}
+				in:rise|global={{ delay: 150 + index * 110 }}
+				out:rise|global={{ delay: (branches.length - 1 - index) * 60, duration: 350, y: -16 }}
 				class="branch-link branch-glow"
 				class:branch-link--snapped={activeSnapId === branch.label}
 				data-branch-id={branch.label}
@@ -124,6 +141,10 @@
 
 <style scoped>
 	.branch-page {
+		/* Out of flow so it never offsets the landing page's pins while it animates out. */
+		position: absolute;
+		top: 0;
+		left: 0;
 		min-height: 100vh;
 		width: 100%;
 		display: flex;

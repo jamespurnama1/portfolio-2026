@@ -2,20 +2,48 @@
 	import { page } from '$app/state';
 	import { gptStore, loadStore } from '$lib/stores/index.svelte';
 	import { optionsStore } from '$lib/stores/options.svelte';
+	import { viewerStore } from '$lib/stores/viewer.svelte';
 	import ScrambleText from '$lib/components/ScrambleText.svelte';
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
+	import { track } from '$lib/utils/analytics';
 
 	let { revealed = loadStore.loaded }: { revealed?: boolean } = $props();
+
+	let resumeLabel = $state('résumé');
+	let resumeScramble = $state(false);
+
+	function onResumeClick() {
+		track('resume_download', { source: 'nav' });
+		resumeLabel = 'sending';
+		resumeScramble = true;
+		setTimeout(() => (resumeScramble = false), 750);
+		setTimeout(() => (resumeLabel = 'résumé'), 2500);
+	}
 </script>
 
 <header
 	class="mix-blend-difference uppercase text-white text-xs font-mono z-20 relative overflow-hidden"
 >
-	<nav class="flex justify-between items-start fixed w-full p-4 top-0 left-0">
+	<nav
+		class="nav-bar flex justify-between items-start fixed w-full p-4 top-0 left-0 pointer-events-none"
+	>
 		{#if revealed}
-			<a transition:fly={{ y: -200, duration: 500, easing: cubicInOut }} href="/about"
-				><p><ScrambleText text="about" /></p></a
+			<a
+				transition:fly={{ y: -200, duration: 500, easing: cubicInOut }}
+				href="/Resume_James%20Henry.pdf"
+				download="Resume_James Henry.pdf"
+				target="_blank"
+				rel="noopener noreferrer"
+				onclick={onResumeClick}
+				><p>
+					<ScrambleText
+						text={resumeLabel}
+						reserveText="sending"
+						active={resumeScramble}
+						durationMs={750}
+					/>
+				</p></a
 			>
 			<!-- <button
 				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 100 }}
@@ -25,21 +53,26 @@
 			<a
 				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 100 }}
 				class="block max-md:hidden"
-				href="mailto:hello@jameshenry.site"><p><ScrambleText text="hello@jameshenry.site" /></p></a
+				href="mailto:hello@jameshenry.site"
+				onclick={() => track('email_click', { source: 'nav' })}
+				><p><ScrambleText text="hello@jameshenry.site" /></p></a
 			>
 			<!-- temporarily disabled gallery -->
 			<!-- <a href="/gallery"><p>gallery</p></a> -->
 			<a
 				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 200 }}
 				class="goback"
-				class:invisible={page.url.pathname === '/'}
+				class:invisible={page.url.pathname === '/' && !viewerStore.active}
 				href="/"
 				onclick={(e) => {
 					// When a lightbox is open, close it instead of navigating home.
 					// The click still bubbles to document where Cards.svelte's
 					// escapeListener will call updateFullscreen(false).
-					if (optionsStore.fullscreen) e.preventDefault();
-				}}><p>go back</p></a
+					if (optionsStore.fullscreen) {
+						e.preventDefault();
+						window.dispatchEvent(new CustomEvent('close-viewer'));
+					}
+				}}><p><ScrambleText text="go back" /></p></a
 			>
 		{/if}
 	</nav>
@@ -82,3 +115,9 @@
 		{/if}
 	</aside>
 </header>
+
+<style>
+	.nav-bar :global(a) {
+		pointer-events: auto;
+	}
+</style>

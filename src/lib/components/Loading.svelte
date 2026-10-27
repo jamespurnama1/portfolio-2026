@@ -12,18 +12,22 @@
 	let errorText: HTMLHeadElement | null = $state(null);
 	const str = ['J', 'a', 'm', 'e', 's', ' ', 'H', 'e', 'n', 'r', 'y'];
 	const currentStr = $state([]) as string[];
+	// The first render is always 0%, whatever the store already holds.
+	let ready = $state(false);
+	const shown = $derived(ready ? Math.min(100, Math.floor(loadStore.load)) : 0);
 
 	$effect(() => {
-		loadStore.load;
+		shown;
 		untrack(() => {
 			currentStr.length = 0;
 			currentStr.push(...str);
-			currentStr.length = parseInt(((str.length * loadStore.load) / 100).toString()) + 1;
+			currentStr.length = Math.floor((str.length * shown) / 100) + 1;
 		});
 		return () => gsap.killTweensOf(loadingText);
 	});
 
 	onMount(() => {
+		ready = true;
 		gsap.to(loadingText, {
 			fontWeight: 900,
 			duration: 1,
@@ -74,7 +78,7 @@
 					{currentStr.toString().replaceAll(',', '')}
 				</h1>
 				<p class="shrink-0 text-white font-mono mix-blend-difference pl-2 md:pl-4">
-					&gt;{parseInt(loadStore.load.toString())}%
+					&gt;{shown}%
 				</p>
 			</div>
 		</div>

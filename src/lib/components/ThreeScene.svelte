@@ -3,7 +3,7 @@
 	import { pointerInteractivity } from '$lib/utils/interactivity';
 	import {
 		VideoTexture,
-		type Texture,
+		Texture,
 		TextureLoader,
 		type Mesh,
 		CanvasTexture,
@@ -15,13 +15,13 @@
 	} from 'three';
 	import { optionsStore } from '$lib/stores/options.svelte';
 	import { countStore, loadStore } from '$lib/stores/index.svelte';
-	import { cardDimensionsStore } from '$lib/stores/cardDimensions.svelte';
 	import { untrack, onDestroy, onMount } from 'svelte';
 	import Cards from './Cards.svelte';
 	import IntroGridScene from './IntroGridScene.svelte';
 	import { page } from '$app/state';
 	import type { PageData } from '../../routes/$types';
 	import { beforeNavigate } from '$app/navigation';
+	import { isMobile, isMobileSafari } from '$lib/utils/device';
 
 	let {
 		data,
@@ -33,7 +33,6 @@
 		mouse?: { x: number; y: number };
 	} = $props();
 	const textures: Texture[] = $state([]);
-	let imageTextures: Array<Texture | Promise<Texture>> = $state([]);
 	const { camera, canvas, renderer, size } = useThrelte();
 	const { load: loadTexture } = useLoader(TextureLoader);
 	let perspectiveCamera: PerspectiveCamera | undefined = $state();
@@ -48,7 +47,7 @@
 	const GRADIENT_WIDTH_OVERSCAN = 1.08;
 
 	renderer.outputColorSpace = SRGBColorSpace;
-	renderer.setPixelRatio(devicePixelRatio || 1);
+	renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.5 : 2));
 
 	const videoBank: Array<HTMLVideoElement> = [];
 	let sanityImageParams = $state('auto=format&fit=max&q=85&w=1920');
@@ -56,10 +55,11 @@
 	function configureColorTexture(texture: Texture, { isVideo = false } = {}) {
 		texture.colorSpace = SRGBColorSpace;
 		texture.magFilter = LinearFilter;
-		texture.minFilter = isVideo ? LinearFilter : LinearMipmapLinearFilter;
-		texture.generateMipmaps = !isVideo;
+		texture.minFilter = isVideo || isMobileSafari ? LinearFilter : LinearMipmapLinearFilter;
+		// Mipmaps and anisotropy cost GPU memory; iOS kills the page when it runs out.
+		texture.generateMipmaps = !isVideo && !isMobileSafari;
 		texture.premultiplyAlpha = false;
-		texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+		texture.anisotropy = isMobileSafari ? 1 : Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
 		texture.needsUpdate = true;
 		return texture;
 	}
@@ -70,17 +70,6 @@
 				tex.dispose();
 			}
 		});
-	}
-
-	function disposeResolvedWorkTextures() {
-		imageTextures.forEach((tex) => {
-			if (tex instanceof Promise) return;
-			if (tex && typeof tex.dispose === 'function') {
-				tex.dispose();
-			}
-		});
-		imageTextures = [];
-		cardDimensionsStore.set([]);
 	}
 
 	function cleanupWorkVideoBank() {
@@ -103,11 +92,6 @@
 			return url;
 		}
 		return `${url}${url.includes('?') ? '&' : '?'}${sanityImageParams}`;
-	}
-
-	async function loadImageTexture(url: string) {
-		const texture = await loadTexture(url);
-		return configureColorTexture(texture);
 	}
 
 	function isVideoUrl(url: string) {
@@ -196,6 +180,8 @@
 			video.addEventListener('loadeddata', onReady, { once: true });
 			video.addEventListener('canplay', onReady, { once: true });
 			video.addEventListener('error', onReady, { once: true });
+			// iOS Safari may never fire these events; don't block texture creation forever
+			setTimeout(onReady, 3000);
 
 			const playPromise = video.play();
 			if (playPromise?.catch) {
@@ -204,9 +190,26 @@
 		});
 	}
 
+	// iOS stalls when a video frame is uploaded to the GPU every frame.
+	function throttleTextureUpdates(texture: Texture, intervalMs: number) {
+		const baseSetter = Object.getOwnPropertyDescriptor(Texture.prototype, 'needsUpdate')?.set;
+		if (!baseSetter) return;
+		let last = 0;
+		Object.defineProperty(texture, 'needsUpdate', {
+			set(value: boolean) {
+				if (value !== true) return;
+				const now = performance.now();
+				if (now - last < intervalMs) return;
+				last = now;
+				baseSetter.call(texture, true);
+			}
+		});
+	}
+
 	async function createVideoTexture(video: HTMLVideoElement) {
 		await waitForVideoData(video);
 		const texture = new VideoTexture(video);
+		if (isMobileSafari) throttleTextureUpdates(texture, 1000 / 20);
 		texture.format = RGBFormat;
 		return configureColorTexture(texture, { isVideo: true });
 	}
@@ -273,23 +276,24 @@
 	let textureLoadGeneration = 0;
 
 	$effect(() => {
-		loadStore.loaded;
 		data.projects;
 		preferImageThumbnails;
 		untrack(async () => {
-			if (!loadStore.loaded || !data.projects) return;
+			if (!data.projects) return;
 			const generation = ++textureLoadGeneration;
-			const nextTextures: Texture[] = [];
+			disposeTextureList(textures);
+			textures.length = 0;
 
+			// Cards appear one by one as their textures are ready, so the intro can use them during loading.
 			for (let i = 0; i < data.projects.length; i++) {
 				const project = data.projects[i];
 				const thumbnailUrl = project.thumbnailImage?.asset?.url
 					? withSanityImageParams(project.thumbnailImage.asset.url)
 					: null;
+				let texture: Texture | undefined;
 				if (preferImageThumbnails && thumbnailUrl) {
 					try {
-						nextTextures[i] = configureColorTexture(await loadTexture(thumbnailUrl));
-						continue;
+						texture = configureColorTexture(await loadTexture(thumbnailUrl));
 					} catch (error) {
 						console.error(
 							'Thumbnail image texture load failed, falling back to video',
@@ -298,100 +302,25 @@
 						);
 					}
 				}
-				nextTextures[i] = await videoLoader(project.slug.current, i, true);
+				texture ??= await videoLoader(project.slug.current, i, true);
+				if (generation !== textureLoadGeneration) {
+					texture.dispose();
+					return;
+				}
+				textures.push(texture);
 			}
-
-			if (generation !== textureLoadGeneration) {
-				disposeTextureList(nextTextures);
-				return;
-			}
-
-			disposeTextureList(textures);
-			textures.length = 0;
-			nextTextures.forEach((tex) => textures.push(tex));
 		});
 	});
-
-	function useWorkCardMedia(x: any) {
-		let url = '';
-		if (x.video?.url) {
-			url = x.video.url;
-		} else if (x.image?.url) {
-			url = x.image.url;
-		} else if (!optionsStore.dark && x.imageLight?.url) {
-			url = x.imageLight.url;
-		} else if (x.imageLight?.url) {
-			url = x.imageLight.url;
-		}
-		return withSanityImageParams(url);
-	}
 
 	const workProjectIndex = $derived.by(() => {
 		if (!page.url.pathname.includes('work') || !data.projects?.length) return -1;
 		return data.projects.findIndex((project) => project.slug.current === page.params.slug);
 	});
 
-	async function handleWorkCards() {
-		loadStore.cardLoading = true;
-		disposeResolvedWorkTextures();
-		cleanupWorkVideoBank();
-		const current = data!.projects!.find((x) => x.slug.current === page.params.slug)!;
-		const promises: Promise<Texture>[] = [];
-		const dimensions: { width: number; height: number }[] = [];
-		current.content.forEach((x, i) => {
-			let url = useWorkCardMedia(x);
-			if (!url.length) {
-				console.warn('No valid media URL found for content item', i, x);
-				return;
-			}
-			if (/\.(mp4|webm)$/.test(url)) {
-				const promise = videoLoader(url, i).then((texture) => {
-					const video = document.getElementById(
-						`${page.params.slug}-${i}`
-					) as HTMLVideoElement | null;
-					if (video) {
-						dimensions[i] = { width: video.videoWidth, height: video.videoHeight };
-					} else {
-						dimensions[i] = { width: 0, height: 0 };
-					}
-					return texture;
-				});
-				imageTextures.push(promise);
-				promises.push(promise);
-			} else {
-				const promise = loadImageTexture(url).then((texture) => {
-					if (texture.image) {
-						dimensions[i] = {
-							width: texture.image.naturalWidth || texture.image.width || 0,
-							height: texture.image.naturalHeight || texture.image.height || 0
-						};
-					} else {
-						dimensions[i] = { width: 0, height: 0 };
-					}
-					return texture;
-				});
-				imageTextures.push(promise);
-				promises.push(promise);
-			}
-		});
-		if (promises.length > 0) {
-			await Promise.all(promises);
-		}
-		cardDimensionsStore.set(dimensions);
-		loadStore.cardLoading = false;
-	}
-
 	onMount(() => {
 		initGradientTexture();
 		updateGradientPlaneTransform();
 		updateGradientRenderMode();
-	});
-
-	$effect(() => {
-		optionsStore.dark;
-		page.params.slug;
-		if (!loadStore.loaded || !data.projects || !page.route.id?.includes('work')) return;
-		untrack(() => handleWorkCards());
 	});
 
 	$effect(() => {
@@ -454,7 +383,6 @@
 		textures.forEach((tex) => {
 			if (tex && typeof tex.dispose === 'function') tex.dispose();
 		});
-		disposeResolvedWorkTextures();
 		if (postFXMesh && typeof postFXMesh.geometry?.dispose === 'function')
 			postFXMesh.geometry.dispose();
 		// Optionally clear arrays
@@ -489,22 +417,6 @@
 					works={true}
 					homeAspectRatio={preferImageThumbnails ? 16 / 9 : undefined}
 				/>
-			{/key}
-		{/if}
-	{/each}
-{/if}
-
-{#if page.url.pathname.includes('work') && data}
-	{#each imageTextures as texture, i}
-		{#if texture instanceof Promise}
-			{#await texture then x}
-				{#key `work-detail-${page.params.slug}-${i}`}
-					<Cards texture={x} index={i + 1} works={true} data={data as Required<PageData>} />
-				{/key}
-			{/await}
-		{:else}
-			{#key `work-detail-${page.params.slug}-${i}`}
-				<Cards {texture} index={i + 1} works={true} data={data as Required<PageData>} />
 			{/key}
 		{/if}
 	{/each}

@@ -130,6 +130,8 @@ export interface MediaAsset {
 	originalFilename: string;
 	size: number;
 	url: string;
+	// Inline base64 blur preview from Sanity
+	lqip?: string;
 }
 
 export interface Content {

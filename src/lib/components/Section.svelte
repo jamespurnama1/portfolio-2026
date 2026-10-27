@@ -5,6 +5,7 @@
 	import Awards from '$lib/components/Awards.svelte';
 	import type { MediaAsset, Post } from '$lib/types';
 	import { optionsStore } from '$lib/stores/options.svelte';
+	import { placeholderStyle } from '$lib/utils/placeholder';
 
 	let {
 		index,
@@ -15,12 +16,9 @@
 		image,
 		imageLight,
 		video,
-		imageCaption,
-		imageWidth = 0,
-		imageHeight = 0,
-		maxSize = 1000,
 		forceVisibleMedia = false,
-		awardsItem
+		awardsItem,
+		onOpen
 	}: {
 		index: number;
 		heading?: string;
@@ -30,31 +28,38 @@
 		image?: MediaAsset;
 		imageLight?: MediaAsset;
 		video?: MediaAsset;
-		imageCaption?: string;
-		imageWidth?: number;
-		imageHeight?: number;
-		maxSize?: number;
 		forceVisibleMedia?: boolean;
 		awardsItem?: Post;
+		onOpen?: (media: { url: string; isVideo: boolean; alt: string; source: HTMLElement }) => void;
 	} = $props();
 
 	let sectionEl = $state() as HTMLElement;
-	let innerWidth = $state(0);
+	let imageLoaded = $state(false);
+	// Also covers images that finished loading before hydration.
+	function trackLoad(node: HTMLImageElement) {
+		if (node.complete && node.naturalWidth > 0) imageLoaded = true;
+	}
 	const isHeroSection = $derived(index === 0);
 	const displayImageSrc = $derived.by(() => {
 		if (isHeroSection && !optionsStore.dark && imageLight?.url) return imageLight.url;
 		return image?.url ?? imageLight?.url;
 	});
-	const mediaWidth = $derived.by(() => {
-		if (imageWidth > 0 && imageHeight > 0) {
-			return `min(${maxSize}px, ${imageWidth}px)`;
-		}
-
-		return 'min(50vw, 100%)';
+	const displayLqip = $derived(
+		isHeroSection && !optionsStore.dark && imageLight?.url
+			? imageLight.lqip
+			: (image?.lqip ?? imageLight?.lqip)
+	);
+	// Sanity asset URLs embed the pixel size, which lets the browser reserve space before load.
+	const intrinsicSize = $derived.by(() => {
+		const match = displayImageSrc?.match(/-(\d+)x(\d+)\.[a-z]+/i);
+		return match ? { width: Number(match[1]), height: Number(match[2]) } : null;
 	});
-	const mobileMediaWidth = 'calc(100vw - 4rem)';
-	const resolvedDetailMediaWidth = $derived(innerWidth >= 768 ? mediaWidth : mobileMediaWidth);
-	const showMediaFallback = $derived(forceVisibleMedia);
+	const interactive = $derived(forceVisibleMedia && !!onOpen);
+	const mediaSizing = $derived(
+		isHeroSection
+			? 'w-full max-w-full mx-auto max-md:w-[calc(100vw-4rem)] md:w-auto md:max-w-[48vw] md:h-[46vh] md:min-w-0'
+			: 'mx-auto max-w-full w-[calc(100vw-4rem)] md:w-auto md:max-w-[min(60vw,600px)]'
+	);
 
 	onMount(() => {
 		animateIn();
@@ -86,8 +91,8 @@
 		: index % 2 === 0
 			? 'md:flex-row-reverse'
 			: 'md:flex-row'} p-8 md:p-4 {isHeroSection
-		? 'items-center justify-center translate-y-0 opacity-100 md:min-h-screen'
-		: 'items-start justify-end translate-y-full opacity-0 md:min-h-screen'} gap-4 md:gap-8 relative"
+		? 'items-center justify-center translate-y-0 opacity-100 md:min-h-svh'
+		: 'items-start justify-end translate-y-full opacity-0 md:min-h-svh'} gap-4 md:gap-8 relative"
 >
 	{#if !isHeroSection}
 		<div
@@ -109,40 +114,61 @@
 	{/if}
 
 	<div
-		class="flex w-full flex-col items-center justify-center gap-5 max-w-full pointer-events-none transition-opacity duration-300 {showMediaFallback
-			? 'opacity-100'
-			: 'opacity-0'} {isHeroSection ? 'md:order-2 md:w-[48vw] md:max-w-[48vw] md:flex-none' : ''}"
+		class="flex w-full flex-col items-center justify-center gap-5 max-w-full transition-opacity duration-300 {interactive
+			? ''
+			: 'pointer-events-none'} {forceVisibleMedia ? 'opacity-100' : 'opacity-0'} {isHeroSection
+			? 'md:order-2 md:w-[48vw] md:max-w-[48vw] md:flex-none'
+			: ''}"
 	>
 		{#if image}
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 			<img
 				id="media-{index}"
+				use:trackLoad
+				onload={() => (imageLoaded = true)}
+				style={imageLoaded ? undefined : placeholderStyle(displayImageSrc, displayLqip)}
+				data-lqip={displayLqip}
 				src={displayImageSrc}
 				alt={heading}
-				class="object-contain max-w-full select-none {isHeroSection
-					? 'w-full max-w-full mx-auto md:w-auto md:max-w-[48vw] md:h-[46vh] md:min-w-0'
-					: 'w-full max-w-full mx-auto md:w-auto md:max-w-full'}"
-				style={isHeroSection
-					? innerWidth >= 768
-						? undefined
-						: `width: ${mobileMediaWidth};`
-					: `width: ${resolvedDetailMediaWidth};`}
+				width={intrinsicSize?.width}
+				height={intrinsicSize?.height}
+				loading={isHeroSection ? 'eager' : 'lazy'}
+				decoding="async"
+				class="h-auto object-contain select-none {mediaSizing} {optionsStore.dark
+					? ''
+					: 'invert'} {interactive ? 'pointer-events-auto' : ''}"
+				onclick={(e) =>
+					interactive && displayImageSrc
+						? onOpen?.({
+								url: displayImageSrc,
+								isVideo: false,
+								alt: heading ?? '',
+								source: e.currentTarget
+							})
+						: undefined}
 			/>
 		{:else if video}
+			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 			<video
 				id="media-{index}"
 				src={video.url}
-				class="object-contain max-w-full max-h-[80vh] select-none {isHeroSection
-					? 'w-full max-w-full mx-auto md:w-auto md:max-w-[48vw] md:h-[46vh] md:min-w-0'
-					: 'w-full max-w-full mx-auto md:w-auto md:max-w-full'}"
-				style={isHeroSection
-					? innerWidth >= 768
-						? undefined
-						: `width: ${mobileMediaWidth};`
-					: `width: ${resolvedDetailMediaWidth};`}
+				class="h-auto object-contain max-h-[80vh] select-none {mediaSizing} {optionsStore.dark
+					? ''
+					: 'invert'} {interactive ? 'pointer-events-auto' : ''}"
 				autoplay
 				loop
 				muted
 				playsinline
+				preload="metadata"
+				onclick={(e) =>
+					interactive
+						? onOpen?.({
+								url: video.url,
+								isVideo: true,
+								alt: heading ?? '',
+								source: e.currentTarget
+							})
+						: undefined}
 			></video>
 		{/if}
 		<p class="font-mono text-xs text-white {bottom ? '' : 'opacity-0'}">{bottom ? '' : ''}</p>
@@ -158,8 +184,10 @@
 				{heading}
 			</h1>
 			{#if awardsItem?.awards?.length}
-				<div class="mt-4 flex w-full max-w-full justify-start overflow-hidden">
-					<Awards item={awardsItem} class="text-white mix-blend-difference" />
+				<div
+					class="mt-4 flex w-full max-w-full flex-col justify-start overflow-hidden pointer-events-auto"
+				>
+					<Awards item={awardsItem} stacked class="text-white mix-blend-difference" />
 				</div>
 			{/if}
 			{#if top}
@@ -170,5 +198,3 @@
 		</div>
 	{/if}
 </section>
-
-<svelte:window bind:innerWidth />

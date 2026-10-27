@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
-	import { gptStore, loadStore, notificationStore, projectsStore } from '$lib/stores/index.svelte';
+	import {
+		gptStore,
+		introGateStore,
+		loadStore,
+		notificationStore,
+		projectsStore
+	} from '$lib/stores/index.svelte';
 	import { optionsStore } from '$lib/stores/options.svelte';
 	import { onMount, tick, untrack } from 'svelte';
 	import { gsap } from 'gsap';
@@ -11,6 +17,17 @@
 	import { goto } from '$app/navigation';
 	import type { LayoutData } from '../../routes/$types';
 	import { marked } from 'marked';
+	import { sfx } from '$lib/utils/sfx';
+	import { track } from '$lib/utils/analytics';
+
+	let userMessageCount = 0;
+	let highIntentSent = false;
+
+	function markHighIntent(trigger: string) {
+		if (highIntentSent) return;
+		highIntentSent = true;
+		track('high_intent_ai_conversation', { trigger, messages: userMessageCount });
+	}
 
 	const sampleQuestions = [
 		'What do you do?',
@@ -169,9 +186,14 @@
 	function handleRun(funcName: string, args: any) {
 		switch (funcName) {
 			case 'download_resume':
+				track('resume_download', { source: 'ai' });
+				markHighIntent('resume_request');
 				const link = document.createElement('a');
 				link.download = 'Resume_James Henry.pdf';
 				link.href = '/Resume_James Henry.pdf';
+				// iOS Safari ignores `download` for PDFs, so keep the site open in this tab.
+				link.target = '_blank';
+				link.rel = 'noopener noreferrer';
 				document.body.appendChild(link);
 				link.click();
 				document.body.removeChild(link);
@@ -191,6 +213,7 @@
 				notification();
 				break;
 			case 'send_a_message':
+				markHighIntent('contact_request');
 				// console.log('message', args.contact_info, args.user_message);
 				break;
 		}
@@ -213,6 +236,10 @@
 		if (!e || (e.key.toLowerCase() === 'enter' && !e.shiftKey)) {
 			if (e) e?.preventDefault();
 			if (categoryAnim) categoryAnim('up');
+			sfx.send();
+			userMessageCount += 1;
+			if (userMessageCount === 1) track('ai_conversation_started');
+			if (userMessageCount >= 3) markHighIntent('message_count');
 			const x = prompt;
 			pushMessage('You', x);
 			pushMessage('James Henry', '...');
@@ -358,38 +385,41 @@
 	$effect(() => {
 		gptStore.opened;
 		if (typeof document === 'undefined') return;
+		if (!gptStore.opened) return;
 		const html = document.documentElement;
 		const body = document.body;
 		const app = document.querySelector('.app') as HTMLDivElement | null;
-		const prevHtmlOverflow = html.style.overflow;
-		const prevBodyOverflow = body.style.overflow;
-		const prevBodyTouchAction = body.style.touchAction;
-		const prevAppOverflow = app?.style.overflow ?? '';
-		const prevAppTouchAction = app?.style.touchAction ?? '';
-		const lockScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
+		const lockScrollY = window.scrollY;
 
-		if (gptStore.opened) {
-			html.style.overflow = 'hidden';
-			body.style.overflow = 'hidden';
-			body.style.touchAction = 'none';
-			if (app) {
-				app.style.overflow = 'hidden';
-				app.style.touchAction = 'none';
-			}
+		html.style.overflow = 'hidden';
+		body.style.overflow = 'hidden';
+		body.style.touchAction = 'none';
+		if (app) {
+			app.style.overflow = 'hidden';
+			app.style.touchAction = 'none';
 		}
 
+		// Cleared rather than restored: an earlier snapshot can be a stale lock from the intro.
 		return () => {
-			html.style.overflow = prevHtmlOverflow;
-			body.style.overflow = prevBodyOverflow;
-			body.style.touchAction = prevBodyTouchAction;
+			html.style.overflow = '';
+			body.style.overflow = '';
+			body.style.touchAction = '';
 			if (app) {
-				app.style.overflow = prevAppOverflow;
-				app.style.touchAction = prevAppTouchAction;
+				app.style.overflow = '';
+				app.style.touchAction = '';
 			}
-			if (gptStore.opened && typeof window !== 'undefined') {
-				window.scrollTo(0, lockScrollY);
-			}
+			window.scrollTo(0, lockScrollY);
 		};
+	});
+
+	let wasOpened = false;
+	$effect(() => {
+		const opened = gptStore.opened;
+		untrack(() => {
+			if (opened && !wasOpened) sfx.open();
+			else if (!opened && wasOpened) sfx.close();
+			wasOpened = opened;
+		});
 	});
 
 	onMount(() => {
@@ -410,15 +440,24 @@
 	aria-modal="true"
 	transition:fly={{ y: '46vh', duration: 500, easing: quintOut }}
 	id="gpt"
-	class:opacity-0={!loadStore.loaded || (notificationStore.opened && !gptStore.opened)}
+	class:opacity-0={!loadStore.loaded ||
+		introGateStore.phase !== 'done' ||
+		(notificationStore.opened && !gptStore.opened)}
+	class:pointer-events-none={introGateStore.phase !== 'done'}
 	class="{gptStore.opened
-		? '-translate-y-1/2! md:-translate-x-1/2! max-md:w-[90vw]'
+		? '-translate-y-1/2! md:-translate-x-1/2! max-md:-translate-x-1/2! max-md:w-[90vw] max-md:left-1/2'
 		: optionsStore.fullscreen
-			? 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[150svh] w-[75vw] pointer-events-none'
-			: 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh-3.5rem)] w-[75vw]'} fixed min-h-24 top-1/2 max-md:left-auto flex flex-col p-3 pt-0 md:left-1/2 max-md:right-0 hover:translate-y-[calc(50svh-5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[transform,opacity] gpt-glow"
+			? 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[150svh] max-md:w-[50vw] max-md:left-auto max-md:right-0 pointer-events-none'
+			: 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh-3.5rem)] max-md:w-[50vw] max-md:left-auto max-md:right-0'} fixed min-h-24 max-md:min-h-0 top-1/2 flex flex-col p-3 pt-0 {gptStore.opened
+		? ''
+		: 'max-md:pb-0'} md:left-1/2 hover:translate-y-[calc(50svh-5rem)] focus-within:translate-y-[calc(50svh-5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[translate,transform,opacity] gpt-glow"
 >
 	<div class="flex flex-col w-full justify-center items-center">
-		<div class="w-full p-5 max-md:text-xs flex justify-between items-center">
+		<div
+			class="w-full p-5 max-md:text-xs flex justify-between items-center {gptStore.opened
+				? ''
+				: 'max-md:flex-row-reverse'}"
+		>
 			<p class="font-mono gpt-text">Ask me anything</p>
 			<button
 				class="relative z-30"
@@ -462,7 +501,11 @@
 			{/each}
 		</span>
 	</div>
-	<div class="flex w-full relative items-center p-3 sm:p-5 gap-2 sm:gap-3">
+	<div
+		class="flex w-full relative items-center p-3 sm:p-5 gap-2 sm:gap-3 {gptStore.opened
+			? ''
+			: 'max-md:hidden'}"
+	>
 		<div
 			class:invisible={prompt !== ''}
 			class="absolute pointer-events-none grow text-xl sm:text-2xl md:text-3xl opacity-10 gpt-text"

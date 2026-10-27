@@ -1,8 +1,16 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { countStore, cursorStore, animationStore, loadStore } from '$lib/stores/index.svelte';
+	import {
+		countStore,
+		cursorStore,
+		animationStore,
+		introGateStore,
+		focusCursor,
+		loadStore
+	} from '$lib/stores/index.svelte';
 	import { introSectionStore } from '$lib/stores/introSection';
+	import { isSafari } from '$lib/utils/device';
 	import RiveCanvas, { type SMIInput, type StateMachineInstance } from '@rive-app/canvas-advanced';
 	import { onMount } from 'svelte';
 	import { gsap } from 'gsap';
@@ -22,7 +30,13 @@
 	let surfaceReady = $state(false);
 
 	function introCursorLocked() {
-		return page.url.pathname === '/' && loadStore.loaded && $introSectionStore.active;
+		return (
+			!focusCursor.active &&
+			page.url.pathname === '/' &&
+			loadStore.loaded &&
+			(introGateStore.phase === 'done' || introGateStore.phase === 'revealing') &&
+			$introSectionStore.active
+		);
 	}
 
 	function introCursorFrozen() {
@@ -55,26 +69,36 @@
 	}
 
 	const { size } = useThrelte();
+	const SAFARI_FRAME_INTERVAL = 1 / 30;
+	let pendingDelta = 0;
 
+	// Delegated so every link and button counts, including ones added after load.
 	$effect(() => {
-		//TODO: updates too fast
-		currentPath;
-		loadStore.loaded;
-		let selectable: NodeListOf<HTMLButtonElement>;
-		untrack(() => {
-			tick().then(() => {
-				selectable = document.querySelectorAll('a, button');
-				selectable.forEach((el) => {
-					el.addEventListener('mouseover', onHover);
-					el.addEventListener('mouseleave', onLeave);
-				});
-			});
-		});
+		const selector = 'a, button, [role="button"]';
+		const over = (e: MouseEvent) => {
+			if ((e.target as Element | null)?.closest?.(selector)) onHover();
+		};
+		const out = (e: MouseEvent) => {
+			const leaving = (e.target as Element | null)?.closest?.(selector);
+			const entering = (e.relatedTarget as Element | null)?.closest?.(selector);
+			if (leaving && !entering) onLeave();
+		};
+		document.addEventListener('mouseover', over);
+		document.addEventListener('mouseout', out);
+		// Keyboard focus counts as hovering once the focus cursor has moved onto the element.
+		const focusIn = (e: FocusEvent) => {
+			if ((e.target as Element | null)?.closest?.(selector)) queueMicrotask(onHover);
+		};
+		const focusOut = (e: FocusEvent) => {
+			if ((e.target as Element | null)?.closest?.(selector)) onLeave();
+		};
+		document.addEventListener('focusin', focusIn);
+		document.addEventListener('focusout', focusOut);
 		return () => {
-			selectable.forEach((el) => {
-				el.removeEventListener('mouseover', onHover);
-				el.removeEventListener('mouseleave', onLeave);
-			});
+			document.removeEventListener('focusin', focusIn);
+			document.removeEventListener('focusout', focusOut);
+			document.removeEventListener('mouseover', over);
+			document.removeEventListener('mouseout', out);
 		};
 	});
 
@@ -106,7 +130,7 @@
 		caretPos
 	}: {
 		riveCanvas: HTMLCanvasElement;
-		riveTask: (time?: number) => void;
+		riveTask: (time?: number) => boolean | void;
 		canvasViewport: { width: number; height: number };
 		loadingAnim: () => void;
 		caretPos?: { x: number; y: number; scaleX: number; scaleY: number; rotation: number };
@@ -124,7 +148,8 @@
 
 	function resizeRiveSurface(width: number, height: number) {
 		if (!riveCanvas || width <= 0 || height <= 0) return;
-		const pixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+		const sysDPR = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+		const pixelRatio = isSafari ? Math.min(sysDPR, 0.5) : sysDPR;
 		const targetWidth = Math.max(Math.round(width * pixelRatio), 1);
 		const targetHeight = Math.max(Math.round(height * pixelRatio), 1);
 		if (riveCanvas.width !== targetWidth || riveCanvas.height !== targetHeight) {
@@ -196,7 +221,12 @@
 		resetIntroCursorStateMachine();
 
 		riveTask = (delta) => {
-			if (!surfaceReady || !riveRenderer || !artboard || !stateMachine) return;
+			if (!surfaceReady || !riveRenderer || !artboard || !stateMachine) return false;
+			// Safari: advance/draw at ~30fps; WebKit's canvas→WebGL upload is the bottleneck
+			pendingDelta += delta ?? 0;
+			if (isSafari && pendingDelta < SAFARI_FRAME_INTERVAL) return false;
+			const frameDelta = pendingDelta;
+			pendingDelta = 0;
 			riveRenderer.clear();
 			const introLocked = introCursorLocked();
 			if (introLocked && !wasIntroCursorLocked) {
@@ -208,12 +238,14 @@
 				scroll.value = false;
 				link.value = false;
 			}
-			stateMachine.advance(delta!);
-			artboard.advance(delta!);
+			stateMachine.advance(frameDelta);
+			artboard.advance(frameDelta);
 			riveRenderer.save();
 			const introAlignmentActive =
+				!focusCursor.active &&
 				page.url.pathname === '/' &&
 				loadStore.loaded &&
+				(introGateStore.phase === 'done' || introGateStore.phase === 'revealing') &&
 				!animationStore.isAnimating &&
 				$introSectionStore.active;
 			riveRenderer.align(
@@ -230,6 +262,7 @@
 			artboard.draw(riveRenderer);
 			riveRenderer.restore();
 			rive.resolveAnimationFrame();
+			return true;
 		};
 
 		if (!loadStore.loaded) {

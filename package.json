@@ -56,6 +56,7 @@
 		"marked": "^18.0.2",
 		"nodemailer": "^8.0.5",
 		"openai": "^6.34.0",
+		"posthog-js": "^1.438.21",
 		"rate-limiter-flexible": "^11.0.1",
 		"three": "^0.184.0",
 		"vite-plugin-mkcert": "^2.0.0"
