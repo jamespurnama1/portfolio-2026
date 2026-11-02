@@ -45,7 +45,7 @@
 		"@fontsource-variable/hanken-grotesk": "^5.2.8",
 		"@fontsource-variable/source-code-pro": "^5.2.7",
 		"@rive-app/canvas-advanced": "^2.37.3",
-		"@sanity/client": "^8.11.0",
+		"@sanity/client": "^8.14.1",
 		"@threlte/core": "^8.5.9",
 		"@threlte/extras": "^9.14.8",
 		"@threlte/studio": "^0.4.3",
