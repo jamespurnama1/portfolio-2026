@@ -160,6 +160,10 @@
 			ArrowRight: 1
 		};
 		if (arrowDir[e.key] && page.url.pathname === '/' && homeNav.step) {
+			if (onControl) {
+				focusCursor.clear();
+				target?.closest<HTMLElement>('a, button, [role="button"]')?.blur();
+			}
 			homeNav.step(arrowDir[e.key]);
 			return;
 		}
@@ -748,10 +752,20 @@
 
 		// Keyboard focus moves the Rive cursor; a moving mouse takes it back.
 		let lastMouseMoveAt = 0;
+		const releaseKeyboardFocus = () => {
+			if (!focusCursor.active) return;
+			const focused = document.activeElement as HTMLElement | null;
+			if (focused?.closest('input, textarea, select, [contenteditable]')) return;
+			focusCursor.clear();
+			if (page.url.pathname === '/') focused?.blur();
+		};
 		const onRealMouseMove = (event: MouseEvent) => {
 			if (!event.movementX && !event.movementY) return;
 			lastMouseMoveAt = performance.now();
-			if (focusCursor.active) focusCursor.clear();
+			releaseKeyboardFocus();
+		};
+		const onTabKey = (event: KeyboardEvent) => {
+			if (event.key === 'Tab') lastMouseMoveAt = Number.NEGATIVE_INFINITY;
 		};
 		const onFocusIn = (event: FocusEvent) => {
 			const el = event.target as HTMLElement | null;
@@ -763,6 +777,9 @@
 		};
 		const onFocusOut = () => focusCursor.clear();
 		document.addEventListener('mousemove', onRealMouseMove, { passive: true });
+		document.addEventListener('wheel', releaseKeyboardFocus, { passive: true });
+		document.addEventListener('touchstart', releaseKeyboardFocus, { passive: true });
+		document.addEventListener('keydown', onTabKey);
 		document.addEventListener('focusin', onFocusIn);
 		document.addEventListener('focusout', onFocusOut);
 		app?.addEventListener('scroll', workScrollHandler, { passive: true });
@@ -785,6 +802,9 @@
 		return () => {
 			document.removeEventListener('mouseover', onLinkHover);
 			document.removeEventListener('mousemove', onRealMouseMove);
+			document.removeEventListener('wheel', releaseKeyboardFocus);
+			document.removeEventListener('touchstart', releaseKeyboardFocus);
+			document.removeEventListener('keydown', onTabKey);
 			document.removeEventListener('focusin', onFocusIn);
 			document.removeEventListener('focusout', onFocusOut);
 			unsubscribeProjectListHost();

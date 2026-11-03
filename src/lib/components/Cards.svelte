@@ -85,8 +85,6 @@
 	}
 	const initialSharedTransition = resolveSharedTransition();
 	const shouldCoverTexture = $derived(home && !!homeAspectRatio);
-	// Video textures re-upload every frame while rendered; skip rendering when offscreen.
-	const isVideoCard = $derived((texture as any)?.isVideoTexture === true);
 	let viewerHidden = $state(false);
 
 	// During the first-visit intro the card is driven by introGate (trail, then the row of cards).
@@ -650,7 +648,8 @@
 					: initialPos(index);
 				// Preserve current opacity so this positional reset never overrides
 				// the opacity controlled by tweenOpacity / the transition system.
-				transform = { ...nextPos, opacity: transform.opacity };
+				const { opacity: _opacity, ...position } = nextPos;
+				Object.assign(transform, position);
 				prevInitialLoad = initialLoadComplete;
 			}
 		};
@@ -665,7 +664,8 @@
 				!isReturningHomeCard) || // intro section owns the homepage hero before the cards take over
 			(home &&
 				($introSectionStore.active || $introSectionStore.progress < 1) &&
-				!isOutgoingHomeCard) || // not current project in the work page - hide ALL home cards on work pages
+				!isOutgoingHomeCard &&
+				!isReturningHomeCard) || // not current project in the work page - hide ALL home cards on work pages
 			(!works && page.url.pathname.includes('work')) || // on home but before current index
 			(index < countStore.activeIndex && page.url.pathname === '/' && !isReturningHomeCard) || // in fullscreen but not this image
 			(optionsStore.fullscreen && !full && !viewerStore.active) || // during gallery transition
@@ -687,6 +687,7 @@
 
 	$effect(() => {
 		hidden;
+		gateActive;
 		initialLoadComplete;
 		loadIn;
 		// For works detail cards (index > 0), gate fade-in on the hero card (index 0)
@@ -860,7 +861,7 @@
 		const el = document.getElementById(workVideoId());
 		if (el instanceof HTMLVideoElement) {
 			el.muted = !bool;
-			el.currentTime = 0;
+			if (bool || full) el.currentTime = 0;
 			if (bool) el.play();
 		}
 		full = bool;
@@ -1162,11 +1163,8 @@
 			// projectSectionStore.viewportTop may be a large transient value. Using
 			// the eventual pinned value (0) avoids a visible slide when the cards
 			// become opaque after homeTransitionStore.clear().
-			transform = {
-				...transform,
-				...homePos(index, imageGeo, $size, 0),
-				opacity: 0
-			};
+			const { opacity: _opacity, ...position } = homePos(index, imageGeo, $size, 0);
+			Object.assign(transform, position);
 		});
 	});
 
@@ -1220,13 +1218,48 @@
 		});
 	}
 
+	function syncReturnVideo() {
+		const hero = document.getElementById('media-0');
+		const thumbnail = document.getElementById(workVideoId());
+		if (!(hero instanceof HTMLVideoElement) || !(thumbnail instanceof HTMLVideoElement))
+			return Promise.resolve();
+		if (
+			hero.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+			thumbnail.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+			!Number.isFinite(hero.currentTime) ||
+			!Number.isFinite(thumbnail.duration) ||
+			thumbnail.duration <= 0 ||
+			new URL(hero.currentSrc, location.href).pathname.split('/').pop() !==
+				new URL(thumbnail.currentSrc, location.href).pathname.split('/').pop()
+		)
+			return Promise.resolve();
+		const targetTime = Math.min(hero.currentTime % thumbnail.duration, thumbnail.duration - 0.01);
+		if (Math.abs(thumbnail.currentTime - targetTime) < 0.05) return Promise.resolve();
+
+		return new Promise<void>((resolve) => {
+			const finish = () => {
+				thumbnail.removeEventListener('seeked', finish);
+				clearTimeout(timeout);
+				resolve();
+			};
+			const timeout = setTimeout(finish, 800);
+			thumbnail.addEventListener('seeked', finish, { once: true });
+			try {
+				thumbnail.currentTime = targetTime;
+			} catch {
+				finish();
+			}
+		});
+	}
+
 	// Update image position and scale based on current state
 	function updateImage(delay = 0, duration = 0.01, callback?: () => void) {
 		if (!loadStore.loaded || suppressUpdates || gateActive) return;
 		let pos;
 		// if homepage
 		if (home) {
-			pos = homePos(index, imageGeo, $size);
+			const { opacity: _opacity, ...position } = homePos(index, imageGeo, $size);
+			pos = position;
 			// if hidden
 		} else if (hidden) {
 			// pos = initialPos(index);
@@ -1249,10 +1282,8 @@
 		}
 
 		if (!data.projectsLength) return;
-		// For works detail cards (index > 0), opacity is exclusively controlled by
-		// tweenOpacity. Scope the kill to positional properties only so the fade-in
-		// tween isn't cancelled by a positional updateImage call.
-		gsap.killTweensOf(transform, works && index > 0 ? 'x,y,z,scale' : undefined);
+		// Keep independently controlled opacity tweens alive during position updates.
+		gsap.killTweensOf(transform, home || (works && index > 0) ? 'x,y,z,scale' : undefined);
 		// Per-scroll-tick updates are effectively instant; skip creating a tween per card.
 		if (!delay && duration <= 0.02 && pos) {
 			for (const key of ['x', 'y', 'z', 'scale', 'opacity'] as const) {
@@ -1287,6 +1318,9 @@
 		const isVideoTex = (texture as any).isVideoTexture === true;
 		const needsColorspace = !isVideoTex;
 		const invertAfter = needsColorspace && !optionsStore.dark;
+		imageMat.uniforms.u_texture.value = untrack(() =>
+			full && highResTexture ? highResTexture : texture
+		);
 		imageMat.uniforms.u_params2.value.w = shouldCoverTexture ? 1.0 : 0.0;
 		imageMat.uniforms.u_flags.value.set(
 			!optionsStore.dark && !invertAfter ? 1.0 : 0.0,
@@ -1434,7 +1468,7 @@
 			sharedCardTransitionStore.clear();
 			if (!initialSharedTransition) {
 				geometryArgs = [transition.geometry.width, transition.geometry.height];
-				transform = { ...transition.transform };
+				Object.assign(transform, transition.transform);
 			}
 			sharedTransitionTarget = transition;
 			handoffInProgress = true;
@@ -1620,13 +1654,15 @@
 			isNavigating = true;
 			const homeIndex = data.projects.findIndex((project) => project.slug.current === slug);
 
-			void scrollWorkPageToTop().then(() => {
+			void scrollWorkPageToTop().then(async () => {
+				updateFullscreen(false);
+				await syncReturnVideo();
+				if (destroyed || !page.url.pathname.includes('work')) return;
 				if (homeIndex >= 0) {
 					countStore.inertiaIndex = homeIndex;
 					homeTransitionStore.requestHomeReturn(homeIndex);
 					animationStore.isTransitioning = true;
 				}
-				updateFullscreen(false);
 				initialLoadComplete = false;
 				loadIn = true;
 				if (works) {
@@ -1686,6 +1722,28 @@
 		cleanupFullscreenTouchListeners();
 		revertToLowResTexture();
 	});
+
+	const uniforms = untrack(() => {
+		const media = texture.image as HTMLVideoElement & HTMLImageElement;
+		const textureWidth = media?.videoWidth || media?.width;
+		const textureHeight = media?.videoHeight || media?.height;
+		return {
+			u_texture: { value: texture },
+			u_mouse4: { value: new Vector4(0.5, 0.5, 0.5, 0.5) },
+			u_params1: {
+				value: new Vector4(
+					textureWidth && textureHeight ? textureWidth / textureHeight : 16 / 9,
+					geometryArgs[0] && geometryArgs[1] ? geometryArgs[0] / geometryArgs[1] : 16 / 9,
+					transform.scale,
+					transform.opacity
+				)
+			},
+			u_params2: { value: new Vector4(0, 1, 0, shouldCoverTexture ? 1 : 0) },
+			u_flags: { value: new Vector3() },
+			u_bend: { value: new Vector4(10, 0.25, 0, works ? 1 : 0) },
+			u_screen: { value: new Vector4(0, 0, 0, 0) }
+		};
+	});
 </script>
 
 <T.Mesh
@@ -1695,10 +1753,7 @@
 			? transform.opacity > 0.001
 			: nativeTakeover
 				? false
-				: isVideoCard && !works
-					? transform.opacity > 0.001 &&
-						(isOutgoingHomeCard || Math.abs(index - countStore.inertiaIndex) < 1.6)
-					: !hidden || transform.opacity > 0.001)}
+				: !hidden || transform.opacity > 0.001)}
 	rotation.y={gateRy}
 	scale={transform.scale * fullscreenZoom}
 	position={[transform.x + fullscreenPan.x, transform.y + fullscreenPan.y, transform.z]}
@@ -1715,49 +1770,7 @@
 
 	<T.ShaderMaterial
 		bind:ref={imageMat}
-		uniforms={{
-			u_texture: { value: texture },
-			// xy = current mouse position, zw = previous mouse position
-			u_mouse4: { value: new Vector4(0.5, 0.5, 0.5, 0.5) },
-			// x = textureAspect, y = planeAspect, z = scale, w = opacity
-			u_params1: {
-				value: new Vector4(
-					(() => {
-						if (texture && texture.image) {
-							const img = texture.image as HTMLVideoElement & HTMLImageElement;
-							const width = img.videoWidth || img.width;
-							const height = img.videoHeight || img.height;
-							return width && height ? width / height : 16 / 9;
-						}
-						return 16 / 9;
-					})(),
-					geometryArgs && geometryArgs[0] && geometryArgs[1]
-						? geometryArgs[0] / geometryArgs[1]
-						: 16 / 9,
-					transform.scale,
-					transform.opacity
-				)
-			},
-			// x = aberrationIntensity, y = textureZoom, z = textureRotation, w = coverTexture(0.0/1.0)
-			u_params2: { value: new Vector4(0.0, 1.0, 0.0, shouldCoverTexture ? 1.0 : 0.0) },
-			// x = inverted, y = applyOutputColorSpace, z = invertAfterOutputColorSpace (all 0.0/1.0)
-			u_flags: {
-				value: (() => {
-					const isVideoTex = (texture as any).isVideoTexture === true;
-					const needsCS = !isVideoTex;
-					const invertAfter = needsCS && !optionsStore.dark;
-					return new Vector3(
-						!optionsStore.dark && !invertAfter ? 1.0 : 0.0,
-						needsCS ? 1.0 : 0.0,
-						invertAfter ? 1.0 : 0.0
-					);
-				})()
-			},
-			// x = bendAmplitude, y = bendStrength, z = rotation, w = enableRoll(0.0/1.0)
-			u_bend: { value: new Vector4(10.0, 0.25, 0.0, works ? 1.0 : 0.0) },
-			// xy = screen position, zw = screen center
-			u_screen: { value: new Vector4(0, 0, 0, 0) }
-		}}
+		{uniforms}
 		transparent={true}
 		depthWrite={false}
 		{vertexShader}

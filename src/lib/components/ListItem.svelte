@@ -119,7 +119,9 @@
 			out:fade={{ duration: 400 }}
 		>
 			{#if active && (item as Post).awards}
-				<Awards class={hidden ? 'opacity-0' : ''} item={item as Post} />
+				{#key page.url.pathname}
+					<Awards class={hidden ? 'opacity-0' : ''} item={item as Post} />
+				{/key}
 			{/if}
 			<button
 				onmouseenter={() => sfx.hover()}
