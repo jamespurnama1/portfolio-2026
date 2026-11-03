@@ -2,7 +2,7 @@
 	import { T, useTask, useThrelte } from '@threlte/core';
 	import { Vector2 } from 'three';
 	import type { Texture, ShaderMaterial, PlaneGeometry } from 'three';
-	import type { PageData } from '../../routes/$types';
+	import type { PageData } from '../../routes/(site)/$types';
 	import fragmentShader from '../shaders/glitchFragment.glsl?raw';
 	import vertexShader from '../shaders/vertex.glsl?raw';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
@@ -26,9 +26,11 @@
 
 	// Calculate texture aspect ratio
 	const textureAspect = $derived(() => {
-		if (texture && texture.image) {
-			const width = texture.image.videoWidth || texture.image.width;
-			const height = texture.image.videoHeight || texture.image.height;
+		const image = texture.image as
+			{ videoWidth?: number; videoHeight?: number; width?: number; height?: number } | undefined;
+		if (image) {
+			const width = image.videoWidth || image.width;
+			const height = image.videoHeight || image.height;
 			return width && height ? width / height : 16 / 9;
 		}
 		return 16 / 9;

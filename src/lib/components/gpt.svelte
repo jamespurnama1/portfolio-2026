@@ -15,7 +15,7 @@
 	import x_img from '#lib/images/x.svg';
 	import { error } from '@sveltejs/kit';
 	import { goto } from '$app/navigation';
-	import type { LayoutData } from '../../routes/$types';
+	import type { LayoutData } from '../../routes/(site)/$types';
 	import { marked } from 'marked';
 	import { sfx } from '#lib/utils/sfx.js';
 	import { track } from '#lib/utils/analytics.js';

@@ -29,7 +29,7 @@
 			src={logo}
 		/>
 	</a>
-	<span class="flex flex-col">
+	<span class="flex flex-col max-md:mb-16">
 		<button
 			onclick={() => ambient.toggle()}
 			aria-pressed={ambient.on}

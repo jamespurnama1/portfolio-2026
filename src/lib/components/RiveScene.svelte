@@ -244,10 +244,6 @@
 		// The media viewer draws the Rive cursor on a DOM canvas above the media.
 		if (viewerStore.active) return 0;
 
-		if (page.url.pathname === '/branch' && cursorSnapStore.active) {
-			return 0;
-		}
-
 		return 1;
 	});
 	let meshOpacity = $state(1);
@@ -490,18 +486,32 @@
 						}
 					}
 				} else if (branchCursorSnapActive) {
-					const snapSource = focusCursor.active ? focusCursor : cursorSnapStore;
+					const snapSource =
+						page.url.pathname === '/branch' && cursorSnapStore.active
+							? cursorSnapStore
+							: focusCursor.active
+								? focusCursor
+								: cursorSnapStore;
 					const snapTarget = getClientCursorTarget(
 						snapSource.x,
 						snapSource.y,
 						DEFAULT_CURSOR_SCALE
 					);
+					const snapRotation = page.url.pathname === '/branch' ? -Math.PI / 4 : 0;
+					if (snapRotation) {
+						const halfWidth = ($size.width * DEFAULT_CURSOR_SCALE) / 2;
+						const halfHeight = ($size.height * DEFAULT_CURSOR_SCALE) / 2;
+						snapTarget.x +=
+							halfWidth * (1 - Math.cos(snapRotation)) + halfHeight * Math.sin(snapRotation);
+						snapTarget.y +=
+							halfHeight * (1 - Math.cos(snapRotation)) - halfWidth * Math.sin(snapRotation);
+					}
 					caretPos.x += (snapTarget.x - caretPos.x) * mouseSpeed * SNAP_FOLLOW_STRENGTH;
 					caretPos.y += (snapTarget.y - caretPos.y) * mouseSpeed * SNAP_FOLLOW_STRENGTH;
 					caretPos.z += (0 - caretPos.z) * mouseSpeed;
 					caretPos.scaleX += (DEFAULT_CURSOR_SCALE - caretPos.scaleX) * mouseSpeed;
 					caretPos.scaleY += (DEFAULT_CURSOR_SCALE - caretPos.scaleY) * mouseSpeed;
-					caretPos.rotation += (0 - caretPos.rotation) * mouseSpeed;
+					caretPos.rotation += (snapRotation - caretPos.rotation) * mouseSpeed;
 					caretPos.rotationX += (0 - caretPos.rotationX) * mouseSpeed;
 					caretPos.rotationY += (0 - caretPos.rotationY) * mouseSpeed;
 				} else {

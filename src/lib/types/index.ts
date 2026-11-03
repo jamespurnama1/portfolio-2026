@@ -81,6 +81,7 @@ export interface Post extends SanityDocument {
 	slug: SanitySlug;
 	thumbnail: SanityFileAsset;
 	thumbnailImage?: SanityFileAsset;
+	heroMedia?: { asset?: MediaAsset & { mimeType?: string } };
 	awards: ArrayMember<Award>[] | null;
 	content: Content[];
 	catIndex?: number;
@@ -140,6 +141,7 @@ export interface Content {
 	image?: MediaAsset;
 	imageLight?: MediaAsset;
 	video?: MediaAsset;
+	attachToTop?: boolean;
 	_key: string;
 	body: string;
 	headline: string;

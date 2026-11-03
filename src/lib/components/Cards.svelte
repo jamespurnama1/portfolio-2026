@@ -29,7 +29,7 @@
 	} from '#lib/stores/index.svelte.js';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { viewerStore, reelViewer } from '#lib/stores/viewer.svelte.js';
-	import { gateTransform, GATE_MAX_CARDS } from '#lib/utils/introGate.js';
+	import { gateTransform } from '#lib/utils/introGate.js';
 	import { perfStore } from '#lib/stores/perf.svelte.js';
 	import { isMobile, isMobileSafari } from '#lib/utils/device.js';
 	import fragmentShader from '../shaders/glitchFragment.glsl?raw';
@@ -45,7 +45,7 @@
 		stepCardMotion,
 		velocityToMotionProgress
 	} from '#lib/utils/cardMotion.js';
-	import { type PageData } from '../../routes/$types';
+	import { type PageData } from '../../routes/(site)/$types';
 	import { introSectionStore } from '#lib/stores/introSection.js';
 
 	let easeFactor = 0.02;
@@ -63,7 +63,8 @@
 		home = false,
 		gallery = false,
 		data,
-		homeAspectRatio
+		homeAspectRatio,
+		trailMedia = []
 	}: {
 		texture: Texture;
 		index: number;
@@ -72,6 +73,7 @@
 		home?: boolean;
 		data: Required<PageData>;
 		homeAspectRatio?: number;
+		trailMedia?: string[];
 	} = $props();
 	function resolveSharedTransition() {
 		const pending = sharedCardTransitionStore.value;
@@ -98,10 +100,9 @@
 			gsap.killTweensOf(transform);
 			gateWasActive = true;
 		}
-		const count = Math.min(data.projects.length, GATE_MAX_CARDS);
 		const g = gateTransform(
 			index,
-			count,
+			trailMedia,
 			imageGeo.parameters.width,
 			$size.width,
 			$size.height,
@@ -124,6 +125,7 @@
 			id: 'reel',
 			url,
 			isVideo: true,
+			effect: 'ghost',
 			alt: 'Reel',
 			ratio: video?.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9,
 			rect: () => {
@@ -151,10 +153,17 @@
 	const nativeTakeover = $derived(
 		works &&
 			index === 0 &&
+			!homeTransitionStore.pending &&
 			workRouteReadyStore.hasKey(page.params.slug ?? '', `${page.params.slug}:0`)
 	);
 	let sharedTransitionTarget = $state(initialSharedTransition);
 	let handoffInProgress = $state(Boolean(initialSharedTransition));
+	let isNavigating = false;
+	const isOutgoingHomeCard = $derived(
+		!works &&
+			animationStore.homeNavigatingToWork &&
+			(isNavigating || sharedCardTransitionStore.value?.index === index)
+	);
 	const isReturningHomeCard = $derived(
 		page.url.pathname === '/' &&
 			!works &&
@@ -573,8 +582,13 @@
 					handoffInProgress ||
 					hidden ||
 					full ||
-					animationStore.isTransitioning
+					animationStore.isTransitioning ||
+					(index === 0 && !nativeHeroFrameReady())
 				) {
+					return;
+				}
+				if (index === 0 && !workTransformAligned()) {
+					updateImage(0, 0.3, scheduleSettledWorkReady);
 					return;
 				}
 				syncWorkTransform();
@@ -586,7 +600,8 @@
 						handoffInProgress ||
 						hidden ||
 						full ||
-						animationStore.isTransitioning
+						animationStore.isTransitioning ||
+						(index === 0 && !nativeHeroFrameReady())
 					) {
 						return;
 					}
@@ -627,7 +642,7 @@
 		let prevInitialLoad = initialLoadComplete;
 		works;
 		return () => {
-			if (prevInitialLoad !== initialLoadComplete && !handoffInProgress) {
+			if (prevInitialLoad !== initialLoadComplete && !handoffInProgress && !suppressUpdates) {
 				const nextPos = initialLoadComplete
 					? works
 						? projectPage(index, $size, works, imageGeo, $size.width)
@@ -648,7 +663,9 @@
 				page.url.pathname === '/' &&
 				homeTransitionStore.pending &&
 				!isReturningHomeCard) || // intro section owns the homepage hero before the cards take over
-			(home && ($introSectionStore.active || $introSectionStore.progress < 1)) || // not current project in the work page - hide ALL home cards on work pages
+			(home &&
+				($introSectionStore.active || $introSectionStore.progress < 1) &&
+				!isOutgoingHomeCard) || // not current project in the work page - hide ALL home cards on work pages
 			(!works && page.url.pathname.includes('work')) || // on home but before current index
 			(index < countStore.activeIndex && page.url.pathname === '/' && !isReturningHomeCard) || // in fullscreen but not this image
 			(optionsStore.fullscreen && !full && !viewerStore.active) || // during gallery transition
@@ -690,7 +707,7 @@
 				!works || index === 0 || workRouteReadyStore.hasKey(slug ?? '', `${slug}:0`);
 			// During home→work transition (0.3s shrink), non-active home cards should
 			// fade out immediately — they'd otherwise remain at their current opacity.
-			const fadingOutForNavigation = !works && homeNavToWork && !isNavigating;
+			const fadingOutForNavigation = !works && homeNavToWork && !isOutgoingHomeCard;
 			if (hidden || fadingOutForNavigation || (works && index > 0 && !heroReady)) {
 				tweenOpacity(0, 'power2.out');
 			} else if (initialLoadComplete && !loadIn && heroReady) {
@@ -742,8 +759,8 @@
 			if (page.url.hash === '#reels' && slug === 'reels') {
 				updateFullscreen(true);
 				// window.addEventListener('keydown', escapeListener);
-			} else {
-				updateFullscreen(false, full && slug === 'reels');
+			} else if (full) {
+				updateFullscreen(false, slug === 'reels');
 				// if (full) window.removeEventListener('keydown', escapeListener);
 			}
 			if (full || prevParams === page.params.slug) return;
@@ -962,7 +979,10 @@
 			goto('/');
 			// if in works or reels, make it large
 		} else if (page.url.pathname.includes('work') && !full) {
-			updateFullscreen(true);
+			const project = data.projects.find((item) => item.slug.current === page.params.slug);
+			const hero = document.getElementById('media-0');
+			if (index === 0 && project?.heroMedia?.asset?.url && hero) hero.click();
+			else updateFullscreen(true);
 		} else if (!page.params.slug) {
 			if (countStore.activeIndex !== index) {
 				countStore.inertiaIndex = index;
@@ -1012,8 +1032,17 @@
 		const mediaEl = document.getElementById(`media-${index}`) as
 			HTMLImageElement | HTMLVideoElement | null;
 		if (!mediaEl || !imageGeo) return false;
+		if (mediaEl instanceof HTMLVideoElement && !mediaEl.videoWidth) return false;
+		if (mediaEl instanceof HTMLImageElement && !mediaEl.naturalWidth) return false;
 		const rect = mediaEl.getBoundingClientRect();
 		return rect.width > 32 && rect.height > 32;
+	}
+
+	function nativeHeroFrameReady() {
+		const mediaEl = document.getElementById('media-0');
+		if (mediaEl instanceof HTMLVideoElement)
+			return mediaEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+		return mediaEl instanceof HTMLImageElement && mediaEl.complete && mediaEl.naturalWidth > 0;
 	}
 
 	function workTargetReady() {
@@ -1046,6 +1075,11 @@
 
 	function startConsumedSharedTransition(transition: NonNullable<typeof sharedTransitionTarget>) {
 		const finishTransition = () => {
+			if (works && workTargetReady() && !workTransformAligned()) {
+				updateImage(0, 0.3, finishTransition);
+				return;
+			}
+			if (works) prevParams = page.params.slug ?? '';
 			handoffInProgress = false;
 			sharedTransitionTarget = null;
 			if (works) {
@@ -1065,13 +1099,23 @@
 			return;
 		}
 
-		let attempts = 0;
+		const startedAt = performance.now();
+		let startedMoving = false;
 		const waitForStableHero = () => {
-			if (heroTransitionTargetReady() || attempts >= 12) {
+			if (destroyed) return;
+			const mediaEl = document.getElementById('media-0');
+			if (
+				heroTransitionTargetReady() ||
+				(mediaEl instanceof HTMLVideoElement && mediaEl.error) ||
+				performance.now() - startedAt >= 5000
+			) {
 				run();
 				return;
 			}
-			attempts += 1;
+			if (!startedMoving && workTargetReady()) {
+				startedMoving = true;
+				updateImage(0, 0.5);
+			}
 			window.requestAnimationFrame(waitForStableHero);
 		};
 
@@ -1126,6 +1170,16 @@
 		});
 	});
 
+	function workTransformAligned() {
+		if (!imageGeo || !workTargetReady()) return false;
+		const target = projectPage(index, $size, works, imageGeo, $size.width);
+		return (
+			Math.abs(transform.x - target.x) < 1 &&
+			Math.abs(transform.y - target.y) < 1 &&
+			Math.abs(transform.scale - target.scale) * imageGeo.parameters.width < 1
+		);
+	}
+
 	function syncWorkTransform() {
 		if (!works || !imageGeo || hidden || full || !workTargetReady()) return;
 		const { opacity: _opacity, ...pos } = projectPage(index, $size, works, imageGeo, $size.width);
@@ -1150,8 +1204,8 @@
 			const scrollState = { top: start };
 			gsap.to(scrollState, {
 				top: 0,
-				duration: 0.3,
-				ease: 'power2.out',
+				duration: Math.min(1.8, Math.max(0.7, (start / 1000) * 0.65)),
+				ease: 'power2.inOut',
 				overwrite: true,
 				onUpdate: () => {
 					window.scrollTo({ top: scrollState.top, left: 0, behavior: 'auto' });
@@ -1355,6 +1409,22 @@
 		});
 	});
 
+	let destroyed = false;
+
+	onMount(() => {
+		const onNativeMediaReady = (event: Event) => {
+			if (works && index === 0 && (event.target as HTMLElement)?.id === 'media-0') {
+				scheduleSettledWorkReady();
+			}
+		};
+		window.addEventListener('loadeddata', onNativeMediaReady, true);
+		window.addEventListener('load', onNativeMediaReady, true);
+		return () => {
+			window.removeEventListener('loadeddata', onNativeMediaReady, true);
+			window.removeEventListener('load', onNativeMediaReady, true);
+		};
+	});
+
 	onMount(() => {
 		texture.needsUpdate = true;
 		// const html = document.documentElement;
@@ -1362,8 +1432,10 @@
 		const transition = initialSharedTransition ?? resolveSharedTransition();
 		if (transition) {
 			sharedCardTransitionStore.clear();
-			geometryArgs = [transition.geometry.width, transition.geometry.height];
-			transform = { ...transition.transform };
+			if (!initialSharedTransition) {
+				geometryArgs = [transition.geometry.width, transition.geometry.height];
+				transform = { ...transition.transform };
+			}
 			sharedTransitionTarget = transition;
 			handoffInProgress = true;
 			initialLoadComplete = true;
@@ -1468,7 +1540,7 @@
 	// Watch for texture dimension changes and update geometry
 	$effect(() => {
 		if (!texture || !texture.image) return;
-		handoffInProgress;
+		if (handoffInProgress) return;
 		const img = texture.image as HTMLVideoElement & HTMLImageElement;
 		const width = img.videoWidth || img.width;
 		const height = img.videoHeight || img.height;
@@ -1503,12 +1575,9 @@
 			const currentWidth = geometryArgs[0] || imageGeo?.parameters.width || 0;
 			const currentScale = transform.scale;
 			geometryArgs = [...expected, 32, 32];
-			if (handoffInProgress && currentWidth > 0 && expected[0] > 0 && currentScale > 0) {
+			if ((handoffInProgress || works) && currentWidth > 0 && expected[0] > 0 && currentScale > 0) {
 				const preservedVisibleWidth = currentWidth * currentScale;
-				transform = {
-					...transform,
-					scale: preservedVisibleWidth / expected[0]
-				};
+				transform.scale = preservedVisibleWidth / expected[0];
 			}
 			if (imageGeo && image) {
 				imageGeo.dispose();
@@ -1542,8 +1611,6 @@
 	});
 
 	// exit transition to home
-	let isNavigating = false;
-
 	beforeNavigate(({ to, cancel, shallow, type }) => {
 		if (shallow && type === 'goto') return;
 		if (!to) return;
@@ -1551,16 +1618,38 @@
 			suppressUpdates = true;
 			cancel();
 			isNavigating = true;
-			updateFullscreen(false);
-			initialLoadComplete = false;
-			loadIn = true;
+			const homeIndex = data.projects.findIndex((project) => project.slug.current === slug);
 
 			void scrollWorkPageToTop().then(() => {
+				if (homeIndex >= 0) {
+					countStore.inertiaIndex = homeIndex;
+					homeTransitionStore.requestHomeReturn(homeIndex);
+					animationStore.isTransitioning = true;
+				}
+				updateFullscreen(false);
+				initialLoadComplete = false;
+				loadIn = true;
 				if (works) {
 					syncWorkTransform();
 				}
+				gsap.killTweensOf(transform);
+				transform.opacity = 1;
+				const textureImage = texture.image as HTMLVideoElement & HTMLImageElement;
+				const width = textureImage?.videoWidth || textureImage?.width || 16;
+				const height = textureImage?.videoHeight || textureImage?.height || 9;
+				const aspect = homeAspectRatio || width / height;
+				let homeWidth = $size.width * 0.5;
+				let homeHeight = homeWidth / aspect;
+				if (homeHeight > $size.width) {
+					homeHeight = $size.width * 0.5;
+					homeWidth = homeHeight * aspect;
+				}
+				const homeGeometry = new PlaneGeometry(homeWidth, homeHeight);
+				const target = homePos(countStore.activeIndex, homeGeometry, $size, 0);
+				homeGeometry.dispose();
 				gsap.to(transform, {
-					...homePos(countStore.activeIndex, imageGeo, $size),
+					...target,
+					scale: (target.scale * homeWidth) / imageGeo.parameters.width,
 					duration: 0.5,
 					ease: 'power3.out',
 					onComplete: () => {
@@ -1591,6 +1680,7 @@
 	});
 
 	onDestroy(() => {
+		destroyed = true;
 		clearSettledWorkReadyFrame();
 		stopFullscreenPointerDrag();
 		cleanupFullscreenTouchListeners();
@@ -1603,10 +1693,11 @@
 	visible={!viewerHidden &&
 		(gateActive
 			? transform.opacity > 0.001
-			: nativeTakeover && transform.opacity <= 0.001
+			: nativeTakeover
 				? false
 				: isVideoCard && !works
-					? transform.opacity > 0.001 && Math.abs(index - countStore.inertiaIndex) < 1.6
+					? transform.opacity > 0.001 &&
+						(isOutgoingHomeCard || Math.abs(index - countStore.inertiaIndex) < 1.6)
 					: !hidden || transform.opacity > 0.001)}
 	rotation.y={gateRy}
 	scale={transform.scale * fullscreenZoom}
@@ -1615,9 +1706,7 @@
 		handleClick(e, index);
 	}}
 	onpointerdown={(e: IntersectionEvent<PointerEvent>) => startFullscreenPointerDrag(e)}
-	userData={{
-		skipPostFX: works
-	}}
+	userData={{ skipPostFX: false }}
 	onpointerover={(e: IntersectionEvent<'pointerover'>) => handleEnter(e)}
 	onpointerleave={(e: IntersectionEvent<'pointerleave'>) => handleLeave(e)}
 	onpointermove={(e: IntersectionEvent<'pointermove'>) => handleMove(e)}
@@ -1645,8 +1734,8 @@
 					geometryArgs && geometryArgs[0] && geometryArgs[1]
 						? geometryArgs[0] / geometryArgs[1]
 						: 16 / 9,
-					1.0,
-					0.0
+					transform.scale,
+					transform.opacity
 				)
 			},
 			// x = aberrationIntensity, y = textureZoom, z = textureRotation, w = coverTexture(0.0/1.0)

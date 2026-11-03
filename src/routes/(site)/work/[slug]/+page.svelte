@@ -5,7 +5,6 @@
 		animationStore,
 		countStore,
 		gptStore,
-		homeTransitionStore,
 		loadStore,
 		sharedCardTransitionStore,
 		workRouteReadyStore
@@ -17,7 +16,6 @@
 	import { type PageData } from './$types';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { viewerStore, type ViewerMedia } from '#lib/stores/viewer.svelte.js';
-	import type { Post } from '#lib/types/index.js';
 	import caret from '#lib/images/caret.svg';
 	import chroma from 'chroma-js';
 	import { browser } from '$app/env';
@@ -30,7 +28,26 @@
 	let innerWidth = $state(0);
 	let articleEl = $state<HTMLElement | null>(null);
 	let canvasContainerEl: HTMLElement | null = null;
-	let current = $state() as Post | undefined;
+	const current = $derived(
+		data.projects.find((project) => project.slug.current === page.params.slug)
+	);
+	const seoTitle = $derived(current ? `${current.title} | James Henry` : 'Project | James Henry');
+	const seoDescription = $derived(
+		current?.description?.replace(/\s+/g, ' ').trim() ||
+			'Explore creative direction, design, motion and interactive work by James Henry.'
+	);
+	const seoImage = $derived(
+		current?.thumbnailImage?.asset?.url ||
+			(current?.heroMedia?.asset?.mimeType?.startsWith('image/')
+				? current.heroMedia.asset.url
+				: undefined) ||
+			(/\.(png|jpe?g|webp|gif)(?:\?|$)/i.test(current?.thumbnail?.asset?.url ?? '')
+				? current?.thumbnail?.asset?.url
+				: undefined)
+	);
+	const canonicalUrl = $derived(
+		`https://jameshenry.site/work/${encodeURIComponent(page.params.slug ?? '')}`
+	);
 
 	// Hero card handoff + native media fallback
 	let nativeMediaFallbackVisible = $state(false);
@@ -244,6 +261,11 @@
 	function describeMedia(el: HTMLElement): ViewerMedia {
 		const isVideo = el instanceof HTMLVideoElement;
 		const img = el as HTMLImageElement;
+		const heroAsset = el.id === 'media-0' ? current?.heroMedia?.asset : undefined;
+		const heroIsVideo =
+			heroAsset?.mimeType?.startsWith('video/') ??
+			/\.(mp4|webm|mov)(?:\?|$)/i.test(heroAsset?.url ?? '');
+		const viewerUrl = heroIsVideo ? heroAsset?.url : el.dataset.viewerSrc || heroAsset?.url;
 		const ratio = isVideo
 			? el.videoWidth && el.videoHeight
 				? el.videoWidth / el.videoHeight
@@ -253,11 +275,12 @@
 				: undefined;
 		return {
 			id: el.id,
-			url: (isVideo ? el.currentSrc || el.src : img.currentSrc) || img.src,
-			isVideo,
+			url: viewerUrl || (isVideo ? el.currentSrc || el.src : img.currentSrc) || img.src,
+			isVideo: heroIsVideo || (isVideo && !viewerUrl),
 			alt: img.alt ?? '',
-			lqip: el.dataset.lqip || undefined,
-			ratio,
+			caption: el.dataset.caption || undefined,
+			lqip: heroIsVideo ? undefined : el.dataset.viewerLqip || el.dataset.lqip || undefined,
+			ratio: viewerUrl ? undefined : ratio,
 			rect: () => el.getBoundingClientRect(),
 			hide: (hidden) => (el.style.visibility = hidden ? 'hidden' : ''),
 			ensureVisible: () => {
@@ -279,7 +302,6 @@
 	/* ---------- derived project data ---------- */
 
 	function updateCurrent() {
-		current = data.projects.find((x) => x.slug.current === page.params.slug);
 		if (!current) {
 			goto('/404');
 			throw new Error('not found');
@@ -733,10 +755,7 @@
 
 	beforeNavigate(({ to }) => {
 		viewerStore.requestClose(true);
-		if (to?.url.pathname === '/' && typeof currIndex === 'number') {
-			animationStore.isTransitioning = true;
-			homeTransitionStore.requestHomeReturn(currIndex);
-		} else if (!navigatingNext) {
+		if (to?.url.pathname !== '/' && !navigatingNext) {
 			scrollTo({ top: 0, left: 0, behavior: 'smooth' });
 		}
 		tl.time(0).kill();
@@ -826,6 +845,24 @@
 	});
 </script>
 
+<svelte:head>
+	<title>{seoTitle}</title>
+	<meta name="description" content={seoDescription} />
+	<link rel="canonical" href={canonicalUrl} />
+	<meta property="og:type" content="article" />
+	<meta property="og:site_name" content="James Henry" />
+	<meta property="og:title" content={seoTitle} />
+	<meta property="og:description" content={seoDescription} />
+	<meta property="og:url" content={canonicalUrl} />
+	<meta name="twitter:card" content={seoImage ? 'summary_large_image' : 'summary'} />
+	<meta name="twitter:title" content={seoTitle} />
+	<meta name="twitter:description" content={seoDescription} />
+	{#if seoImage}
+		<meta property="og:image" content={seoImage} />
+		<meta name="twitter:image" content={seoImage} />
+	{/if}
+</svelte:head>
+
 <aside
 	style={`background-color: ${base}; background-image: radial-gradient(at 25% 100%, ${base} 0, transparent 75%),
 			radial-gradient(at 75% 100%, ${base} 0, transparent 75%),
@@ -878,6 +915,7 @@
 				image={item.image}
 				video={item.video}
 				imageLight={item.imageLight}
+				nextAttached={!!current.content[index + 1]?.attachToTop}
 				forceVisibleMedia={true}
 				onOpen={(media) => openViewer(media.source)}
 			/>

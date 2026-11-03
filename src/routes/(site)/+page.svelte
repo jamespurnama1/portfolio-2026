@@ -204,13 +204,16 @@
 		let baseStep = 0;
 		let lastWheelAt = 0;
 		let wheelAcc = 0;
-		let lastY = window.scrollY;
+		let wheelDir = 0;
+		let wheelReverseAcc = 0;
 		let touchStartY = 0;
 		let touchLastY = 0;
 		let touchLastY0 = 0;
 		let touchLastT = 0;
 		let touchVelocity = 0;
 		let touchDir = 0;
+		let touchReverseAcc = 0;
+		let touchDistance = 0;
 		let touchPrevent = false;
 		let touchBaseStep = 0;
 
@@ -245,7 +248,7 @@
 			targetStep = clamped;
 			const stepPx = (trigger.end - trigger.start) / maxIndex || 1;
 			const steps = Math.abs(target - window.scrollY) / stepPx;
-			tweenToY(target, clamp(0.8 + (steps - 1) * 0.18, 0.8, 2.2));
+			tweenToY(target, clamp(0.24 + (steps - 1) * 0.07, 0.24, 0.65));
 		}
 
 		// Arrow keys: move to the section first when it is at least 30% visible, then step items.
@@ -270,6 +273,9 @@
 		const exitsNatively = (step: number, dir: number) =>
 			!busy && ((step === 0 && dir < 0) || (step === maxIndex && dir > 0));
 
+		const atTweenBoundary = (dir: number) =>
+			busy && ((targetStep === 0 && dir < 0) || (targetStep === maxIndex && dir > 0));
+
 		// Index to glide to when scrolling toward the section from just outside it, else -1.
 		const entryStep = (dir: number) => {
 			const y = window.scrollY;
@@ -286,6 +292,33 @@
 			else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) delta *= 53;
 			const dir = Math.sign(delta);
 			if (!dir) return;
+			const now = performance.now();
+			if (wheelDir && dir !== wheelDir) {
+				if (now - lastWheelAt <= 150) {
+					wheelReverseAcc += Math.abs(delta);
+					if (wheelReverseAcc < 40) {
+						if (inRange(1)) event.preventDefault();
+						return;
+					}
+				} else {
+					wheelReverseAcc = Math.abs(delta);
+				}
+				gsap.killTweensOf(tweenState);
+				busy = false;
+				holdNativeScroll(false);
+				wheelAcc = dir * (wheelReverseAcc - Math.abs(delta));
+				baseStep = stepOf();
+			} else if (now - lastWheelAt > 150) {
+				wheelAcc = 0;
+				baseStep = currentStep();
+			}
+			wheelReverseAcc = 0;
+			wheelDir = dir;
+			lastWheelAt = now;
+			if (atTweenBoundary(dir)) {
+				event.preventDefault();
+				return;
+			}
 			if (!inRange(1)) {
 				// Just outside the section: glide to its first/last item instead of overshooting into it.
 				const entry = entryStep(dir);
@@ -296,13 +329,6 @@
 			}
 			if (exitsNatively(currentStep(), dir)) return;
 			event.preventDefault();
-			const now = performance.now();
-			// A pause ends the gesture; a continuous swipe keeps accumulating into more items.
-			if (now - lastWheelAt > 150) {
-				wheelAcc = 0;
-				baseStep = currentStep();
-			}
-			lastWheelAt = now;
 			wheelAcc += delta;
 			const steps = stepsFor(Math.abs(wheelAcc), 100);
 			if (steps > 0) goToStep(baseStep + Math.sign(wheelAcc) * steps);
@@ -314,6 +340,8 @@
 			touchLastT = performance.now();
 			touchVelocity = 0;
 			touchDir = 0;
+			touchReverseAcc = 0;
+			touchDistance = 0;
 			touchPrevent = false;
 			touchBaseStep = currentStep();
 		}
@@ -338,6 +366,33 @@
 			}
 			touchLastY0 = currentY;
 			const dt = Math.max(now - touchLastT, 1);
+			const moveDir = Math.sign(touchLastY - currentY);
+			if (touchDir && moveDir && moveDir !== touchDir) {
+				touchReverseAcc += Math.abs(touchLastY - currentY);
+				if (touchReverseAcc < 40) {
+					if (touchPrevent && event.cancelable) event.preventDefault();
+					touchLastY = currentY;
+					touchLastT = now;
+					touchVelocity = 0;
+					return;
+				}
+				gsap.killTweensOf(tweenState);
+				busy = false;
+				holdNativeScroll(false);
+				touchStartY = currentY + moveDir * touchReverseAcc;
+				touchBaseStep = stepOf();
+				touchDir = moveDir;
+				touchDistance = 0;
+				touchPrevent = !exitsNatively(touchBaseStep, touchDir);
+			}
+			touchReverseAcc = 0;
+			if (atTweenBoundary(moveDir)) {
+				if (event.cancelable) event.preventDefault();
+				touchLastY = currentY;
+				touchLastT = now;
+				touchVelocity = 0;
+				return;
+			}
 			touchVelocity = (touchLastY - currentY) / dt;
 			touchLastY = currentY;
 			touchLastT = now;
@@ -345,13 +400,21 @@
 			// Decided on the first pixels: once iOS starts a native scroll, preventDefault is ignored.
 			if (!touchDir && Math.abs(dy) > 1) {
 				touchDir = Math.sign(dy);
-				touchBaseStep = currentStep();
+				if (busy && (posOf(targetStep) - window.scrollY) * touchDir < 0) {
+					gsap.killTweensOf(tweenState);
+					busy = false;
+					holdNativeScroll(false);
+					touchBaseStep = stepOf();
+				} else {
+					touchBaseStep = currentStep();
+				}
 				touchPrevent = !exitsNatively(touchBaseStep, touchDir);
 			}
 			if (!touchPrevent) return;
 			if (event.cancelable) event.preventDefault();
-			const steps = stepsFor(Math.abs(dy), 80);
-			if (steps > 0) goToStep(touchBaseStep + Math.sign(dy) * steps);
+			touchDistance = Math.max(touchDistance, dy * touchDir);
+			const steps = stepsFor(touchDistance, 80);
+			if (steps > 0) goToStep(touchBaseStep + touchDir * steps);
 		}
 
 		// A fast flick carries on for extra items after release.
@@ -365,34 +428,10 @@
 			touchDir = 0;
 		}
 
-		// Momentum or keyboard scrolling must stop at the first/last item instead of passing through.
-		function onScroll() {
-			const y = window.scrollY;
-			const previous = lastY;
-			lastY = y;
-			if (busy || page.url.pathname !== '/') return;
-			if (performance.now() < homeScrollStore.until) return;
-			if (y <= trigger.start + 2 || y >= trigger.end - 2) return;
-			const target =
-				previous <= trigger.start + 2
-					? posOf(0)
-					: previous >= trigger.end - 2
-						? posOf(maxIndex)
-						: posOf(stepOf());
-			if (Math.abs(target - y) > 1) {
-				lastY = target;
-				// Momentum that carried into the pin range is stopped, not fought.
-				holdNativeScroll(true);
-				window.scrollTo(0, target);
-				holdNativeScroll(false, 160);
-			}
-		}
-
 		window.addEventListener('wheel', onWheel, { passive: false });
 		window.addEventListener('touchstart', onTouchStart, { passive: true });
 		window.addEventListener('touchmove', onTouchMove, { passive: false });
 		window.addEventListener('touchend', onTouchEnd, { passive: true });
-		window.addEventListener('scroll', onScroll, { passive: true });
 		homeNav.step = keyStep;
 		return () => {
 			homeNav.step = null;
@@ -402,7 +441,6 @@
 			window.removeEventListener('touchstart', onTouchStart);
 			window.removeEventListener('touchmove', onTouchMove);
 			window.removeEventListener('touchend', onTouchEnd);
-			window.removeEventListener('scroll', onScroll);
 		};
 	}
 
@@ -559,23 +597,6 @@
 					pinSpacing: true,
 					scrub: true,
 					anticipatePin: 1,
-					// The gate snaps touch scrolling itself; ScrollTrigger's snap would fight iOS momentum.
-					...(maxIndex > 0 && !window.matchMedia('(hover: none)').matches
-						? {
-								snap: {
-									snapTo: (
-										value: number
-										// No snapping while a restored position is still settling.
-									) =>
-										performance.now() < homeScrollStore.until
-											? value
-											: Math.round(value * maxIndex) / maxIndex,
-									duration: { min: 0.06, max: 0.12 },
-									delay: 0,
-									ease: 'power2.out'
-								}
-							}
-						: {}),
 					onEnter: () => {
 						if (gptStore.opened) return;
 						projectSectionStore.setPinned(true);
@@ -784,8 +805,37 @@
 </script>
 
 <svelte:head>
-	<title>James Henry</title>
-	<meta name="description" content="Portfolio" />
+	<title>James Henry | Creative Direction, Design and Web</title>
+	<meta
+		name="description"
+		content="Explore James Henry's portfolio of creative direction, motion, design and interactive web projects."
+	/>
+	<link rel="canonical" href="https://jameshenry.site/" />
+	<meta property="og:type" content="website" />
+	<meta property="og:site_name" content="James Henry" />
+	<meta property="og:title" content="James Henry | Creative Direction, Design and Web" />
+	<meta
+		property="og:description"
+		content="Explore James Henry's portfolio of creative direction, motion, design and interactive web projects."
+	/>
+	<meta property="og:url" content="https://jameshenry.site/" />
+	<meta
+		name="twitter:card"
+		content={data.projects?.find((project) => project.thumbnailImage?.asset?.url)
+			? 'summary_large_image'
+			: 'summary'}
+	/>
+	<meta name="twitter:title" content="James Henry | Creative Direction, Design and Web" />
+	<meta
+		name="twitter:description"
+		content="Explore James Henry's portfolio of creative direction, motion, design and interactive web projects."
+	/>
+	{#if data.projects?.find((project) => project.thumbnailImage?.asset?.url)?.thumbnailImage?.asset?.url}
+		{@const image = data.projects.find((project) => project.thumbnailImage?.asset?.url)
+			?.thumbnailImage?.asset?.url}
+		<meta property="og:image" content={image} />
+		<meta name="twitter:image" content={image} />
+	{/if}
 </svelte:head>
 
 <section

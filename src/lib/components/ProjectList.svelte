@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { PageData } from '../../routes/$types';
+	import type { PageData } from '../../routes/(site)/$types';
 	import { type Post, type SanityReference } from '#lib/types/index.js';
 	import { page } from '$app/state';
 	import { optionsStore } from '#lib/stores/options.svelte.js';

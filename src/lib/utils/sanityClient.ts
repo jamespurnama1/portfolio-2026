@@ -33,7 +33,7 @@ export const client = createClient({
 });
 
 export async function sanityLoad() {
-	if (dev) {
+	if (dev && process.env.SANITY_LIVE !== 'true') {
 		try {
 			const raw = JSON.parse(readFileSync(DEV_CACHE_PATH, 'utf-8'));
 			return localizeUrls(raw) as Data;
@@ -64,6 +64,8 @@ export async function sanityLoad() {
   role,
   color,
   content[] {
+      _key,
+      attachToTop,
       "image": image.asset->{
     _id,
     url,
@@ -114,6 +116,15 @@ export async function sanityLoad() {
       url,
       originalFilename,
       size
+    }
+  },
+  "heroMedia": {
+    "asset": heroMedia.asset->{
+      _id,
+      url,
+      originalFilename,
+      size,
+      mimeType
     }
   },
   "thumbnailImage": {

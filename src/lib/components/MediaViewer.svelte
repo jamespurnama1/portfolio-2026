@@ -5,6 +5,9 @@
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { ambient } from '#lib/utils/ambient.svelte.js';
 	import { placeholderStyle } from '#lib/utils/placeholder.js';
+	import { Canvas } from '@threlte/core';
+	import { beforeNavigate } from '$app/navigation';
+	import ReelViewerScene from './ReelViewerScene.svelte';
 
 	let mediaEl = $state<HTMLElement>();
 	let backdropEl = $state<HTMLElement>();
@@ -18,6 +21,7 @@
 	let openedFor: ViewerMedia | null = null;
 	let lastCloseSignal = viewerStore.closeSignal;
 	let loadedId = $state('');
+	let reelFrameReady = $state(false);
 	const SWIPE_MIN = 50;
 
 	const media = $derived(viewerStore.active);
@@ -27,7 +31,7 @@
 		const r = m.rect();
 		const ratio = m.ratio && isFinite(m.ratio) ? m.ratio : r.width / Math.max(r.height, 1);
 		// Keep clear of the nav bar above and, for video, the mute label sitting over the media.
-		const reserve = m.isVideo ? 128 : 96;
+		const reserve = (m.isVideo ? 128 : 96) + (m.caption ? 32 : 0);
 		const w = Math.min(window.innerWidth - 32, (window.innerHeight - reserve) * ratio);
 		box = { w, h: w / ratio };
 	}
@@ -49,25 +53,35 @@
 		optionsStore.fullscreen = true;
 		if (m.isVideo) ambient.pauseForMedia();
 		await tick();
-		if (!mediaEl || !backdropEl) return;
+		if (!mediaEl || !backdropEl || viewerStore.active !== m) return;
 		const d = flipDelta(mediaEl, from);
 		gsap.fromTo(
 			mediaEl,
 			{ x: d.x, y: d.y, scale: d.scale },
-			{ x: 0, y: 0, scale: 1, duration: 0.55, ease: 'power3.out' }
+			{
+				x: 0,
+				y: 0,
+				scale: 1,
+				duration: 0.55,
+				ease: 'power3.out'
+			}
 		);
 		gsap.fromTo(backdropEl, { opacity: 0 }, { opacity: 1, duration: 0.4, ease: 'power2.out' });
 	}
 
 	function close(immediate = false) {
 		const m = viewerStore.active;
-		if (!m || closing) return;
+		if (!m || (closing && !immediate)) return;
+		if (immediate) {
+			gsap.killTweensOf([mediaEl, backdropEl].filter(Boolean));
+		}
 		const finish = () => {
 			m.hide(false);
 			viewerStore.clear();
 			ambient.resumeFromMedia();
 			optionsStore.fullscreen = false;
 			closing = false;
+			switching = false;
 			openedFor = null;
 		};
 		if (immediate || !mediaEl || !backdropEl) {
@@ -94,6 +108,10 @@
 		const next = list[(index + dir + list.length) % list.length];
 		switching = true;
 		await gsap.to(mediaEl, { opacity: 0, x: -dir * 40, duration: 0.18, ease: 'power2.in' });
+		if (viewerStore.active !== m) {
+			switching = false;
+			return;
+		}
 		m.hide(false);
 		next.hide(true);
 		fit(next);
@@ -135,6 +153,7 @@
 	}
 
 	function viewerVideo(node: HTMLVideoElement) {
+		reelFrameReady = node.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
 		node.muted = true;
 		node.volume = 0;
 		paused = false;
@@ -147,10 +166,12 @@
 		const onVolume = () => (muted = node.muted);
 		const onPlay = () => (paused = false);
 		const onPause = () => (paused = true);
+		const onFrameReady = () => (reelFrameReady = true);
 		node.addEventListener('playing', onPlaying);
 		node.addEventListener('volumechange', onVolume);
 		node.addEventListener('play', onPlay);
 		node.addEventListener('pause', onPause);
+		node.addEventListener('loadeddata', onFrameReady);
 		void node.play().catch(() => {});
 		return {
 			destroy() {
@@ -159,6 +180,8 @@
 				node.removeEventListener('volumechange', onVolume);
 				node.removeEventListener('play', onPlay);
 				node.removeEventListener('pause', onPause);
+				node.removeEventListener('loadeddata', onFrameReady);
+				reelFrameReady = false;
 			}
 		};
 	}
@@ -223,7 +246,10 @@
 	}
 
 	function trackLoad(node: HTMLImageElement, id: string) {
-		if (node.complete && node.naturalWidth > 0) loadedId = id;
+		if (node.complete && node.naturalWidth > 0) {
+			loadedId = id;
+			if (media?.id === id) fit({ ...media, ratio: node.naturalWidth / node.naturalHeight });
+		}
 	}
 
 	function onKeydown(event: KeyboardEvent) {
@@ -256,13 +282,33 @@
 		});
 	});
 
+	beforeNavigate(() => close(true));
+
 	onMount(() => {
 		const onCloseEvent = () => close();
+		const onLinkClick = (event: MouseEvent) => {
+			if (
+				!viewerStore.active ||
+				event.button !== 0 ||
+				event.metaKey ||
+				event.ctrlKey ||
+				event.shiftKey ||
+				event.altKey
+			)
+				return;
+			const link = (event.target as Element).closest('a[href]') as HTMLAnchorElement | null;
+			if (!link || link.hasAttribute('download') || (link.target && link.target !== '_self'))
+				return;
+			const url = new URL(link.href, window.location.href);
+			if (url.origin === window.location.origin) close(true);
+		};
 		window.addEventListener('keydown', onKeydown);
 		window.addEventListener('close-viewer', onCloseEvent);
+		document.addEventListener('click', onLinkClick, true);
 		return () => {
 			window.removeEventListener('keydown', onKeydown);
 			window.removeEventListener('close-viewer', onCloseEvent);
+			document.removeEventListener('click', onLinkClick, true);
 		};
 	});
 </script>
@@ -273,6 +319,11 @@
 		class="fixed inset-0 z-15 flex touch-none items-center justify-center p-4 pointer-events-auto"
 	>
 		<div bind:this={backdropEl} class="absolute inset-0 bg-black/90"></div>
+		{#if media.effect === 'ghost' && videoEl && reelFrameReady}
+			<div class="pointer-events-none absolute inset-0" aria-hidden="true">
+				<Canvas><ReelViewerScene video={videoEl} /></Canvas>
+			</div>
+		{/if}
 		{#key media.id}
 			{#if media.isVideo}
 				<div bind:this={mediaEl} class="relative" style="width: {box.w}px; height: {box.h}px;">
@@ -281,7 +332,13 @@
 						bind:this={videoEl}
 						use:viewerVideo
 						data-viewer-video
+						crossorigin={media.effect === 'ghost' ? 'anonymous' : undefined}
 						src={media.url}
+						onloadedmetadata={(event) => {
+							const video = event.currentTarget;
+							if (video.videoWidth && video.videoHeight)
+								fit({ ...media, ratio: video.videoWidth / video.videoHeight });
+						}}
 						class="h-full w-full object-contain"
 						loop
 						playsinline
@@ -299,19 +356,32 @@
 					>
 						{muted ? 'Unmute' : 'Mute'}
 					</button>
+					{#if media.caption}
+						<p
+							class="pointer-events-none absolute top-full left-0 mt-2 w-full font-mono text-xs text-white"
+						>
+							{media.caption}
+						</p>
+					{/if}
 				</div>
 			{:else}
-				<img
-					bind:this={mediaEl}
-					use:trackLoad={media.id}
-					onload={() => (loadedId = media.id)}
-					src={media.url}
-					alt={media.alt}
-					class="relative object-contain"
-					style="width: {box.w}px; height: {box.h}px; {loadedId === media.id
-						? ''
-						: placeholderStyle(media.url, media.lqip)}"
-				/>
+				<div bind:this={mediaEl} class="relative" style="width: {box.w}px; height: {box.h}px;">
+					<img
+						use:trackLoad={media.id}
+						onload={(event) => trackLoad(event.currentTarget as HTMLImageElement, media.id)}
+						src={media.url}
+						alt={media.alt}
+						class="h-full w-full object-contain"
+						style={loadedId === media.id ? '' : placeholderStyle(media.url, media.lqip)}
+					/>
+					{#if media.caption}
+						<p
+							class="pointer-events-none absolute top-full left-0 mt-2 w-full font-mono text-xs text-white"
+						>
+							{media.caption}
+						</p>
+					{/if}
+				</div>
 			{/if}
 		{/key}
 	</div>

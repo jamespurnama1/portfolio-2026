@@ -2,7 +2,9 @@ export type ViewerMedia = {
 	id: string;
 	url: string;
 	isVideo: boolean;
+	effect?: 'ghost';
 	alt: string;
+	caption?: string;
 	// Inline blur preview shown while the full image loads
 	lqip?: string;
 	// Width / height of the media, when known

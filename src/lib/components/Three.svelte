@@ -2,7 +2,7 @@
 	import GalleryScene from './GalleryScene.svelte';
 	import ThreeScene from './ThreeScene.svelte';
 	import RiveScene from './RiveScene.svelte';
-	import type { PageData } from '../../routes/$types';
+	import type { PageData } from '../../routes/(site)/$types';
 	let { data, preferImageThumbnails = false }: { data: PageData; preferImageThumbnails?: boolean } =
 		$props();
 	import { Canvas } from '@threlte/core';

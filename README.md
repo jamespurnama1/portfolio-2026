@@ -25,6 +25,12 @@ npm run dev
 npm run dev -- --open
 ```
 
+The embedded Sanity Studio is available at `/studio`. Add the site's origin to the
+Sanity project's CORS settings with credentials enabled. For local development,
+the site uses the cached content in `static/dev/cache.json` by default; run
+`SANITY_LIVE=true npm run dev` to load published content from Sanity instead.
+Prerendered pages need a rebuild to reflect published CMS changes in production.
+
 ## Building
 
 To create a production version of your app:

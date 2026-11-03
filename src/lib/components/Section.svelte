@@ -16,6 +16,7 @@
 		image,
 		imageLight,
 		video,
+		nextAttached = false,
 		forceVisibleMedia = false,
 		awardsItem,
 		onOpen
@@ -28,6 +29,7 @@
 		image?: MediaAsset;
 		imageLight?: MediaAsset;
 		video?: MediaAsset;
+		nextAttached?: boolean;
 		forceVisibleMedia?: boolean;
 		awardsItem?: Post;
 		onOpen?: (media: { url: string; isVideo: boolean; alt: string; source: HTMLElement }) => void;
@@ -40,15 +42,15 @@
 		if (node.complete && node.naturalWidth > 0) imageLoaded = true;
 	}
 	const isHeroSection = $derived(index === 0);
+	const hasText = $derived(!!heading?.trim() || !!body?.trim());
 	const displayImageSrc = $derived.by(() => {
-		if (isHeroSection && !optionsStore.dark && imageLight?.url) return imageLight.url;
+		if (isHeroSection && video && !image) return undefined;
+		if (!optionsStore.dark && imageLight?.url) return imageLight.url;
 		return image?.url ?? imageLight?.url;
 	});
 
 	const displayLqip = $derived(
-		isHeroSection && !optionsStore.dark && imageLight?.url
-			? imageLight.lqip
-			: (image?.lqip ?? imageLight?.lqip)
+		!optionsStore.dark && imageLight?.url ? imageLight.lqip : (image?.lqip ?? imageLight?.lqip)
 	);
 
 	// Sanity asset URLs embed the pixel size, which lets the browser reserve space before load.
@@ -59,8 +61,10 @@
 	const interactive = $derived(forceVisibleMedia && !!onOpen);
 	const mediaSizing = $derived(
 		isHeroSection
-			? 'w-full max-w-full mx-auto max-md:w-[calc(100vw-4rem)] md:w-auto md:max-w-[48vw] md:h-[46vh] md:min-w-0'
-			: 'mx-auto max-w-full w-[calc(100vw-4rem)] md:w-auto md:max-w-[min(60vw,600px)]'
+			? 'w-full max-w-full mx-auto max-md:w-[calc(100vw-4rem)] md:w-auto md:max-w-[48vw] md:max-h-[46vh] md:min-w-0'
+			: hasText
+				? 'mx-auto max-w-full w-[calc(100vw-4rem)] md:w-auto md:max-w-[min(60vw,600px)]'
+				: 'mx-auto w-full max-w-full md:w-auto md:max-w-[min(85vw,1200px)]'
 	);
 
 	onMount(() => {
@@ -89,14 +93,50 @@
 <section
 	bind:this={sectionEl}
 	class="w-full flex flex-col {isHeroSection
-		? 'md:flex-row md:justify-center md:items-center'
+		? 'md:grid md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] md:content-center md:items-start'
 		: index % 2 === 0
 			? 'md:flex-row-reverse'
 			: 'md:flex-row'} p-8 md:p-4 {isHeroSection
-		? 'items-center justify-center translate-y-0 opacity-100 md:min-h-svh'
-		: 'items-start justify-end translate-y-full opacity-0 md:min-h-svh'} gap-4 md:gap-8 relative"
+		? 'items-start justify-center translate-y-0 opacity-100 mt-12 md:mt-[12svh]'
+		: `items-start ${hasText ? 'justify-end' : 'justify-center'} translate-y-full opacity-0`} {!nextAttached
+		? 'mb-16 md:mb-[25svh]'
+		: ''} gap-4 md:gap-8 relative"
 >
-	{#if !isHeroSection}
+	{#if isHeroSection && heading}
+		<div class="order-1 w-full min-w-0 md:col-span-2">
+			<h1
+				class="pointer-events-none text-white mix-blend-difference font-sans text-3xl sm:text-4xl md:text-5xl 2xl:text-7xl font-bold whitespace-pre-wrap text-left"
+			>
+				{heading}
+			</h1>
+			{#if awardsItem?.awards?.length}
+				<div class="mt-4 flex w-full max-w-full flex-col justify-start pointer-events-auto">
+					<Awards item={awardsItem} class="text-white mix-blend-difference" />
+				</div>
+			{/if}
+		</div>
+		<div class="order-3 w-full min-w-0 md:col-start-1 md:row-start-2">
+			{#if awardsItem}
+				<p class="font-mono text-xs text-white mix-blend-difference uppercase">
+					{[awardsItem.type, ...(awardsItem.role ?? []), awardsItem.year]
+						.filter(Boolean)
+						.join(' / ')}
+				</p>
+				{#if awardsItem.description}
+					<p class="mt-4 whitespace-pre-wrap text-white mix-blend-difference">
+						{awardsItem.description}
+					</p>
+				{/if}
+			{/if}
+			{#if top}
+				<p class="pointer-events-none font-mono text-xs text-white uppercase mt-4 text-left">
+					{top}
+				</p>
+			{/if}
+		</div>
+	{/if}
+
+	{#if !isHeroSection && hasText}
 		<div
 			class="min-h-0 min-w-0 md:min-w-[25vw] flex flex-col gap-2 {index % 2 === 0
 				? 'md:mr-4'
@@ -119,84 +159,72 @@
 		class="flex w-full flex-col items-center justify-center gap-5 max-w-full transition-opacity duration-300 {interactive
 			? ''
 			: 'pointer-events-none'} {forceVisibleMedia ? 'opacity-100' : 'opacity-0'} {isHeroSection
-			? 'md:order-2 md:w-[48vw] md:max-w-[48vw] md:flex-none'
+			? 'order-2 md:col-start-2 md:row-start-2'
 			: ''}"
 	>
-		{#if image}
-			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-			<img
-				id="media-{index}"
-				use:trackLoad
-				onload={() => (imageLoaded = true)}
-				style={imageLoaded ? undefined : placeholderStyle(displayImageSrc, displayLqip)}
-				data-lqip={displayLqip}
-				src={displayImageSrc}
-				alt={heading}
-				width={intrinsicSize?.width}
-				height={intrinsicSize?.height}
-				loading={isHeroSection ? 'eager' : 'lazy'}
-				decoding="async"
-				class="h-auto object-contain select-none {mediaSizing} {optionsStore.dark
-					? ''
-					: 'invert'} {interactive ? 'pointer-events-auto' : ''}"
-				onclick={(e) =>
-					interactive && displayImageSrc
-						? onOpen?.({
-								url: displayImageSrc,
-								isVideo: false,
-								alt: heading ?? '',
-								source: e.currentTarget
-							})
-						: undefined}
-			/>
-		{:else if video}
-			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-			<video
-				id="media-{index}"
-				src={video.url}
-				class="h-auto object-contain max-h-[80vh] select-none {mediaSizing} {optionsStore.dark
-					? ''
-					: 'invert'} {interactive ? 'pointer-events-auto' : ''}"
-				autoplay
-				loop
-				muted
-				playsinline
-				preload="metadata"
-				onclick={(e) =>
-					interactive
-						? onOpen?.({
-								url: video.url,
-								isVideo: true,
-								alt: heading ?? '',
-								source: e.currentTarget
-							})
-						: undefined}
-			></video>
-		{/if}
-		<p class="font-mono text-xs text-white {bottom ? '' : 'opacity-0'}">{bottom ? '' : ''}</p>
-	</div>
-
-	{#if isHeroSection && heading}
-		<div
-			class="mt-2 w-[calc(100vw-4rem)] max-w-[calc(100vw-4rem)] md:order-1 md:mt-0 md:mr-4 md:w-[20rem] md:max-w-[20rem] md:flex-none md:self-center"
-		>
-			<h1
-				class="pointer-events-none text-white mix-blend-difference font-sans text-3xl sm:text-4xl md:text-5xl 2xl:text-7xl font-bold whitespace-pre-wrap text-left"
-			>
-				{heading}
-			</h1>
-			{#if awardsItem?.awards?.length}
-				<div
-					class="mt-4 flex w-full max-w-full flex-col justify-start overflow-hidden pointer-events-auto"
+		<figure class="relative w-fit max-w-full">
+			{#if displayImageSrc}
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+				<img
+					id="media-{index}"
+					use:trackLoad
+					onload={() => (imageLoaded = true)}
+					style={imageLoaded ? undefined : placeholderStyle(displayImageSrc, displayLqip)}
+					data-lqip={displayLqip}
+					data-viewer-src={image?.url ?? imageLight?.url}
+					data-viewer-lqip={image?.url ? image.lqip : imageLight?.lqip}
+					data-caption={bottom}
+					src={displayImageSrc}
+					alt={heading}
+					width={intrinsicSize?.width}
+					height={intrinsicSize?.height}
+					loading={isHeroSection ? 'eager' : 'lazy'}
+					decoding="async"
+					class="h-auto object-contain select-none {mediaSizing} {optionsStore.dark
+						? ''
+						: 'invert'} {interactive ? 'pointer-events-auto' : ''}"
+					onclick={(e) =>
+						interactive && displayImageSrc
+							? onOpen?.({
+									url: displayImageSrc,
+									isVideo: false,
+									alt: heading ?? '',
+									source: e.currentTarget
+								})
+							: undefined}
+				/>
+			{:else if video}
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+				<video
+					id="media-{index}"
+					data-caption={bottom}
+					src={video.url}
+					class="h-auto object-contain max-h-[80vh] select-none {mediaSizing} {optionsStore.dark
+						? ''
+						: 'invert'} {interactive ? 'pointer-events-auto' : ''}"
+					autoplay
+					loop
+					muted
+					playsinline
+					preload="metadata"
+					onclick={(e) =>
+						interactive
+							? onOpen?.({
+									url: video.url,
+									isVideo: true,
+									alt: heading ?? '',
+									source: e.currentTarget
+								})
+							: undefined}
+				></video>
+			{/if}
+			{#if bottom && (displayImageSrc || video)}
+				<figcaption
+					class="pointer-events-none mt-2 max-w-full font-mono text-xs text-white mix-blend-difference"
 				>
-					<Awards item={awardsItem} stacked class="text-white mix-blend-difference" />
-				</div>
+					{bottom}
+				</figcaption>
 			{/if}
-			{#if top}
-				<p class="pointer-events-none font-mono text-xs text-white uppercase mt-4 text-left">
-					{top}
-				</p>
-			{/if}
-		</div>
-	{/if}
+		</figure>
+	</div>
 </section>

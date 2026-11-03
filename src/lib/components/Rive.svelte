@@ -12,6 +12,7 @@
 	import { introSectionStore } from '#lib/stores/introSection.js';
 	import { isSafari } from '#lib/utils/device.js';
 	import RiveCanvas, { type SMIInput, type StateMachineInstance } from '@rive-app/canvas-advanced';
+	import riveWasmUrl from '@rive-app/canvas-advanced/rive.wasm?url';
 	import { onMount } from 'svelte';
 	import { gsap } from 'gsap';
 	import { useThrelte } from '@threlte/core';
@@ -57,7 +58,7 @@
 
 	function onHover() {
 		if (!link) return;
-		if (animationStore.isAnimating || introCursorLocked()) {
+		if (animationStore.isAnimating || introCursorLocked() || page.url.pathname === '/branch') {
 			scroll.value = false;
 			link.value = false;
 		} else {
@@ -209,7 +210,7 @@
 		canvasContainer.appendChild(riveCanvas);
 		const rive = await RiveCanvas({
 			// Loads Wasm bundle
-			locateFile: () => `https://unpkg.com/@rive-app/canvas-advanced@2.47.1/rive.wasm`
+			locateFile: () => riveWasmUrl
 		});
 		riveRef = rive;
 		riveRenderer = rive.makeRenderer(riveCanvas);

@@ -239,16 +239,7 @@ export const projectPage = (
 			scale: desiredWidth / Math.max(imageGeo.parameters.width, 1),
 			opacity
 		};
-		const widthDelta = Math.abs(rect.width - desiredWidth);
-		const heightDelta = Math.abs(rect.height - desiredHeight);
-		const widthTolerance = Math.max(24, desiredWidth * 0.12);
-		const heightTolerance = Math.max(24, desiredHeight * 0.12);
-		const rectLooksUnstable =
-			rect.width < 32 ||
-			rect.height < 32 ||
-			widthDelta > widthTolerance ||
-			heightDelta > heightTolerance;
-		if (rectLooksUnstable) {
+		if (rect.width < 32 || rect.height < 32) {
 			return {
 				...fallbackHeroPos
 			};

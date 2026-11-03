@@ -273,14 +273,15 @@ async function streamResponse({
 			})
 			.on('response.failed', (event) => {
 				console.error('[API] Responses API run failed:', event.response.error);
-				controller.error(new Error(event.response.error?.message ?? 'Responses API run failed'));
 			})
 			.on('error', (err) => {
 				console.error('[API] Stream error:', err);
-				controller.error(err);
 			});
 
 		const finalResponse = await responseStream.finalResponse();
+		if (finalResponse.status !== 'completed') {
+			throw new Error(finalResponse.error?.message ?? `Responses API run ${finalResponse.status}`);
+		}
 		console.log('[API] Final response conversation object:', finalResponse.conversation);
 		console.log(
 			'[API] Final response conversation_id (if any):',
@@ -301,9 +302,11 @@ async function streamResponse({
 		const toolOutputs: ResponseInput = [];
 		for (const call of functionCalls) {
 			const args = parseFunctionArgs(call);
-			controller.enqueue(`func_run ${call.name} ${JSON.stringify(args)} end_run`);
-			await maybeSendEmail(call.name, args);
-			toolOutputs.push(buildFunctionOutput(call, { status: 'success' }));
+			const result = await maybeSendEmail(call.name, args);
+			if (result.status === 'success') {
+				controller.enqueue(`func_run ${call.name} ${JSON.stringify(args)} end_run`);
+			}
+			toolOutputs.push(buildFunctionOutput(call, result));
 		}
 
 		currentResponse = await runModel(toolOutputs);
@@ -357,21 +360,23 @@ function buildFunctionOutput(
 }
 
 async function maybeSendEmail(name: string, args: Record<string, unknown>) {
-	if (name !== 'send_a_message') return;
+	if (name !== 'send_a_message') return { status: 'success' };
 	const sender = typeof args.name === 'string' ? args.name : '';
 	const contact = typeof args.contact_information === 'string' ? args.contact_information : '';
 	const message = typeof args.user_message === 'string' ? args.user_message : '';
 
 	if (!sender || !contact || !message) {
 		console.warn('[API] Missing fields for send_a_message:', args);
-		return;
+		return { status: 'error', message: 'Missing contact information or message.' };
 	}
 
 	try {
 		await transporter.sendMail(mailData(sender, contact, message));
 		console.log('[API] Email sent successfully');
+		return { status: 'success' };
 	} catch (err) {
 		console.error('[API] Email error:', err);
+		return { status: 'error', message: 'Unable to send the message.' };
 	}
 }
 

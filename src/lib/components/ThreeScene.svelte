@@ -19,9 +19,10 @@
 	import Cards from './Cards.svelte';
 	import IntroGridScene from './IntroGridScene.svelte';
 	import { page } from '$app/state';
-	import type { PageData } from '../../routes/$types';
+	import type { PageData } from '../../routes/(site)/$types';
 	import { beforeNavigate } from '$app/navigation';
 	import { isMobile, isMobileSafari } from '#lib/utils/device.js';
+	import { GATE_MAX_CARDS } from '#lib/utils/introGate.js';
 
 	let {
 		data,
@@ -33,6 +34,12 @@
 		mouse?: { x: number; y: number };
 	} = $props();
 	const textures: Texture[] = $state([]);
+	const trailMedia = $derived(
+		textures.slice(0, GATE_MAX_CARDS).map((texture, index) => {
+			const media = texture.image as HTMLImageElement | HTMLVideoElement | undefined;
+			return media?.currentSrc || media?.src || `texture-${index}`;
+		})
+	);
 	const { camera, canvas, renderer, size } = useThrelte();
 	const { load: loadTexture } = useLoader(TextureLoader);
 	let perspectiveCamera: PerspectiveCamera | undefined = $state();
@@ -274,10 +281,19 @@
 
 	// textures
 	let textureLoadGeneration = 0;
+	const textureSourcesKey = $derived(
+		JSON.stringify([
+			preferImageThumbnails,
+			data.projects?.map((project) => [
+				project.slug.current,
+				project.thumbnail?.asset?.url,
+				project.thumbnailImage?.asset?.url
+			])
+		])
+	);
 
 	$effect(() => {
-		data.projects;
-		preferImageThumbnails;
+		textureSourcesKey;
 		untrack(async () => {
 			if (!data.projects) return;
 			const generation = ++textureLoadGeneration;
@@ -405,6 +421,7 @@
 					data={data as Required<PageData>}
 					home={true}
 					works={false}
+					{trailMedia}
 					homeAspectRatio={preferImageThumbnails ? 16 / 9 : undefined}
 				/>
 			{/key}

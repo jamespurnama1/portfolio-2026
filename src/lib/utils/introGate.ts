@@ -21,6 +21,7 @@ const HIDDEN: GateTransform = { x: 0, y: 0, z: 0, scale: 0, ry: 0, opacity: 0 };
 
 const spawns: ({ t0: number; x: number; y: number } | undefined)[] = [];
 let nextSpawn = 0;
+let lastSpawnMedia: string | undefined;
 let lastSpawnAt = 0;
 let lastAdvance = -1;
 let lastPointerSpawn = { x: -9999, y: -9999 };
@@ -29,7 +30,21 @@ let lastPointerSpawn = { x: -9999, y: -9999 };
 export const gatePointer = { x: -9999, y: -9999 };
 
 // Shared per-frame step; every card calls this, only the first call in a frame does work.
-function advance(now: number, count: number, width: number, height: number) {
+function spawn(media: string[], now: number, x: number, y: number) {
+	for (let offset = 0; offset < media.length; offset += 1) {
+		const index = (nextSpawn + offset) % media.length;
+		if (media[index] === lastSpawnMedia) continue;
+		spawns[index] = { t0: now, x, y };
+		lastSpawnMedia = media[index];
+		nextSpawn = index + 1;
+		lastSpawnAt = now;
+		return true;
+	}
+	return false;
+}
+
+function advance(now: number, media: string[], width: number, height: number) {
+	if (!media.length) return;
 	if (now - lastAdvance < 4) return;
 	lastAdvance = now;
 	const phase = introGateStore.phase;
@@ -41,10 +56,9 @@ function advance(now: number, count: number, width: number, height: number) {
 			gatePointer.y - lastPointerSpawn.y
 		);
 		if (gatePointer.x < 0 || moved < POINTER_MIN_DISTANCE) return;
-		lastPointerSpawn = { x: gatePointer.x, y: gatePointer.y };
-		spawns[nextSpawn % count] = { t0: now, x: gatePointer.x, y: gatePointer.y };
-		nextSpawn += 1;
-		lastSpawnAt = now;
+		if (spawn(media, now, gatePointer.x, gatePointer.y)) {
+			lastPointerSpawn = { x: gatePointer.x, y: gatePointer.y };
+		}
 		return;
 	}
 
@@ -55,20 +69,18 @@ function advance(now: number, count: number, width: number, height: number) {
 		arrowScreen.y > -height * 0.15 &&
 		arrowScreen.y < height * 1.15;
 	if (!onScreen || now - lastSpawnAt < TRAIL_INTERVAL_MS) return;
-	spawns[nextSpawn % count] = { t0: now, x: arrowScreen.x, y: arrowScreen.y };
-	nextSpawn += 1;
-	lastSpawnAt = now;
+	spawn(media, now, arrowScreen.x, arrowScreen.y);
 }
 
 export function gateTransform(
 	index: number,
-	count: number,
+	media: string[],
 	cardWidth: number,
 	width: number,
 	height: number,
 	now: number
 ): GateTransform {
-	advance(now, count, width, height);
+	advance(now, media, width, height);
 	const spawn = spawns[index];
 	if (!spawn) return HIDDEN;
 	const u = (now - spawn.t0) / TRAIL_LIFETIME_MS;

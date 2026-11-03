@@ -33,7 +33,9 @@
 		sfx.welcome();
 		// The ambient track joins once the welcome sound has played.
 		window.setTimeout(() => ambient.startIfEnabled(), 900);
-		gsap.to(groupEl, { opacity: 0, filter: 'blur(18px)', duration: 0.6, ease: 'power2.in' });
+		if (groupEl) {
+			gsap.to(groupEl, { opacity: 0, filter: 'blur(18px)', duration: 0.6, ease: 'power2.in' });
+		}
 		introGateStore.phase = 'revealing';
 	}
 

@@ -2,7 +2,7 @@
 	import Loading from '#lib/components/Loading.svelte';
 	import { scale } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
-	import '../app.css';
+	import '../../app.css';
 	// import { Canvas } from '@threlte/core';
 	import Three from '#lib/components/Three.svelte';
 	import Nav from '#lib/components/Nav.svelte';
@@ -218,15 +218,15 @@
 	const tl = gsap.timeline();
 
 	// Navigation Animation
-beforeNavigate(({ to, shallow }) => {
-	if (shallow) return;
-	if (to?.url.pathname.includes('work')) {
-		animationStore.isTransitioning = true;
-	}
-});
+	beforeNavigate(({ to, shallow }) => {
+		if (shallow) return;
+		if (to?.url.pathname.includes('work')) {
+			animationStore.isTransitioning = true;
+		}
+	});
 
-afterNavigate(({ from, to, shallow }) => {
-	if (shallow) return;
+	afterNavigate(({ from, to, shallow }) => {
+		if (shallow) return;
 		const fromPath = from?.url.pathname;
 		const toPath = to?.url.pathname;
 		if (!loadStore.loaded || fromPath === toPath) return;
@@ -820,7 +820,8 @@ afterNavigate(({ from, to, shallow }) => {
 			>
 				<Loading />
 			</div>
-		{:else if data.projectsLength}
+		{/if}
+		{#if data.projectsLength && (!browser || !showLoadingScreen)}
 			{@render children()}
 			{#if showProjectList}
 				<div
@@ -889,7 +890,7 @@ afterNavigate(({ from, to, shallow }) => {
 							? project.thumbnail.asset.url
 							: project.thumbnail.asset.url.replace(
 									'https://cdn.sanity.io/files/rdnxsacz/production/',
-									'/dev/'
+									'/dev/assets/'
 								)}
 						id={project.slug!.current}
 						crossorigin="anonymous"

@@ -19,7 +19,8 @@
 	const branches = [
 		{ label: 'v1.0.0', href: 'https://example.com/v1' },
 		{ label: 'v2.0.0', href: 'https://example.com/v2' },
-		{ label: 'v3.0.0', href: 'https://example.com/v3' }
+		{ label: 'v3.0.0', href: 'https://example.com/v3' },
+		{ label: 'v4.0.1', href: '/', current: true }
 	];
 	const SNAP_RADIUS = 140;
 	let activeSnapId = $state('');
@@ -56,7 +57,7 @@
 			if (!bestMatch || distance < bestMatch.distance) {
 				bestMatch = {
 					id: button.dataset.branchId ?? '',
-					x: centerX,
+					x: rect.left - 20,
 					y: centerY,
 					distance
 				};
@@ -88,7 +89,7 @@
 		activeSnapId = id;
 		cursorSnapStore.setTarget({
 			id,
-			x: rect.left + rect.width / 2,
+			x: rect.left - 20,
 			y: rect.top + rect.height / 2
 		});
 	}
@@ -114,12 +115,13 @@
 
 <section
 	class="branch-page"
+	aria-label="Portfolio versions"
 	onpointermove={updateSnapTarget}
 	onpointerleave={clearSnap}
 	onpointerup={handleSectionPointerUp}
 >
-	<div class="branch-list" aria-label="Portfolio versions">
-		{#each branches as branch, index}
+	<div class="branch-list">
+		{#each branches as branch, index (branch.label)}
 			<a
 				bind:this={branchButtons[index]}
 				in:rise|global={{ delay: 150 + index * 110 }}
@@ -128,11 +130,12 @@
 				class:branch-link--snapped={activeSnapId === branch.label}
 				data-branch-id={branch.label}
 				href={branch.href}
-				target="_blank"
-				rel="noreferrer"
+				target={branch.current ? undefined : '_blank'}
+				rel={branch.current ? undefined : 'noreferrer'}
 				onfocus={(event) => snapToFocusedButton(event.currentTarget as HTMLAnchorElement)}
 				onblur={clearSnap}
 			>
+				{#if branch.current}<span class="branch-current">Current</span>{/if}
 				<ScrambleText text={branch.label} active={activeSnapId === branch.label} />
 			</a>
 		{/each}
@@ -154,71 +157,99 @@
 	}
 
 	.branch-list {
-		display: flex;
+		display: grid;
+		grid-template-columns: repeat(4, max-content);
 		align-items: center;
-		justify-content: center;
-		gap: clamp(0.75rem, 2vw, 1.5rem);
-		flex-wrap: wrap;
+		justify-content: space-between;
+		width: min(100%, 74rem);
+		gap: 3rem;
 	}
 
 	.branch-link {
 		position: relative;
 		display: inline-flex;
 		align-items: center;
-		justify-content: center;
-		padding: 0.9rem 1.35rem;
-		background-color: #fff;
 		color: #000;
 		font-family: var(--font-mono, monospace);
-		font-size: clamp(0.95rem, 1.5vw, 1.15rem);
+		font-size: 3rem;
 		line-height: 1;
 		text-transform: uppercase;
 		text-decoration: none;
-		box-shadow:
-			0 0 10px rgb(255, 255, 255, 0.3),
-			-10px 0 40px rgb(255, 0, 255, 0.3),
-			10px 0 40px rgb(0, 255, 255, 0.3);
-		transition:
-			transform 0.3s ease,
-			opacity 0.3s ease;
+		transition: text-shadow 0.3s ease;
 	}
 
-	.branch-link:hover {
-		transform: translateY(-2px);
-	}
-
-	.branch-link--snapped {
-		transform: translateY(-4px) scale(1.04);
-		box-shadow:
-			0 0 18px rgb(255, 255, 255, 0.42),
-			-16px 0 56px rgb(255, 0, 255, 0.4),
-			16px 0 56px rgb(0, 255, 255, 0.4);
-	}
-
-	:global(html[data-theme='dark']) .branch-link {
-		background-color: #000;
+	:global([data-theme='dark']) .branch-link {
 		color: #fff;
 	}
 
-	.branch-glow::after {
-		content: '';
+	.branch-current {
 		position: absolute;
-		inset: 0;
-		z-index: -1;
-		opacity: 0;
-		transition: opacity 0.3s ease-in-out;
-		animation: glowing 5s infinite;
+		bottom: calc(100% + 0.4rem);
+		left: 0;
+		font-size: 0.75rem;
 	}
 
-	.branch-glow:hover::after,
-	.branch-link--snapped::after,
-	.branch-glow:focus-visible::after {
-		opacity: 1;
+	.branch-link--snapped,
+	.branch-link:focus-visible {
+		text-shadow:
+			0 0 12px currentColor,
+			0 0 30px currentColor;
+	}
+
+	:global(html[data-theme='light']) .branch-link--snapped,
+	:global(html[data-theme='light']) .branch-link:focus-visible {
+		text-shadow:
+			0 0 10px rgba(255, 255, 255, 0.75),
+			-10px 0 80px rgba(255, 0, 255, 0.5),
+			10px 0 80px rgba(0, 255, 255, 0.5);
+		animation: branch-glowing 5s infinite;
+	}
+
+	@keyframes branch-glowing {
+		0%,
+		100% {
+			text-shadow:
+				0 0 10px rgba(255, 255, 255, 0.75),
+				-10px 0 80px rgba(255, 0, 255, 0.5),
+				10px 0 80px rgba(0, 255, 255, 0.5);
+		}
+		25% {
+			text-shadow:
+				0 0 10px rgba(255, 255, 255, 0.75),
+				0 0 20px rgba(255, 0, 255, 0.3),
+				0 0 50px rgba(0, 255, 255, 0.5);
+		}
+		50% {
+			text-shadow:
+				0 0 10px rgba(255, 255, 255, 0.75),
+				10px 0 50px rgba(255, 0, 255, 0.5),
+				-10px 0 20px rgba(0, 255, 255, 0.3);
+		}
+		75% {
+			text-shadow:
+				0 0 10px rgba(255, 255, 255, 0.75),
+				0 0 80px rgba(255, 0, 255, 0.5),
+				0 0 80px rgba(0, 255, 255, 0.5);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		:global(html[data-theme='light']) .branch-link--snapped,
+		:global(html[data-theme='light']) .branch-link:focus-visible {
+			animation: none;
+		}
 	}
 
 	.branch-link:focus-visible {
-		outline: none;
-		transform: translateY(-2px);
+		outline: 1px solid currentColor;
+		outline-offset: 0.4rem;
+	}
+
+	@media (max-width: 1023px) {
+		.branch-list {
+			grid-template-columns: repeat(2, max-content);
+			justify-content: space-evenly;
+		}
 	}
 
 	@media (max-width: 767px) {
@@ -227,11 +258,12 @@
 		}
 
 		.branch-list {
-			gap: 0.75rem;
+			justify-content: center;
+			gap: 2.5rem 3rem;
 		}
 
 		.branch-link {
-			width: min(100%, 16rem);
+			font-size: 2rem;
 		}
 	}
 </style>

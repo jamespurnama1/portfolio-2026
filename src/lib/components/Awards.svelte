@@ -13,14 +13,36 @@
 	let {
 		item,
 		class: className = '',
-		stacked = false
-	}: { item: Post; class?: string; stacked?: boolean } = $props();
+		stacked = false,
+		horizontal = false,
+		landingLayout = false
+	}: {
+		item: Post;
+		class?: string;
+		stacked?: boolean;
+		horizontal?: boolean;
+		landingLayout?: boolean;
+	} = $props();
 	const awards = $derived([...(item.awards as Award[])].sort((a, b) => a.index - b.index));
+	const alignAsLanding = $derived(landingLayout || !page.params.slug);
 
 	onMount(() => {
 		isTouch = window.matchMedia('(hover: none)').matches;
 		mounted = true;
 	});
+
+	function clearAward(event: FocusEvent | MouseEvent) {
+		const button = event.currentTarget as HTMLButtonElement;
+		if (event.type === 'mouseleave') {
+			const focused = document.activeElement;
+			if (focused instanceof HTMLButtonElement && awardsEl[0]?.contains(focused)) {
+				currAward = focused.getAttribute('aria-label') ?? '';
+				return;
+			}
+		}
+		if (event.type === 'blur' && button.matches(':hover')) return;
+		currAward = '';
+	}
 </script>
 
 {#if mounted}
@@ -28,16 +50,18 @@
 		bind:this={awardsEl[0]}
 		in:fly={{ x: isTouch ? 0 : 200, duration: 500, easing: cubicInOut }}
 		out:fade
-		class:scale-[75%]={page.params.slug}
-		class="pointer-events-auto relative z-10 flex w-full max-w-full flex-wrap items-start justify-start {page
-			.params.slug
-			? 'max-md:origin-left'
-			: 'max-md:justify-center max-md:origin-center'} gap-4 origin-left scale-75 md:gap-5 md:scale-100 {stacked
+		class="pointer-events-auto relative z-10 flex w-full max-w-full flex-wrap items-start justify-start {alignAsLanding
+			? 'max-md:justify-center max-md:origin-left'
+			: 'max-md:origin-left'} gap-4 origin-left {horizontal ? '' : 'scale-100'} md:gap-5 {stacked
 			? 'md:grid md:grid-cols-[repeat(2,max-content)] md:justify-start md:gap-x-4'
 			: ''} {className}"
 	>
 		{#each awards as award}
-			<div class="flex w-min shrink-0 flex-col items-start gap-1">
+			<div
+				class="flex w-min shrink-0 {horizontal
+					? 'flex-row items-center'
+					: 'flex-col items-start'} gap-1"
+			>
 				<img
 					class="w-10 h-10 object-contain brightness-100"
 					src={award.icon.asset.url}
@@ -48,56 +72,64 @@
 					{#if award.gold}
 						{#each award.gold as gold}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-gold"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-gold"
 								aria-label={gold}
 								onclick={() => (currAward = gold)}
+								onfocus={() => (currAward = gold)}
+								onblur={clearAward}
 								onmouseenter={() => {
 									currAward = gold;
 									sfx.tick();
 								}}
-								onmouseleave={() => (currAward = '')}
+								onmouseleave={clearAward}
 							></button>
 						{/each}
 					{/if}
 					{#if award.silver}
 						{#each award.silver as silver}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-silver"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-silver"
 								aria-label={silver}
 								onclick={() => (currAward = silver)}
+								onfocus={() => (currAward = silver)}
+								onblur={clearAward}
 								onmouseenter={() => {
 									currAward = silver;
 									sfx.tick();
 								}}
-								onmouseleave={() => (currAward = '')}
+								onmouseleave={clearAward}
 							></button>
 						{/each}
 					{/if}
 					{#if award.bronze}
 						{#each award.bronze as bronze}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-bronze"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-bronze"
 								aria-label={bronze}
 								onclick={() => (currAward = bronze)}
+								onfocus={() => (currAward = bronze)}
+								onblur={clearAward}
 								onmouseenter={() => {
 									currAward = bronze;
 									sfx.tick();
 								}}
-								onmouseleave={() => (currAward = '')}
+								onmouseleave={clearAward}
 							></button>
 						{/each}
 					{/if}
 					{#if award.crystal}
 						{#each award.crystal as crystal}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 bg-crystal"
+								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-crystal"
 								aria-label={crystal}
 								onclick={() => (currAward = crystal)}
+								onfocus={() => (currAward = crystal)}
+								onblur={clearAward}
 								onmouseenter={() => {
 									currAward = crystal;
 									sfx.tick();
 								}}
-								onmouseleave={() => (currAward = '')}
+								onmouseleave={clearAward}
 							></button>
 						{/each}
 					{/if}
@@ -107,9 +139,9 @@
 	</div>
 	<p
 		bind:this={awardsEl[1]}
-		class="w-full text-left {page.params.slug
-			? ''
-			: 'max-md:text-center'} text-[0.45em] max-md:text-xs md:text-xs md:h-6 md:my-2 font-mono font-light {className}"
+		class="w-full text-left {alignAsLanding
+			? 'max-md:text-center'
+			: ''} text-[0.45em] max-md:text-xs md:text-xs md:h-6 md:my-2 font-mono font-light {className}"
 		transition:fly={{ x: isTouch ? 0 : 200, duration: 500, easing: cubicInOut, delay: 100 }}
 	>
 		{currAward
