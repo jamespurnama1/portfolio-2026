@@ -12,19 +12,25 @@
 	let awardsEl = $state([]) as HTMLDivElement[];
 	let {
 		item,
+		awards: suppliedAwards,
 		class: className = '',
 		stacked = false,
 		horizontal = false,
-		landingLayout = false
+		landingLayout = false,
+		compact = false
 	}: {
-		item: Post;
+		item?: Post;
+		awards?: Award[];
 		class?: string;
 		stacked?: boolean;
 		horizontal?: boolean;
 		landingLayout?: boolean;
+		compact?: boolean;
 	} = $props();
-	const awards = $derived([...(item.awards as Award[])].sort((a, b) => a.index - b.index));
-	const alignAsLanding = $derived(landingLayout || !page.params.slug);
+	const awards = $derived(
+		[...(suppliedAwards ?? item?.awards ?? [])].sort((a, b) => (a.index ?? 999) - (b.index ?? 999))
+	);
+	const alignAsLanding = $derived(!compact && (landingLayout || !page.params.slug));
 
 	onMount(() => {
 		isTouch = window.matchMedia('(hover: none)').matches;
@@ -50,11 +56,12 @@
 		bind:this={awardsEl[0]}
 		in:fly={{ x: isTouch ? 0 : 200, duration: 500, easing: cubicInOut }}
 		out:fade
-		class="pointer-events-auto relative z-10 flex w-full max-w-full flex-wrap items-start justify-start {alignAsLanding
+		class="awards-list pointer-events-auto relative z-10 flex w-full max-w-full flex-wrap items-start justify-start {alignAsLanding
 			? 'max-md:justify-center max-md:origin-left'
 			: 'max-md:origin-left'} gap-4 origin-left {horizontal ? '' : 'scale-100'} md:gap-5 {stacked
 			? 'md:grid md:grid-cols-[repeat(2,max-content)] md:justify-start md:gap-x-4'
 			: ''} {className}"
+		class:compact
 	>
 		{#each awards as award}
 			<div
@@ -139,10 +146,11 @@
 	</div>
 	<p
 		bind:this={awardsEl[1]}
-		class="w-full text-left {alignAsLanding
+		class="award-label w-full text-left {alignAsLanding
 			? 'max-md:text-center'
 			: ''} text-[0.45em] max-md:text-xs md:text-xs md:h-6 md:my-2 font-mono font-light {className}"
 		transition:fly={{ x: isTouch ? 0 : 200, duration: 500, easing: cubicInOut, delay: 100 }}
+		class:compact
 	>
 		{currAward
 			? currAward.toUpperCase()
@@ -151,3 +159,38 @@
 				: 'HOVER TO SEE EACH AWARD'}
 	</p>
 {/if}
+
+<style>
+	.awards-list.compact {
+		gap: 0.75rem;
+	}
+
+	.compact > div {
+		width: auto;
+		flex-direction: column-reverse;
+		gap: 0.35rem;
+	}
+
+	.compact img {
+		width: 2rem;
+		height: 2rem;
+	}
+
+	.compact > div > div {
+		display: flex;
+		flex-wrap: nowrap;
+		min-width: 0;
+		gap: 2px;
+	}
+
+	.compact button {
+		width: 0.75rem;
+		height: 0.2rem;
+	}
+
+	.award-label.compact {
+		min-height: 1.5rem;
+		margin: 0;
+		font-size: 0.625rem;
+	}
+</style>

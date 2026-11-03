@@ -31,6 +31,19 @@
 		{#if revealed}
 			<a
 				transition:fly={{ y: -200, duration: 500, easing: cubicInOut }}
+				href="/about"
+				aria-current={page.url.pathname === '/about' ? 'page' : undefined}
+				><p><ScrambleText text="about" /></p></a
+			>
+			<a
+				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 100 }}
+				class="block max-md:hidden"
+				href="mailto:hello@jameshenry.site"
+				onclick={() => track('email_click', { source: 'nav' })}
+				><p><ScrambleText text="hello@jameshenry.site" /></p></a
+			>
+			<a
+				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 150 }}
 				href="/Resume_James%20Henry.pdf"
 				download="Resume_James Henry.pdf"
 				target="_blank"
@@ -50,13 +63,6 @@
 				on:click={() => gptStore.opened = true}>
 				<p class="uppercase">ask me anything</p></button
 			> -->
-			<a
-				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 100 }}
-				class="block max-md:hidden"
-				href="mailto:hello@jameshenry.site"
-				onclick={() => track('email_click', { source: 'nav' })}
-				><p><ScrambleText text="hello@jameshenry.site" /></p></a
-			>
 			<!-- temporarily disabled gallery -->
 			<!-- <a href="/gallery"><p>gallery</p></a> -->
 			<a
