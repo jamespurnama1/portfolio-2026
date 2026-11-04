@@ -65,7 +65,8 @@ void main() {
 
     gl_FragColor = image;
     if (u_flags.y > 0.5) { // applyOutputColorSpace
-        #include <colorspace_fragment>
+        // Explicit rather than <colorspace_fragment>: the post-FX targets are linear, so the built-in is a no-op there.
+        gl_FragColor = sRGBTransferOETF(gl_FragColor);
     }
     if (u_flags.z > 0.5) { // invertAfterOutputColorSpace
         gl_FragColor.rgb = 1.0 - gl_FragColor.rgb;

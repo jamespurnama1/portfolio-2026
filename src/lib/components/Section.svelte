@@ -6,6 +6,9 @@
 	import type { MediaAsset, Post } from '#lib/types/index.js';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { placeholderStyle } from '#lib/utils/placeholder.js';
+	import { aiLabel } from '#lib/utils/ai.js';
+
+	type MetaItem = { text: string | number; title?: string };
 
 	let {
 		index,
@@ -42,6 +45,30 @@
 		if (node.complete && node.naturalWidth > 0) imageLoaded = true;
 	}
 	const isHeroSection = $derived(index === 0);
+	// The tooltip is moved to <body> so the page's difference blend doesn't invert it.
+	let tip = $state<{ text: string; x: number; y: number } | null>(null);
+	function showTip(event: MouseEvent | FocusEvent, text: string) {
+		if (event instanceof MouseEvent) {
+			tip = { text, x: event.clientX, y: event.clientY };
+		} else {
+			const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+			tip = { text, x: rect.left, y: rect.bottom };
+		}
+	}
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return { destroy: () => node.remove() };
+	}
+	const metaItems = $derived<MetaItem[]>(
+		awardsItem
+			? [
+					{ text: awardsItem.type },
+					...(awardsItem.role ?? []).map((text) => ({ text })),
+					{ text: aiLabel(awardsItem.aiInvolvement), title: awardsItem.aiDescription ?? undefined },
+					{ text: awardsItem.year }
+				].filter((meta) => meta.text)
+			: []
+	);
 	const hasText = $derived(!!heading?.trim() || !!body?.trim());
 	const displayImageSrc = $derived.by(() => {
 		if (isHeroSection && video && !image) return undefined;
@@ -118,9 +145,16 @@
 		<div class="order-3 w-full min-w-0 md:col-start-1 md:row-start-2">
 			{#if awardsItem}
 				<p class="font-mono text-xs text-white mix-blend-difference uppercase">
-					{[awardsItem.type, ...(awardsItem.role ?? []), awardsItem.year]
-						.filter(Boolean)
-						.join(' / ')}
+					{#each metaItems as meta, i}{#if i}{' \u00B7 '}{/if}{#if meta.title}<span
+								class="pointer-events-auto cursor-help underline decoration-dotted"
+								role="note"
+								tabindex="0"
+								onmouseenter={(e) => showTip(e, meta.title!)}
+								onmousemove={(e) => showTip(e, meta.title!)}
+								onmouseleave={() => (tip = null)}
+								onfocus={(e) => showTip(e, meta.title!)}
+								onblur={() => (tip = null)}>{meta.text}</span
+							>{:else}<span>{meta.text}</span>{/if}{/each}
 				</p>
 				{#if awardsItem.description}
 					<p class="mt-4 whitespace-pre-wrap text-white mix-blend-difference">
@@ -228,3 +262,49 @@
 		</figure>
 	</div>
 </section>
+
+{#if tip}
+	<div
+		use:portal
+		role="tooltip"
+		class="ai-tip font-mono text-xs"
+		class:dark={optionsStore.dark}
+		style:left="{Math.min(
+			tip.x + 14,
+			(typeof window === 'undefined' ? 0 : window.innerWidth) - 300
+		)}px"
+		style:top="{tip.y + 18}px"
+	>
+		{tip.text}
+	</div>
+{/if}
+
+<style>
+	.ai-tip {
+		position: fixed;
+		z-index: 70;
+		width: max-content;
+		max-width: 18rem;
+		padding: 0.6rem 0.8rem;
+		pointer-events: none;
+		background-color: #fff;
+		color: #000;
+		box-shadow:
+			0 0 10px rgb(255, 255, 255, 0.3),
+			-10px 0 40px rgb(255, 0, 255, 0.3),
+			10px 0 40px rgb(0, 255, 255, 0.3);
+	}
+
+	.ai-tip.dark {
+		background-color: #000;
+		color: #fff;
+	}
+
+	.ai-tip::after {
+		content: '';
+		position: absolute;
+		z-index: -1;
+		inset: 0;
+		animation: glowing 5s infinite;
+	}
+</style>

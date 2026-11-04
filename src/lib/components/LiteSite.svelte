@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { marked } from 'marked';
 	import { liteStore } from '#lib/stores/lite.svelte.js';
+	import { aiLabel } from '#lib/utils/ai.js';
 	import type { Post, Landing, Gallery, GalleryMedia } from '#lib/types/index.js';
 
 	type Skill = { _key: string; skill: string; type: string; percentage?: number | null };
@@ -96,6 +97,9 @@
 			{#if project.year}<li>Year: {project.year}</li>{/if}
 			{#if project.type}<li>Type: {project.type}</li>{/if}
 			{#if project.role?.length}<li>Role: {list(project.role as string[])}</li>{/if}
+			<li>
+				{aiLabel(project.aiInvolvement)}{project.aiDescription ? `: ${project.aiDescription}` : ''}
+			</li>
 			{#if project.tools?.length}<li>Tools: {list(project.tools as string[])}</li>{/if}
 			{#if project.link}<li><a href={project.link}>{project.link}</a></li>{/if}
 		</ul>

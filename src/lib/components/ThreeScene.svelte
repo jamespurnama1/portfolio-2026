@@ -21,7 +21,7 @@
 	import { page } from '$app/state';
 	import type { PageData } from '../../routes/(site)/$types';
 	import { beforeNavigate } from '$app/navigation';
-	import { isMobile, isMobileSafari } from '#lib/utils/device.js';
+	import { isMobile, isMobileSafari, isSafari } from '#lib/utils/device.js';
 	import { GATE_MAX_CARDS } from '#lib/utils/introGate.js';
 
 	let {
@@ -213,11 +213,43 @@
 		});
 	}
 
+	function canDecode(video: HTMLVideoElement) {
+		if (video.error) return false;
+		// Safari (esp. iOS) can't play VP9 WebM; canPlayType reports that up front.
+		if (/\.webm(\?|$)/i.test(video.currentSrc || video.src)) {
+			return video.canPlayType('video/webm; codecs="vp9"') !== '';
+		}
+		return true;
+	}
+
+	function placeholderTexture(label: string) {
+		const canvas = document.createElement('canvas');
+		canvas.width = 1280;
+		canvas.height = 720;
+		const ctx = canvas.getContext('2d')!;
+		ctx.fillStyle = '#161616';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		ctx.fillStyle = '#ffffff';
+		ctx.font = '600 64px sans-serif';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText(label.toUpperCase(), canvas.width / 2, canvas.height / 2);
+		return configureColorTexture(new CanvasTexture(canvas));
+	}
+
 	async function createVideoTexture(video: HTMLVideoElement) {
 		await waitForVideoData(video);
+		if (!canDecode(video)) {
+			console.warn(
+				'Video thumbnail is not playable in this browser, using a placeholder',
+				video.id
+			);
+			return placeholderTexture(video.id.replace(/-/g, ' '));
+		}
 		const texture = new VideoTexture(video);
 		if (isMobileSafari) throttleTextureUpdates(texture, 1000 / 20);
-		texture.format = RGBFormat;
+		// RGB uploads from video are unreliable in WebKit; leave it at RGBA there.
+		if (!isSafari) texture.format = RGBFormat;
 		return configureColorTexture(texture, { isVideo: true });
 	}
 

@@ -76,8 +76,9 @@
 	$effect(() => {
 		if (!liteStore.slow) return;
 		untrack(() => {
-			mediaEl.forEach((video) => {
-				if (!video) return;
+			mediaEl.forEach((video, i) => {
+				// Projects without a still image still need their video.
+				if (!video || !data.projects?.[i]?.thumbnailImage?.asset?.url) return;
 				video.pause();
 				video.removeAttribute('src');
 				video.load();
@@ -952,6 +953,7 @@
 										'/dev/assets/'
 									)}
 							id={project.slug!.current}
+							data-has-still={project.thumbnailImage?.asset?.url ? '' : undefined}
 							crossorigin="anonymous"
 							loop
 						></video>

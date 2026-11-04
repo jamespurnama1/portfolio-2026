@@ -4,7 +4,10 @@ export const postType = defineType({
 	name: 'post',
 	title: 'Post',
 	type: 'document',
-	fieldsets: [{ name: 'hero', title: 'Hero Media' }],
+	fieldsets: [
+		{ name: 'hero', title: 'Hero Media' },
+		{ name: 'ai', title: 'AI Involvement', options: { columns: 1 } }
+	],
 	fields: [
 		defineField({
 			name: 'title',
@@ -90,6 +93,28 @@ export const postType = defineType({
 			name: 'link',
 			type: 'url',
 			title: 'Link'
+		}),
+		defineField({
+			name: 'aiInvolvement',
+			type: 'string',
+			title: 'AI Involvement',
+			fieldset: 'ai',
+			initialValue: 'none',
+			options: {
+				layout: 'dropdown',
+				list: [
+					{ title: 'No AI Involvement', value: 'none' },
+					{ title: 'Minimal AI Involvement', value: 'minimal' },
+					{ title: 'AI Assisted', value: 'assisted' },
+					{ title: 'AI Involved', value: 'involved' }
+				]
+			}
+		}),
+		defineField({
+			name: 'aiDescription',
+			type: 'string',
+			title: 'AI description',
+			fieldset: 'ai'
 		}),
 		defineField({
 			name: 'year',

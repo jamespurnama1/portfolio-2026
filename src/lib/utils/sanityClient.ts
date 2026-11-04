@@ -93,6 +93,8 @@ export async function sanityLoad() {
     body,
     caption
   },
+  aiInvolvement,
+  aiDescription,
   link,
   slug,
   year,

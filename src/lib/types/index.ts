@@ -68,6 +68,8 @@ export interface SanityGeopoint {
 
 export type Markdown = string;
 
+export type AiInvolvement = 'none' | 'minimal' | 'assisted' | 'involved';
+
 export interface Post extends SanityDocument {
 	_type: 'post';
 	title: string;
@@ -75,6 +77,8 @@ export interface Post extends SanityDocument {
 	tools: ArrayMember<string>[];
 	type: string;
 	role: ArrayMember<string>[];
+	aiInvolvement?: AiInvolvement | null;
+	aiDescription?: string | null;
 	color: Color;
 	link: string;
 	year: number;
