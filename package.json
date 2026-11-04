@@ -22,7 +22,7 @@
 		"@types/eslint": "^9.6.1",
 		"@types/nodemailer": "^8.0.0",
 		"@types/react": "^19.3.0",
-		"@types/three": "^0.186.0",
+		"@types/three": "^0.187.0",
 		"autoprefixer": "^10.5.0",
 		"eslint": "^10.2.1",
 		"eslint-config-prettier": "^10.1.8",
@@ -70,7 +70,7 @@
 		"sanity-plugin-markdown": "^9.0.18",
 		"sharp": "^0.35.5",
 		"styled-components": "^6.6.0",
-		"three": "^0.186.1",
+		"three": "^0.187.0",
 		"vite-plugin-mkcert": "^2.0.0"
 	},
 	"overrides": {
