@@ -59,8 +59,6 @@
 	import type { SvelteComponent } from 'svelte';
 	let webGLComponent: SvelteComponent | undefined = $state();
 	let gptEl: SvelteComponent | undefined = $state();
-	let navComponent: Nav;
-	let footerComponent: Footer;
 	let mediaEl = $state([]) as HTMLVideoElement[];
 	let thumbnailEls = $state([]) as HTMLImageElement[];
 	let timer: ReturnType<typeof setTimeout> | undefined;
@@ -386,9 +384,9 @@
 					onMediaLoad();
 				};
 
-				console.log(
-					`[video:load] attachVideoListeners el[${i}] readyState:${el.readyState} src:${el.src?.slice(-40)}`
-				);
+				// console.log(
+				// 	`[video:load] attachVideoListeners el[${i}] readyState:${el.readyState} src:${el.src?.slice(-40)}`
+				// );
 				const playPromise = el.play();
 				if (playPromise?.catch) {
 					playPromise.catch((error: unknown) => {
@@ -469,31 +467,32 @@
 			const tag = `[video:${countStore.activeIndex}]`;
 			if (activeEl instanceof HTMLVideoElement) {
 				activeEl.muted = true; // ensure muted so iOS allows play() from async context
-				console.log(
-					tag,
-					'play() attempt — readyState:',
-					activeEl.readyState,
-					'paused:',
-					activeEl.paused,
-					'networkState:',
-					activeEl.networkState,
-					'src:',
-					activeEl.src?.slice(-40),
-					'videosUnlocked:',
-					videosUnlocked
-				);
+				// console.log(
+				// 	tag,
+				// 	'play() attempt — readyState:',
+				// 	activeEl.readyState,
+				// 	'paused:',
+				// 	activeEl.paused,
+				// 	'networkState:',
+				// 	activeEl.networkState,
+				// 	'src:',
+				// 	activeEl.src?.slice(-40),
+				// 	'videosUnlocked:',
+				// 	videosUnlocked
+				// );
 				activeEl
 					.play()
-					.then(() => console.log(tag, 'play() resolved ✓'))
+					// .then(() => console.log(tag, 'play() resolved ✓'))
+					.then()
 					.catch((err: unknown) => console.warn(tag, 'play() rejected —', err));
-			} else {
-				console.log(
-					tag,
-					'no video element found — mediaEl.length:',
-					mediaEl.length,
-					'activeIndex:',
-					countStore.activeIndex
-				);
+				// } else {
+				// 	console.log(
+				// 		tag,
+				// 		'no video element found — mediaEl.length:',
+				// 		mediaEl.length,
+				// 		'activeIndex:',
+				// 		countStore.activeIndex
+				// 	);
 			}
 		});
 	});
@@ -629,14 +628,15 @@
 		// This must happen regardless of scroll state so even a tap unlocks videos.
 		if (!videosUnlocked && page.url.pathname === '/') {
 			videosUnlocked = true;
-			console.log('[video:unlock] onTouchStart — unlocking', mediaEl.length, 'video(s)');
+			// console.log('[video:unlock] onTouchStart — unlocking', mediaEl.length, 'video(s)');
 			mediaEl.forEach((el, i) => {
 				if (el instanceof HTMLVideoElement) {
-					console.log(
-						`[video:unlock] el[${i}] readyState:${el.readyState} paused:${el.paused} src:${el.src?.slice(-40)}`
-					);
+					// console.log(
+					// 	`[video:unlock] el[${i}] readyState:${el.readyState} paused:${el.paused} src:${el.src?.slice(-40)}`
+					// );
 					el.play()
-						.then(() => console.log(`[video:unlock] el[${i}] play() ✓`))
+						// .then(() => console.log(`[video:unlock] el[${i}] play() ✓`))
+						.then()
 						.catch((err: unknown) => console.warn(`[video:unlock] el[${i}] play() ✗`, err));
 				}
 			});
@@ -851,7 +851,7 @@
 			: 'overflow-x-hidden overflow-y-hidden'}"
 	>
 		<!-- Header -->
-		<Nav bind:this={navComponent} revealed={showSiteChrome} />
+		<Nav revealed={showSiteChrome} />
 
 		<!-- Main -->
 		<main
@@ -931,7 +931,7 @@
 			categoryAnim={webGLComponent ? webGLComponent.getRiveSceneInstance().categoryAnim : null}
 		/>
 		<!-- Footer -->
-		<Footer bind:this={footerComponent} revealed={showSiteChrome} />
+		<Footer revealed={showSiteChrome} />
 
 		<!-- Video Elements -->
 		<div class="absolute top-0 w-52 pointer-events-none {showSource}">

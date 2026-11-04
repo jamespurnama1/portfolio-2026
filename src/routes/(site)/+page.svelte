@@ -436,7 +436,8 @@
 		homeNav.step = keyStep;
 		homeNav.top = () => {
 			targetStep = 0;
-			tweenToY(0, 1);
+			const viewportDistance = window.scrollY / window.innerHeight;
+			tweenToY(0, clamp(viewportDistance * 0.65, 1, 3));
 		};
 		return () => {
 			homeNav.step = null;
