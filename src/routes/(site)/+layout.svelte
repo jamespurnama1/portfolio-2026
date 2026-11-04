@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Loading from '#lib/components/Loading.svelte';
+	import LiteSite from '#lib/components/LiteSite.svelte';
+	import { liteStore } from '#lib/stores/lite.svelte.js';
 	import { scale } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 	import '../../app.css';
@@ -69,6 +71,20 @@
 	// per element; after that, play() from any context (RAF/$effect) succeeds.
 	let videosUnlocked = false;
 	let preferImageThumbnails = $state(false);
+
+	// On a slow connection, stop any thumbnail videos already loading and use still images only.
+	$effect(() => {
+		if (!liteStore.slow) return;
+		untrack(() => {
+			mediaEl.forEach((video) => {
+				if (!video) return;
+				video.pause();
+				video.removeAttribute('src');
+				video.load();
+			});
+			preferImageThumbnails = true;
+		});
+	});
 	let projectListWrapper = $state() as HTMLDivElement | undefined;
 	let projectListFallback = $state() as HTMLDivElement | undefined;
 	let currentProjectListHost: HTMLElement | null = null;
@@ -825,53 +841,56 @@
 
 <svelte:window bind:innerWidth bind:innerHeight on:keydown={onKeyDown} />
 
-<div
-	class="app min-h-svh w-screen {page.url.pathname === '/about'
-		? 'overflow-x-clip overflow-y-visible'
-		: 'overflow-x-hidden overflow-y-hidden'}"
->
-	<!-- Header -->
-	<Nav bind:this={navComponent} revealed={showSiteChrome} />
-
-	<!-- Main -->
-	<main
-		class="w-full overscroll-none {page.url.pathname === '/gallery' && loadStore.loaded
-			? 'z-16'
-			: 'z-10'} relative flex flex-col items-center justify-center transition-opacity duration-500"
-		class:mix-blend-difference={page.url.pathname !== '/branch' &&
-			page.url.pathname !== '/about' &&
-			page.url.pathname !== '/gallery'}
-		class:pointer-events-none={page.url.pathname === '/' || page.url.pathname.includes('work')}
-		class:opacity-0={gptStore.opened}
+{#if liteStore.active}
+	<LiteSite />
+{:else}
+	<div
+		class="app min-h-svh w-screen {page.url.pathname === '/about'
+			? 'overflow-x-clip overflow-y-visible'
+			: 'overflow-x-hidden overflow-y-hidden'}"
 	>
-		{#if showLoadingScreen}
-			<div
-				class="fixed inset-0 z-200 flex h-screen w-full items-center justify-center p-24 pointer-events-none"
-				transition:scale={{ duration: 500, delay: 500, start: 0.5, easing: quintOut }}
-			>
-				<Loading />
-			</div>
-		{/if}
-		{#if data.projectsLength && (!browser || !showLoadingScreen)}
-			{@render children()}
-			{#if showProjectList}
+		<!-- Header -->
+		<Nav bind:this={navComponent} revealed={showSiteChrome} />
+
+		<!-- Main -->
+		<main
+			class="w-full overscroll-none {page.url.pathname === '/gallery' && loadStore.loaded
+				? 'z-16'
+				: 'z-10'} relative flex flex-col items-center justify-center transition-opacity duration-500"
+			class:mix-blend-difference={page.url.pathname !== '/branch' &&
+				page.url.pathname !== '/about' &&
+				page.url.pathname !== '/gallery'}
+			class:pointer-events-none={page.url.pathname === '/' || page.url.pathname.includes('work')}
+			class:opacity-0={gptStore.opened}
+		>
+			{#if showLoadingScreen}
 				<div
-					class="project-list-fallback relative w-full h-full"
-					class:pointer-events-none={true}
-					bind:this={projectListFallback}
+					class="fixed inset-0 z-200 flex h-screen w-full items-center justify-center p-24 pointer-events-none"
+					transition:scale={{ duration: 500, delay: 500, start: 0.5, easing: quintOut }}
 				>
-					<div
-						bind:this={projectListWrapper}
-						class:pointer-events-auto={page.url.pathname.includes('work') ||
-							(page.url.pathname === '/' && $projectSectionStore.pinned)}
-						class:pointer-events-none={page.url.pathname === '/' && !$projectSectionStore.pinned}
-					>
-						<ProjectList data={data as Required<PageData>} />
-					</div>
+					<Loading />
 				</div>
 			{/if}
-			<!-- inactivity -->
-			<!-- {#if !page.params.slug && activityStore.inactive}
+			{#if data.projectsLength && (!browser || !showLoadingScreen)}
+				{@render children()}
+				{#if showProjectList}
+					<div
+						class="project-list-fallback relative w-full h-full"
+						class:pointer-events-none={true}
+						bind:this={projectListFallback}
+					>
+						<div
+							bind:this={projectListWrapper}
+							class:pointer-events-auto={page.url.pathname.includes('work') ||
+								(page.url.pathname === '/' && $projectSectionStore.pinned)}
+							class:pointer-events-none={page.url.pathname === '/' && !$projectSectionStore.pinned}
+						>
+							<ProjectList data={data as Required<PageData>} />
+						</div>
+					</div>
+				{/if}
+				<!-- inactivity -->
+				<!-- {#if !page.params.slug && activityStore.inactive}
 				<p
 					transition:scale={{ duration: 500, start: 0.5, easing: quintOut }}
 					class="text-white text-center text-xs leading-none mix-blend-difference fixed bottom-10"
@@ -879,82 +898,83 @@
 					scroll to browse
 				</p>
 			{/if} -->
-		{/if}
-	</main>
+			{/if}
+		</main>
 
-	<Notifications />
-	<MediaViewer />
-	<IntroStack />
-	<!-- BG -->
-	{#if page.url.pathname === '/gallery' && loadStore.loaded}
+		<Notifications />
+		<MediaViewer />
+		<IntroStack />
+		<!-- BG -->
+		{#if page.url.pathname === '/gallery' && loadStore.loaded}
+			<div
+				class="fixed inset-0 z-0 pointer-events-none"
+				style:background={optionsStore.dark ? '#080808' : '#fff'}
+			></div>
+		{/if}
 		<div
-			class="fixed inset-0 z-0 pointer-events-none"
-			style:background={optionsStore.dark ? '#080808' : '#fff'}
-		></div>
+			class="fixed w-screen h-lvh top-0 left-0 canvas-container transition-opacity duration-500 {page
+				.url.pathname === '/gallery' && loadStore.loaded
+				? 'z-15 pointer-events-none'
+				: 'z-0 bg-black'}"
+			class:invert={!optionsStore.dark && page.url.pathname !== '/gallery'}
+			class:invert-0={optionsStore.dark || page.url.pathname === '/gallery'}
+			class:opacity-0={gptStore.opened &&
+				page.url.pathname === '/' &&
+				($introSectionStore.active || $introSectionStore.progress < 1)}
+		>
+			<Three bind:this={webGLComponent} {data} {preferImageThumbnails} />
+		</div>
+		<GPT
+			bind:this={gptEl}
+			{data}
+			categoryAnim={webGLComponent ? webGLComponent.getRiveSceneInstance().categoryAnim : null}
+		/>
+		<!-- Footer -->
+		<Footer bind:this={footerComponent} revealed={showSiteChrome} />
+
+		<!-- Video Elements -->
+		<div class="absolute top-0 w-52 pointer-events-none {showSource}">
+			{#if data.projects && page.url.pathname !== '/gallery'}
+				{#each data.projects as project, i}
+					{#if project.thumbnail?.asset?.url && !(preferImageThumbnails && project.thumbnailImage?.asset?.url)}
+						<video
+							class="absolute w-full h-auto"
+							style="transform: translateY({i}0%);"
+							bind:this={mediaEl[i]}
+							muted
+							playsinline={true}
+							autoplay
+							controls={false}
+							src={process.env.NODE_ENV === 'production'
+								? project.thumbnail.asset.url
+								: project.thumbnail.asset.url.replace(
+										'https://cdn.sanity.io/files/rdnxsacz/production/',
+										'/dev/assets/'
+									)}
+							id={project.slug!.current}
+							crossorigin="anonymous"
+							loop
+						></video>
+					{/if}
+					{#if preferImageThumbnails && project.thumbnailImage?.asset?.url}
+						<img
+							class="absolute w-full h-auto opacity-0"
+							style="transform: translateY({i}0%);"
+							bind:this={thumbnailEls[i]}
+							src={withOptimizedThumbnail(project.thumbnailImage.asset.url)}
+							id={`${project.slug!.current}-thumb`}
+							alt=""
+							loading="eager"
+							decoding="async"
+							crossorigin="anonymous"
+						/>
+					{/if}
+				{/each}
+			{/if}
+		</div>
+	</div>
+
+	{#if browser && dev}
+		<Debug pushMessage={gptEl.pushMessage} />
 	{/if}
-	<div
-		class="fixed w-screen h-lvh top-0 left-0 canvas-container transition-opacity duration-500 {page
-			.url.pathname === '/gallery' && loadStore.loaded
-			? 'z-15 pointer-events-none'
-			: 'z-0 bg-black'}"
-		class:invert={!optionsStore.dark && page.url.pathname !== '/gallery'}
-		class:invert-0={optionsStore.dark || page.url.pathname === '/gallery'}
-		class:opacity-0={gptStore.opened &&
-			page.url.pathname === '/' &&
-			($introSectionStore.active || $introSectionStore.progress < 1)}
-	>
-		<Three bind:this={webGLComponent} {data} {preferImageThumbnails} />
-	</div>
-	<GPT
-		bind:this={gptEl}
-		{data}
-		categoryAnim={webGLComponent ? webGLComponent.getRiveSceneInstance().categoryAnim : null}
-	/>
-	<!-- Footer -->
-	<Footer bind:this={footerComponent} revealed={showSiteChrome} />
-
-	<!-- Video Elements -->
-	<div class="absolute top-0 w-52 pointer-events-none {showSource}">
-		{#if data.projects && page.url.pathname !== '/gallery'}
-			{#each data.projects as project, i}
-				{#if project.thumbnail?.asset?.url && !(preferImageThumbnails && project.thumbnailImage?.asset?.url)}
-					<video
-						class="absolute w-full h-auto"
-						style="transform: translateY({i}0%);"
-						bind:this={mediaEl[i]}
-						muted
-						playsinline={true}
-						autoplay
-						controls={false}
-						src={process.env.NODE_ENV === 'production'
-							? project.thumbnail.asset.url
-							: project.thumbnail.asset.url.replace(
-									'https://cdn.sanity.io/files/rdnxsacz/production/',
-									'/dev/assets/'
-								)}
-						id={project.slug!.current}
-						crossorigin="anonymous"
-						loop
-					></video>
-				{/if}
-				{#if preferImageThumbnails && project.thumbnailImage?.asset?.url}
-					<img
-						class="absolute w-full h-auto opacity-0"
-						style="transform: translateY({i}0%);"
-						bind:this={thumbnailEls[i]}
-						src={withOptimizedThumbnail(project.thumbnailImage.asset.url)}
-						id={`${project.slug!.current}-thumb`}
-						alt=""
-						loading="eager"
-						decoding="async"
-						crossorigin="anonymous"
-					/>
-				{/if}
-			{/each}
-		{/if}
-	</div>
-</div>
-
-{#if browser && dev}
-	<Debug pushMessage={gptEl.pushMessage} />
 {/if}

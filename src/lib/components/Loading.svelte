@@ -6,7 +6,17 @@
 	import gsap from 'gsap';
 	import { loadStore } from '#lib/stores/index.svelte.js';
 	import { onMount, untrack } from 'svelte';
+	import { liteStore } from '#lib/stores/lite.svelte.js';
 
+	const SLOW_AFTER_MS = 6000;
+	let slow = $state(false);
+
+	$effect(() => {
+		if (!slow) return;
+		liteStore.slow = true;
+		document.documentElement.classList.add('os-cursor');
+		return () => document.documentElement.classList.remove('os-cursor');
+	});
 	const error = 200;
 	let loadingText: HTMLHeadElement | null = $state(null);
 	let errorText: HTMLHeadElement | null = $state(null);
@@ -28,6 +38,21 @@
 
 	onMount(() => {
 		ready = true;
+		// A slow link is reported by the browser or inferred from time since navigation start.
+		const flags = window as unknown as { __appReady?: boolean; __wantsLite?: boolean };
+		flags.__appReady = true;
+		document.getElementById('lite-prompt')?.remove();
+		if (flags.__wantsLite) liteStore.enable();
+		const connection = (
+			navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }
+		).connection;
+		const slowLink =
+			!!connection &&
+			(!!connection.saveData || ['slow-2g', '2g', '3g'].includes(connection.effectiveType ?? ''));
+		const slowTimer = setTimeout(
+			() => (slow = true),
+			slowLink ? 0 : Math.max(0, SLOW_AFTER_MS - performance.now())
+		);
 		gsap.to(loadingText, {
 			fontWeight: 900,
 			duration: 1,
@@ -52,6 +77,7 @@
 		// 		errorText.style.fontVariationSettings = "'wght' " + errorText.style.fontWeight;
 		// 	}
 		// });
+		return () => clearTimeout(slowTimer);
 	});
 </script>
 
@@ -84,5 +110,15 @@
 		</div>
 	{:else}
 		<h1 bind:this={errorText} class="text-white text-9xl font-sans mix-blend-difference">Error</h1>
+	{/if}
+	{#if slow}
+		<button
+			type="button"
+			title="Switch to the text and images only version"
+			class="fixed bottom-6 left-1/2 -translate-x-1/2 pointer-events-auto text-xs font-mono uppercase underline text-white mix-blend-difference whitespace-nowrap"
+			onclick={() => liteStore.enable()}
+		>
+			I have slow internet.
+		</button>
 	{/if}
 </div>

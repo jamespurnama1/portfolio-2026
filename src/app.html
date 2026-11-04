@@ -6,6 +6,13 @@
 		<link rel="icon" href="%sveltekit.assets%/favicon.ico" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 		%sveltekit.head%
+		<style>
+			/* The slow-internet prompt needs a visible OS cursor; the site hides it everywhere else. */
+			html.os-cursor,
+			html.os-cursor * {
+				cursor: auto !important;
+			}
+		</style>
 		<script>
 			// iOS Safari ignores user-scalable=no, so block pinch and double-tap zoom manually
 			if (!location.pathname.startsWith('/studio'))
@@ -31,6 +38,40 @@
 				document.addEventListener('keydown', (e) => {
 					if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0'].includes(e.key)) e.preventDefault();
 				});
+			}
+		</script>
+		<script>
+			// The app bundle may still be downloading, so offer lite mode from plain HTML until it hydrates.
+			if (!location.pathname.startsWith('/studio'))
+			{
+				const connection = navigator.connection;
+				const slowLink =
+					!!connection && (connection.saveData || /^(slow-2g|2g|3g)$/.test(connection.effectiveType));
+				const showPrompt = () => {
+					if (window.__appReady) return;
+					if (!document.body) return requestAnimationFrame(showPrompt);
+					const button = document.createElement('button');
+					button.id = 'lite-prompt';
+					button.type = 'button';
+					button.textContent = 'I HAVE SLOW INTERNET.';
+					button.style.cssText =
+						'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);z-index:300;font:12px monospace;text-decoration:underline;color:#fff;mix-blend-mode:difference;background:none;border:0;cursor:pointer;white-space:nowrap';
+					button.onclick = () => {
+						window.__wantsLite = true;
+						button.textContent = 'LOADING THE LITE VERSION...';
+						button.disabled = true;
+					};
+					document.body.appendChild(button);
+					document.documentElement.classList.add('os-cursor');
+					// Thumbnail videos in the server HTML start downloading before the app runs; stop them.
+					for (const video of document.querySelectorAll('video'))
+					{
+						video.pause();
+						video.removeAttribute('src');
+						video.load();
+					}
+				};
+				setTimeout(showPrompt, slowLink ? 0 : Math.max(0, 6000 - performance.now()));
 			}
 		</script>
 	</head>
