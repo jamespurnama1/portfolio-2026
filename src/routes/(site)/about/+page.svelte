@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Awards from '#lib/components/Awards.svelte';
+	import { onNavigate } from '$app/navigation';
+	import { gsap } from 'gsap';
 	import type { Award } from '#lib/types/index.js';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import type { PageData } from './$types.js';
@@ -26,6 +28,23 @@
 		)
 	);
 	const percent = (value: number | null | undefined) => Math.min(100, Math.max(0, value ?? 0));
+	let pageEl = $state<HTMLElement>();
+
+	// Holds the navigation until the page has animated out.
+	onNavigate(({ to }) => {
+		if (to?.url.pathname === '/about') return;
+		if (!pageEl || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		return new Promise<void>((resolve) => {
+			gsap.to(pageEl!, {
+				opacity: 0,
+				filter: 'blur(8px)',
+				y: -12,
+				duration: 0.45,
+				ease: 'power2.in',
+				onComplete: resolve
+			});
+		});
+	});
 	const description =
 		'Learn about James Henry, a creative director, designer and frontend developer, his experience, awards and skills.';
 
@@ -65,7 +84,12 @@
 </svelte:head>
 
 {#if about}
-	<section class="about-page" class:light={!optionsStore.dark} aria-label="About James Henry">
+	<section
+		bind:this={pageEl}
+		class="about-page"
+		class:light={!optionsStore.dark}
+		aria-label="About James Henry"
+	>
 		<div class="portrait-column">
 			<h1 class="intro-name">James Henry</h1>
 			{#if about.image?.url}

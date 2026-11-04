@@ -5,6 +5,7 @@
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { ambient } from '#lib/utils/ambient.svelte.js';
 	import { placeholderStyle } from '#lib/utils/placeholder.js';
+	import { pinchZoom } from '#lib/utils/pinchZoom.js';
 	import { Canvas } from '@threlte/core';
 	import { beforeNavigate } from '$app/navigation';
 	import ReelViewerScene from './ReelViewerScene.svelte';
@@ -228,6 +229,7 @@
 			const dx = t.clientX - start.x;
 			const dy = t.clientY - start.y;
 			start = null;
+			if (node.querySelector('.feature-media[data-zoomed]')) return;
 			if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy) * 1.5) return;
 			// Stops the click that would otherwise close the viewer.
 			if (e.cancelable) e.preventDefault();
@@ -316,6 +318,7 @@
 {#if media}
 	<div
 		use:portal
+		use:pinchZoom={media.id}
 		class="fixed inset-0 z-15 flex touch-none items-center justify-center p-4 pointer-events-auto"
 	>
 		<div bind:this={backdropEl} class="absolute inset-0 bg-black/90"></div>
@@ -326,7 +329,11 @@
 		{/if}
 		{#key media.id}
 			{#if media.isVideo}
-				<div bind:this={mediaEl} class="relative" style="width: {box.w}px; height: {box.h}px;">
+				<div
+					bind:this={mediaEl}
+					class="feature-media relative"
+					style="width: {box.w}px; height: {box.h}px;"
+				>
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
 						bind:this={videoEl}
@@ -365,7 +372,11 @@
 					{/if}
 				</div>
 			{:else}
-				<div bind:this={mediaEl} class="relative" style="width: {box.w}px; height: {box.h}px;">
+				<div
+					bind:this={mediaEl}
+					class="feature-media relative"
+					style="width: {box.w}px; height: {box.h}px;"
+				>
 					<img
 						use:trackLoad={media.id}
 						onload={(event) => trackLoad(event.currentTarget as HTMLImageElement, media.id)}

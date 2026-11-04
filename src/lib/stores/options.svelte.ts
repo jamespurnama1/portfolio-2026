@@ -9,6 +9,7 @@ let alphaPersistFactor = $state(isMobileSafari ? 0 : 0.9);
 let dark = $state(true);
 let showSources = $state(false);
 let fullscreen = $state(false);
+let galleryViewer = $state(false);
 let notification = $state(false);
 let videoPaused = $state(false);
 // Safari Mobile performance opt-outs — toggle in Debug pane.
@@ -58,6 +59,12 @@ export const optionsStore = {
 	},
 	set fullscreen(newVal) {
 		fullscreen = newVal;
+	},
+	get galleryViewer() {
+		return galleryViewer;
+	},
+	set galleryViewer(newVal) {
+		galleryViewer = newVal;
 	},
 	get notification() {
 		return notification;

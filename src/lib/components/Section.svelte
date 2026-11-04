@@ -7,6 +7,7 @@
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { placeholderStyle } from '#lib/utils/placeholder.js';
 	import { aiLabel } from '#lib/utils/ai.js';
+	import { fade } from 'svelte/transition';
 
 	type MetaItem = { text: string | number; title?: string };
 
@@ -43,6 +44,18 @@
 	// Also covers images that finished loading before hydration.
 	function trackLoad(node: HTMLImageElement) {
 		if (node.complete && node.naturalWidth > 0) imageLoaded = true;
+		if (index === 0 || node.loading !== 'lazy') return;
+		// Start fetching well before the browser's own lazy threshold so the real image is ready on arrival.
+		const io = new IntersectionObserver(
+			(entries) => {
+				if (!entries.some((e) => e.isIntersecting)) return;
+				node.loading = 'eager';
+				io.disconnect();
+			},
+			{ rootMargin: '300% 0px' }
+		);
+		io.observe(node);
+		return { destroy: () => io.disconnect() };
 	}
 	const isHeroSection = $derived(index === 0);
 	// The tooltip is moved to <body> so the page's difference blend doesn't invert it.
@@ -157,7 +170,7 @@
 							>{:else}<span>{meta.text}</span>{/if}{/each}
 				</p>
 				{#if awardsItem.description}
-					<p class="mt-4 whitespace-pre-wrap text-white mix-blend-difference">
+					<p class="mt-4 whitespace-pre-wrap text-white mix-blend-difference md:text-sm">
 						{awardsItem.description}
 					</p>
 				{/if}
@@ -184,7 +197,7 @@
 				</h2>
 			{/if}
 			{#if body}
-				<p class="text-white mix-blend-difference whitespace-pre-wrap">{body}</p>
+				<p class="text-white mix-blend-difference whitespace-pre-wrap md:text-sm">{body}</p>
 			{/if}
 		</div>
 	{/if}
@@ -263,10 +276,13 @@
 	</div>
 </section>
 
+<svelte:window onscroll={() => (tip = null)} />
+
 {#if tip}
 	<div
 		use:portal
 		role="tooltip"
+		transition:fade={{ duration: 180 }}
 		class="ai-tip font-mono text-xs"
 		class:dark={optionsStore.dark}
 		style:left="{Math.min(

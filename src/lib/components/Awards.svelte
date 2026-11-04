@@ -70,18 +70,18 @@
 					: 'flex-col items-start'} gap-1"
 			>
 				<img
-					class="w-10 h-10 object-contain brightness-100"
+					class="w-10 h-10 max-md:w-8 max-md:h-8 object-contain brightness-100"
 					src={award.icon.asset.url}
 					alt={award.issuer}
 				/>
-				<div class="grid grid-cols-[repeat(2,1.25rem)] gap-2 flex-wrap min-w-12">
+				<div class="grid grid-cols-[repeat(2,1.25rem)] max-md:grid-cols-[repeat(2,1rem)] gap-2 flex-wrap min-w-12">
 					<!-- TODO: Make this into component & less reptitive -->
 					{#if award.gold}
 						{#each award.gold as gold}
 							<button
 								class="{compact
 									? ''
-									: 'invert dark:invert-0'} w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-gold"
+									: 'invert dark:invert-0'} w-5 h-5 max-md:w-4 max-md:h-4 transition-transform hover:scale-150 focus-visible:scale-150 bg-gold"
 								aria-label={gold}
 								onclick={() => (currAward = gold)}
 								onfocus={() => (currAward = gold)}
@@ -99,7 +99,7 @@
 							<button
 								class="{compact
 									? ''
-									: 'invert dark:invert-0'} w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-silver"
+									: 'invert dark:invert-0'} w-5 h-5 max-md:w-4 max-md:h-4 transition-transform hover:scale-150 focus-visible:scale-150 bg-silver"
 								aria-label={silver}
 								onclick={() => (currAward = silver)}
 								onfocus={() => (currAward = silver)}
@@ -117,7 +117,7 @@
 							<button
 								class="{compact
 									? ''
-									: 'invert dark:invert-0'} w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-bronze"
+									: 'invert dark:invert-0'} w-5 h-5 max-md:w-4 max-md:h-4 transition-transform hover:scale-150 focus-visible:scale-150 bg-bronze"
 								aria-label={bronze}
 								onclick={() => (currAward = bronze)}
 								onfocus={() => (currAward = bronze)}
@@ -135,7 +135,7 @@
 							<button
 								class="{compact
 									? ''
-									: 'invert dark:invert-0'} w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-crystal"
+									: 'invert dark:invert-0'} w-5 h-5 max-md:w-4 max-md:h-4 transition-transform hover:scale-150 focus-visible:scale-150 bg-crystal"
 								aria-label={crystal}
 								onclick={() => (currAward = crystal)}
 								onfocus={() => (currAward = crystal)}

@@ -84,7 +84,8 @@
 		return !works && page.url.pathname === '/' && index === pending.index ? pending : null;
 	}
 	const initialSharedTransition = resolveSharedTransition();
-	const shouldCoverTexture = $derived(home && !!homeAspectRatio);
+	// Always crop to the plane: the plane and texture aspects differ mid-transition and must never stretch.
+	const shouldCoverTexture = true;
 	let viewerHidden = $state(false);
 
 	// During the first-visit intro the card is driven by introGate (trail, then the row of cards).
@@ -156,6 +157,7 @@
 	);
 	let sharedTransitionTarget = $state(initialSharedTransition);
 	let handoffInProgress = $state(Boolean(initialSharedTransition));
+	let morphTweened = false;
 	let isNavigating = false;
 	const isOutgoingHomeCard = $derived(
 		!works &&
@@ -190,6 +192,12 @@
 			: { x: 0, y: 0, z: 0, scale: 1, opacity: 0 }
 	);
 	let motionState = $state(createCardMotionState());
+	// Temporary height factor so the plane aspect can change smoothly during a shared transition.
+	let morph = $state({ y: 1 });
+	$effect(() => {
+		morph.y;
+		untrack(() => updateAspectUniforms());
+	});
 	let lastReportedWorkReadyKey = $state('');
 	let settledWorkReadyFrame = $state<number | null>(null);
 	let fullscreenZoom = $state(1);
@@ -615,7 +623,7 @@
 			imageMat.uniforms.u_params1.value.x = textureAspectValue;
 		}
 		if (geometryArgs[0] && geometryArgs[1]) {
-			imageMat.uniforms.u_params1.value.y = geometryArgs[0] / geometryArgs[1];
+			imageMat.uniforms.u_params1.value.y = geometryArgs[0] / geometryArgs[1] / morph.y;
 		}
 		imageMat.uniformsNeedUpdate = true;
 	}
@@ -1074,6 +1082,16 @@
 		window.requestAnimationFrame(waitForStableTarget);
 	}
 
+	function morphToExpected(duration: number) {
+		if (!texture?.image || morphTweened) return;
+		const { expected } = expectedGeometry();
+		const current = geometryArgs[1] / geometryArgs[0];
+		const target = expected[1] / expected[0] / current;
+		if (!isFinite(target) || Math.abs(target - morph.y) < 0.001) return;
+		morphTweened = true;
+		gsap.to(morph, { y: target, duration, ease: 'power3.out', overwrite: true });
+	}
+
 	function startConsumedSharedTransition(transition: NonNullable<typeof sharedTransitionTarget>) {
 		const finishTransition = () => {
 			if (works && workTargetReady() && !workTransformAligned()) {
@@ -1081,6 +1099,8 @@
 				return;
 			}
 			if (works) prevParams = page.params.slug ?? '';
+			const next = texture?.image ? expectedGeometry() : null;
+			if (next) commitGeometry(next.expected, true);
 			handoffInProgress = false;
 			sharedTransitionTarget = null;
 			if (works) {
@@ -1089,6 +1109,7 @@
 		};
 
 		const run = () => {
+			morphToExpected(transition.direction === 'to-work' ? 0.5 : 0.3);
 			updateImage(0, transition.direction === 'to-work' ? 0.5 : 0.01, () => {
 				if (transition.direction === 'to-home' && homeTransitionStore.pending) return;
 				finishTransition();
@@ -1115,6 +1136,7 @@
 			}
 			if (!startedMoving && workTargetReady()) {
 				startedMoving = true;
+				morphToExpected(0.5);
 				updateImage(0, 0.5);
 			}
 			window.requestAnimationFrame(waitForStableHero);
@@ -1572,16 +1594,20 @@
 	});
 
 	// Watch for texture dimension changes and update geometry
-	$effect(() => {
-		if (!texture || !texture.image) return;
-		if (handoffInProgress) return;
+	function expectedGeometry() {
 		const img = texture.image as HTMLVideoElement & HTMLImageElement;
 		const width = img.videoWidth || img.width;
 		const height = img.videoHeight || img.height;
 		let expected;
 		//works page
 		if (works && width > 0 && height > 0) {
-			const aspect = width / height;
+			// The hero card crops its texture to the page's media element, not to the texture's own aspect.
+			const heroRect =
+				index === 0 ? document.getElementById('media-0')?.getBoundingClientRect() : null;
+			const aspect =
+				heroRect && heroRect.width > 32 && heroRect.height > 32
+					? heroRect.width / heroRect.height
+					: width / height;
 			let w = $size.width * aspect * 0.25;
 			let h = $size.width * 0.25;
 			if (w > $size.width) {
@@ -1605,11 +1631,16 @@
 			expected = [$size.width * 0.5, ($size.width / fallbackAspect) * 0.5];
 		}
 		const textureAspectVal = width > 0 && height > 0 ? width / height : 16 / 9;
+		return { expected, textureAspectVal };
+	}
+
+	// Swaps in the real geometry, keeping the visible size, and drops the temporary aspect morph.
+	function commitGeometry(expected: number[], preserveWidth: boolean) {
 		if (geometryArgs[0] !== expected[0] || geometryArgs[1] !== expected[1]) {
 			const currentWidth = geometryArgs[0] || imageGeo?.parameters.width || 0;
 			const currentScale = transform.scale;
 			geometryArgs = [...expected, 32, 32];
-			if ((handoffInProgress || works) && currentWidth > 0 && expected[0] > 0 && currentScale > 0) {
+			if (preserveWidth && currentWidth > 0 && expected[0] > 0 && currentScale > 0) {
 				const preservedVisibleWidth = currentWidth * currentScale;
 				transform.scale = preservedVisibleWidth / expected[0];
 			}
@@ -1619,6 +1650,17 @@
 				image.geometry = newGeo;
 				imageGeo = newGeo;
 			}
+		}
+		gsap.killTweensOf(morph);
+		morph.y = 1;
+	}
+
+	$effect(() => {
+		if (!texture || !texture.image) return;
+		if (handoffInProgress) return;
+		const { expected, textureAspectVal } = expectedGeometry();
+		if (geometryArgs[0] !== expected[0] || geometryArgs[1] !== expected[1]) {
+			commitGeometry(expected, works);
 			// Home cards are placed from the geometry size, so they must follow a resize.
 			if (!works && home && initialLoadComplete && !loadIn && !handoffInProgress) {
 				queueMicrotask(() => updateImage(0, 0.01));
@@ -1683,6 +1725,11 @@
 				const homeGeometry = new PlaneGeometry(homeWidth, homeHeight);
 				const target = homePos(countStore.activeIndex, homeGeometry, $size, 0);
 				homeGeometry.dispose();
+				gsap.to(morph, {
+					y: homeHeight / homeWidth / (imageGeo.parameters.height / imageGeo.parameters.width),
+					duration: 0.5,
+					ease: 'power3.out'
+				});
 				gsap.to(transform, {
 					...target,
 					scale: (target.scale * homeWidth) / imageGeo.parameters.width,
@@ -1695,7 +1742,7 @@
 							slug: slug ?? '',
 							geometry: {
 								width: imageGeo.parameters.width,
-								height: imageGeo.parameters.height
+								height: imageGeo.parameters.height * morph.y
 							},
 							transform: {
 								x: transform.x,
@@ -1755,7 +1802,11 @@
 				? false
 				: !hidden || transform.opacity > 0.001)}
 	rotation.y={gateRy}
-	scale={transform.scale * fullscreenZoom}
+	scale={[
+		transform.scale * fullscreenZoom,
+		transform.scale * fullscreenZoom * morph.y,
+		transform.scale * fullscreenZoom
+	]}
 	position={[transform.x + fullscreenPan.x, transform.y + fullscreenPan.y, transform.z]}
 	onclick={(e: IntersectionEvent<'click'>) => {
 		handleClick(e, index);

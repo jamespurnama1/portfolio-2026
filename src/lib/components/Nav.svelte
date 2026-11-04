@@ -12,6 +12,14 @@
 	let { revealed = loadStore.loaded }: { revealed?: boolean } = $props();
 
 	let resumeLabel = $state('résumé');
+	let isMobile = $state(false);
+	$effect(() => {
+		const query = window.matchMedia('(max-width: 767px)');
+		const update = () => (isMobile = query.matches);
+		update();
+		query.addEventListener('change', update);
+		return () => query.removeEventListener('change', update);
+	});
 	let resumeScramble = $state(false);
 	const links = $derived([
 		...(page.url.pathname !== '/about' ? ['about'] : []),
@@ -36,7 +44,7 @@
 >
 	<nav
 		class="nav-bar flex justify-between items-start fixed w-full p-4 top-0 left-0 pointer-events-none"
-		class:three={mobileLinks.length === 3}
+		data-count={mobileLinks.length}
 	>
 		{#if revealed}
 			{#each links as link, index (link)}
@@ -47,19 +55,34 @@
 				>
 					{#if link === 'about' || link === 'gallery'}
 						<a
-							transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: index * 50 }}
+							transition:fly|global={{
+								y: -200,
+								duration: 500,
+								easing: cubicInOut,
+								delay: index * 50
+							}}
 							href="/{link}"><p><ScrambleText text={link} /></p></a
 						>
 					{:else if link === 'email'}
 						<a
-							transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: index * 50 }}
+							transition:fly|global={{
+								y: -200,
+								duration: 500,
+								easing: cubicInOut,
+								delay: index * 50
+							}}
 							href="mailto:hello@jameshenry.site"
 							onclick={() => track('email_click', { source: 'nav' })}
 							><p><ScrambleText text="hello@jameshenry.site" /></p></a
 						>
 					{:else if link === 'resume'}
 						<a
-							transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: index * 50 }}
+							transition:fly|global={{
+								y: -200,
+								duration: 500,
+								easing: cubicInOut,
+								delay: index * 50
+							}}
 							href="/Resume_James%20Henry.pdf"
 							download="Resume_James Henry.pdf"
 							target="_blank"
@@ -76,7 +99,12 @@
 						>
 					{:else}
 						<a
-							transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: index * 50 }}
+							transition:fly|global={{
+								y: -200,
+								duration: 500,
+								easing: cubicInOut,
+								delay: index * 50
+							}}
 							class="goback"
 							href="/"
 							onclick={(event) => {
@@ -103,7 +131,7 @@
 				? 'max-md:opacity-0 max-md:pointer-events-none delay-300'
 				: 'delay-300'}"
 	>
-		{#if revealed}
+		{#if revealed && !(isMobile && optionsStore.galleryViewer)}
 			<a
 				href="https://instagram.com/jamespurnama1"
 				target="_blank"
@@ -144,14 +172,24 @@
 		.hidden-email {
 			display: none;
 		}
-		.nav-bar.three {
+		.nav-bar {
 			display: grid;
 			grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 		}
-		.nav-bar.three > [data-pos='1'] {
+		.nav-bar > * {
+			grid-row: 1;
+		}
+		.nav-bar > [data-pos='0'] {
+			grid-column: 1;
+			justify-self: start;
+		}
+		.nav-bar[data-count='3'] > [data-pos='1'] {
+			grid-column: 2;
 			justify-self: center;
 		}
-		.nav-bar.three > [data-pos='2'] {
+		.nav-bar[data-count='3'] > [data-pos='2'],
+		.nav-bar[data-count='2'] > [data-pos='1'] {
+			grid-column: 3;
 			justify-self: end;
 		}
 	}

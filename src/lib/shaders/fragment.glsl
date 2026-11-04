@@ -35,5 +35,8 @@ void main() {
 
     vec4 trails = texture2D(sampler, v_uv + vec2(a, b) + mousePos * 0.005);
 
-    gl_FragColor = vec4(trails.rgb * rgbPersistFactor, trails.a * alphaPersistFactor);
+    // The 1/255 bias stops 8-bit rounding from freezing faint trails at a non-zero value (stuck ghost on iOS).
+    vec3 fadedRgb = max(trails.rgb * rgbPersistFactor - 1.0 / 255.0, 0.0);
+    float fadedAlpha = max(trails.a * alphaPersistFactor - 1.0 / 255.0, 0.0);
+    gl_FragColor = vec4(fadedRgb, fadedAlpha);
 }

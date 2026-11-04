@@ -118,7 +118,7 @@
 			class="fixed bottom-6 left-1/2 -translate-x-1/2 pointer-events-auto text-xs font-mono uppercase underline text-white mix-blend-difference whitespace-nowrap"
 			onclick={() => liteStore.enable()}
 		>
-			I have slow internet.
+			I have slow internet
 		</button>
 	{/if}
 </div>

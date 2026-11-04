@@ -65,6 +65,11 @@
 	let thumbnailCache: ReturnType<typeof createGalleryVideoThumbnails> | undefined;
 	let ratio = $state(1);
 	let closing = false;
+	let closingView = $state(false);
+	$effect(() => {
+		optionsStore.galleryViewer = selected !== null && !closingView;
+		return () => (optionsStore.galleryViewer = false);
+	});
 	let selectionVersion = 0;
 	let wheelDelta = 0;
 	let lastWheelStep = 0;
@@ -335,6 +340,59 @@
 			}
 		}
 	}
+	function animateRailOut(sources: ReturnType<typeof gridSources>) {
+		if (!thumbnailRail) return;
+		const bounds = thumbnailRail.getBoundingClientRect();
+		const targets: { element: HTMLElement; rect: DOMRect; source: GridSource | undefined }[] = [];
+		for (const child of Array.from(thumbnailRail.children)) {
+			const element = child as HTMLElement;
+			if (!element.dataset.media) continue;
+			const rect = element.getBoundingClientRect();
+			if (railHorizontal) {
+				if (rect.right <= bounds.left || rect.left >= bounds.right) continue;
+			} else if (rect.bottom <= bounds.top || rect.top >= bounds.bottom) continue;
+			targets.push({ element, rect, source: sources.get(Number(element.dataset.media)) });
+		}
+		railSources = targets.flatMap(({ source }) => (source ? [source.key] : []));
+		railMoving = true;
+		for (const { element } of targets) element.classList.add('rail-animating');
+		// No onComplete: resetting the rail would snap thumbnails back before the grid takes over.
+		railTimeline = gsap.timeline();
+		for (const { element, rect, source } of targets) {
+			if (!source || !rect.width || !rect.height) {
+				railTimeline.to(element, { opacity: 0, x: 20, duration: 0.3 }, 0);
+				continue;
+			}
+			const scaleX = source.rect.width / rect.width;
+			const scaleY = source.rect.height / rect.height;
+			const mediaScale = Math.max(scaleX, scaleY);
+			railTimeline.to(
+				element,
+				{
+					x: source.rect.left - rect.left,
+					y: source.rect.top - rect.top,
+					scaleX,
+					scaleY,
+					transformOrigin: 'top left',
+					duration: 0.55,
+					ease: 'power3.inOut'
+				},
+				0
+			);
+			if (element.firstElementChild) {
+				railTimeline.to(
+					element.firstElementChild,
+					{
+						scaleX: mediaScale / scaleX,
+						scaleY: mediaScale / scaleY,
+						duration: 0.55,
+						ease: 'power3.inOut'
+					},
+					0
+				);
+			}
+		}
+	}
 	async function open(index: number, element: HTMLElement) {
 		if (dragged) {
 			dragged = false;
@@ -452,6 +510,8 @@
 			selected = null;
 			sourceKey = null;
 			closing = false;
+			closingView = false;
+			clearRailAnimation();
 			ambient.resumeFromMedia();
 		};
 		if (!featureMedia || !destination || !backdrop || !viewerContent) return finish();
@@ -465,6 +525,8 @@
 		const scaleY =
 			(Number(gsap.getProperty(featureMedia, 'scaleY')) * destination.height) / current.height;
 		const mediaScale = Math.max(scaleX, scaleY);
+		closingView = true;
+		if (!reducedMotion) animateRailOut(gridSources(sourceKey));
 		gsap.to(viewerContent, { opacity: 0, duration: reducedMotion ? 0 : 0.2 });
 		gsap.to(backdrop, { opacity: 0, duration: reducedMotion ? 0 : 0.45 });
 		if (featureMedia.firstElementChild) {
@@ -510,9 +572,18 @@
 		sfx.step();
 		await tick();
 		if (version !== selectionVersion || closing) return;
-		const shouldAnimate = animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		const shouldAnimate = animate && !reducedMotion;
 		scrollRailToSelection(v, shouldAnimate);
-		if (!shouldAnimate || !featureMedia) return;
+		if (!featureMedia) return;
+		if (!reducedMotion) {
+			fadeInWhenReady(
+				featureMedia.firstElementChild as HTMLElement | null,
+				version,
+				shouldAnimate ? direction * 16 : 0
+			);
+		}
+		if (!shouldAnimate) return;
 		const destination = featureMedia.getBoundingClientRect();
 		if (previous && destination.width && destination.height) {
 			gsap.fromTo(
@@ -532,20 +603,38 @@
 				}
 			);
 		}
-		if (featureMedia.firstElementChild) {
-			gsap.fromTo(
-				featureMedia.firstElementChild,
-				{ opacity: 0, x: direction * 16 },
-				{
-					opacity: 1,
-					x: 0,
-					duration: 0.25,
-					ease: 'power2.out',
-					clearProps: 'opacity,transform',
-					overwrite: true
-				}
-			);
+	}
+	// The old frame stays on screen until the new source loads, so hide it and fade the new one in.
+	function fadeInWhenReady(el: HTMLElement | null, version: number, shift: number) {
+		if (!el) return;
+		gsap.killTweensOf(el);
+		gsap.set(el, { opacity: 0, x: shift });
+		const loadEvent = el instanceof HTMLVideoElement ? 'loadeddata' : 'load';
+		let done = false;
+		const timer = setTimeout(show, 2000);
+		function show() {
+			if (done) return;
+			done = true;
+			clearTimeout(timer);
+			el?.removeEventListener(loadEvent, show);
+			if (version !== selectionVersion || !el?.isConnected) return;
+			gsap.to(el, {
+				opacity: 1,
+				x: 0,
+				duration: 0.25,
+				ease: 'power2.out',
+				clearProps: 'opacity,transform',
+				overwrite: true
+			});
 		}
+		const ready =
+			el instanceof HTMLImageElement
+				? el.complete && el.naturalWidth > 0
+				: el instanceof HTMLVideoElement
+					? el.readyState >= 2
+					: true;
+		if (ready) show();
+		else el.addEventListener(loadEvent, show, { once: true });
 	}
 	function stepMedia(direction: number) {
 		const now = performance.now();
@@ -651,7 +740,7 @@
 		class="grid-viewport"
 		bind:this={gridViewport}
 		class:light={!optionsStore.dark}
-		class:inactive={selected !== null}
+		class:inactive={selected !== null && !closingView}
 		inert={selected !== null}
 		onwheel={onWheel}
 		onpointerdown={pointerDown}

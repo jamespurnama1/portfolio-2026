@@ -94,6 +94,7 @@
 	let textEl: HTMLElement | undefined = $state();
 	const textState = { y: 60 };
 	let touchActive = false;
+	let cancelTween: gsap.core.Tween | null = null;
 	let touchOriginY = NaN;
 	let touchLastY = 0;
 	let touchLastT = 0;
@@ -505,8 +506,27 @@
 		if (pull >= 1) {
 			void triggerNextProject();
 		} else {
-			pull = 0;
+			cancelPull();
 		}
+	}
+
+	function cancelPull() {
+		pull = 0;
+		wheelArmed = false;
+		cancelTween?.kill();
+		const state = { v: pullShown };
+		cancelTween = gsap.to(state, {
+			v: 0,
+			duration: 0.7,
+			ease: 'power3.out',
+			onUpdate: () => {
+				pullShown = state.v;
+				renderPull();
+			},
+			onComplete: () => {
+				cancelTween = null;
+			}
+		});
 	}
 
 	function renderText(y: number) {
@@ -624,8 +644,14 @@
 			pull = Math.max(0, pull - dt * 1.6);
 			if (pull === 0) wheelArmed = false;
 		}
+		if (cancelTween && pull > 0) {
+			cancelTween.kill();
+			cancelTween = null;
+		}
 		const diff = pull - pullShown;
-		if (Math.abs(diff) > 0.001) {
+		if (cancelTween) {
+			// release animation owns pullShown
+		} else if (Math.abs(diff) > 0.001) {
 			pullShown += diff * Math.min(1, dt * 14);
 			renderPull();
 		} else if (pullShown !== pull) {
@@ -641,6 +667,8 @@
 	async function triggerNextProject() {
 		if (navigatingNext || typeof nextProjectIndex !== 'number') return;
 		const target = data.projects[nextProjectIndex];
+		cancelTween?.kill();
+		cancelTween = null;
 		navigatingNext = true;
 		frozenNextTitle = target.title;
 		frozenNextColors = [...nextColorScale];
@@ -721,6 +749,8 @@
 	}
 
 	function resetPull() {
+		cancelTween?.kill();
+		cancelTween = null;
 		pull = 0;
 		pullShown = 0;
 		wheelArmed = false;
@@ -885,7 +915,7 @@
 />
 <article
 	bind:this={articleEl}
-	class="relative overflow-hidden self-center w-full max-w-[90rem] transition-opacity duration-300"
+	class="relative overflow-hidden self-center w-full max-w-360 transition-opacity duration-300"
 	class:opacity-0={(optionsStore.fullscreen && !viewerStore.active) ||
 		gptStore.opened ||
 		(animationStore.isTransitioning && !nextTransitionActive)}
