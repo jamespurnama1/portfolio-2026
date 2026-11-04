@@ -172,14 +172,15 @@
 		.hidden-email {
 			display: none;
 		}
-		.nav-bar {
+		/* Only an odd count needs a true centre column; other counts use flex space-between. */
+		.nav-bar[data-count='3'] {
 			display: grid;
 			grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 		}
-		.nav-bar > * {
+		.nav-bar[data-count='3'] > * {
 			grid-row: 1;
 		}
-		.nav-bar > [data-pos='0'] {
+		.nav-bar[data-count='3'] > [data-pos='0'] {
 			grid-column: 1;
 			justify-self: start;
 		}
@@ -187,8 +188,7 @@
 			grid-column: 2;
 			justify-self: center;
 		}
-		.nav-bar[data-count='3'] > [data-pos='2'],
-		.nav-bar[data-count='2'] > [data-pos='1'] {
+		.nav-bar[data-count='3'] > [data-pos='2'] {
 			grid-column: 3;
 			justify-self: end;
 		}
