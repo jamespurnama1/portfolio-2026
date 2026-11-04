@@ -162,6 +162,9 @@ export interface Gallery extends SanityDocument {
 export interface GalleryMedia {
 	_key: string;
 	alt?: string;
+	caption?: string;
+	projectSlug?: string | null;
+	mimeType?: string;
 	filename?: string;
 	id?: string;
 	size?: number;

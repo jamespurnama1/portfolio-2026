@@ -150,7 +150,8 @@
 	function resizeRiveSurface(width: number, height: number) {
 		if (!riveCanvas || width <= 0 || height <= 0) return;
 		const sysDPR = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-		const pixelRatio = isSafari ? Math.min(sysDPR, 0.5) : sysDPR;
+		const pixelRatio =
+			isSafari || page.url.pathname === '/gallery' ? Math.min(sysDPR, 0.5) : sysDPR;
 		const targetWidth = Math.max(Math.round(width * pixelRatio), 1);
 		const targetHeight = Math.max(Math.round(height * pixelRatio), 1);
 		if (riveCanvas.width !== targetWidth || riveCanvas.height !== targetHeight) {
@@ -189,6 +190,7 @@
 		if (!riveCanvas) return;
 		const width = $size.width;
 		const height = $size.height;
+		page.url.pathname;
 		untrack(() => {
 			if (!width || !height) return;
 			surfaceReady = false;
@@ -225,7 +227,8 @@
 			if (!surfaceReady || !riveRenderer || !artboard || !stateMachine) return false;
 			// Safari: advance/draw at ~30fps; WebKit's canvas→WebGL upload is the bottleneck
 			pendingDelta += delta ?? 0;
-			if (isSafari && pendingDelta < SAFARI_FRAME_INTERVAL) return false;
+			if ((isSafari || page.url.pathname === '/gallery') && pendingDelta < SAFARI_FRAME_INTERVAL)
+				return false;
 			const frameDelta = pendingDelta;
 			pendingDelta = 0;
 			riveRenderer.clear();

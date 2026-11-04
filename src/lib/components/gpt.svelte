@@ -19,6 +19,7 @@
 	import { marked } from 'marked';
 	import { sfx } from '#lib/utils/sfx.js';
 	import { track } from '#lib/utils/analytics.js';
+	import Wave from '#lib/components/Wave.svelte';
 
 	let userMessageCount = 0;
 	let highIntentSent = false;
@@ -232,7 +233,7 @@
 	}
 
 	async function onkeydown(e?: KeyboardEvent) {
-		if (prompt === '' || prompt.charCodeAt(0) === 10) return;
+		if (fetching || prompt === '' || prompt.charCodeAt(0) === 10) return;
 		if (!e || (e.key.toLowerCase() === 'enter' && !e.shiftKey)) {
 			if (e) e?.preventDefault();
 			if (categoryAnim) categoryAnim('up');
@@ -242,7 +243,7 @@
 			if (userMessageCount >= 3) markHighIntent('message_count');
 			const x = prompt;
 			pushMessage('You', x);
-			pushMessage('James Henry', '...');
+			pushMessage('James Henry', '');
 			fetching = true;
 			prompt = '';
 			try {
@@ -260,61 +261,39 @@
 					);
 				}
 
-				let isFunc = false;
 				const data = res;
 				if (!data.body) {
 					console.error('No response body from API');
 					throw new Error('No response from server');
 				}
 				const reader = data.body.getReader();
-				pushMessage('James Henry', '', false);
-
-				let func = '';
-				let capturingFunc = false;
+				const decoder = new TextDecoder();
+				let buffer = '';
+				const calls: { name: string; args: Record<string, unknown> }[] = [];
+				function handleEvent(line: string) {
+					if (!line) return;
+					const event = JSON.parse(line);
+					if (event.type === 'conversation') {
+						if (event.id === 'clear') clearConversation();
+						else if (event.id) persistConversation(event.id);
+					} else if (event.type === 'text') {
+						void pushMessage('James Henry', event.text, true);
+					} else if (event.type === 'tool') {
+						calls.push({ name: event.name, args: event.args });
+					}
+				}
 				while (true) {
 					const { done, value } = await reader.read();
-					if (done) break;
-					let textChunk = new TextDecoder().decode(value);
-					const convRegex = /conv_run\s+(\S+)\s+end_conv/g;
-					let match;
-					while ((match = convRegex.exec(textChunk)) !== null) {
-						const convId = match[1];
-						// console.log('[Client] Received conversation signal:', convId);
-						if (convId === 'clear') {
-							clearConversation();
-						} else if (convId) {
-							persistConversation(convId);
-						}
+					buffer += decoder.decode(value, { stream: !done });
+					const lines = buffer.split('\n');
+					buffer = lines.pop() ?? '';
+					for (const line of lines) handleEvent(line);
+					if (done) {
+						if (buffer) handleEvent(buffer);
+						break;
 					}
-					textChunk = textChunk.replace(convRegex, '');
-					if (!textChunk) {
-						continue;
-					}
-					if (textChunk.includes('func_run') || capturingFunc) {
-						func += textChunk;
-						capturingFunc = !textChunk.includes('end_run');
-						isFunc = true;
-						continue;
-					}
-					pushMessage('James Henry', textChunk, true);
 				}
-				if (func !== '') {
-					const funcPattern = /func_run\s+(\w+)\s+({[\s\S]*?})\s+end_run/g;
-					let match;
-					while ((match = funcPattern.exec(func)) !== null) {
-						const [, fnName, jsonChunk] = match;
-						try {
-							handleRun(fnName, JSON.parse(jsonChunk));
-						} catch (err) {
-							console.error('[Client] Failed to parse tool output:', err, jsonChunk);
-						}
-					}
-					func = '';
-					capturingFunc = false;
-					isFunc = false;
-				}
-				// no-op: follow-up responses stream after tool runs will push new deltas
-				fetching = false;
+				for (const call of calls) handleRun(call.name, call.args);
 				input.focus();
 			} catch (err) {
 				if (err instanceof Error) {
@@ -327,6 +306,8 @@
 				pushMessage('James Henry', "Sorry! Something didn't work. Please try again later.", false);
 				notificationStore.opened = true;
 				console.error(err);
+			} finally {
+				fetching = false;
 			}
 		}
 	}
@@ -483,7 +464,7 @@
 			onscroll={onChatScroll}
 			class="mask flex flex-col items-start max-h-[65vh] w-full overflow-y-scroll px-3 sm:px-6 md:px-12"
 		>
-			{#each logs as log}
+			{#each logs as log, index}
 				<p
 					class="font-mono gpt-text font-bold max-md:text-sm {log.speaker === 'James Henry'
 						? 'text-left'
@@ -496,7 +477,11 @@
 						? 'text-left'
 						: 'text-right self-end'}"
 				>
-					{@html marked.parse(log.message)}
+					{#if fetching && index === logs.length - 1 && log.speaker === 'James Henry' && !log.message}
+						<span role="status" aria-label="Waiting for response"><Wave active /></span>
+					{:else}
+						{@html marked.parse(log.message)}
+					{/if}
 				</p>
 			{/each}
 		</span>
@@ -528,7 +513,7 @@
 			{onkeydown}
 		></div>
 		<button
-			disabled={prompt === '' || prompt.charCodeAt(0) === 10}
+			disabled={fetching || prompt === '' || prompt.charCodeAt(0) === 10}
 			class="right-0 w-4 md:w-8 h-auto disabled:opacity-10 disabled:hover:scale-100 hover:scale-150 shrink-0 transition-[transform_opacity] duration-500"
 			onclick={() => onkeydown()}
 			><img

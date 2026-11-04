@@ -885,7 +885,7 @@
 />
 <article
 	bind:this={articleEl}
-	class="relative overflow-hidden self-start w-full transition-opacity duration-300"
+	class="relative overflow-hidden self-center w-full max-w-[90rem] transition-opacity duration-300"
 	class:opacity-0={(optionsStore.fullscreen && !viewerStore.active) ||
 		gptStore.opened ||
 		(animationStore.isTransitioning && !nextTransitionActive)}

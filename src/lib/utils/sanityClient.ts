@@ -47,9 +47,12 @@ export async function sanityLoad() {
       media[] {
       _key,
       alt,
+	  caption,
+    "projectSlug": project->slug.current,
       "url": asset->url,
       "id": asset->_id,
       "filename": asset->originalFilename,
+	  "mimeType": asset->mimeType,
       "size": asset->size
     }
   },

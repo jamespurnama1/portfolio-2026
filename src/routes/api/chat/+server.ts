@@ -169,13 +169,14 @@ export async function POST(event) {
 
 		console.log('[API] User input received:', userInput);
 
-		const stream = new ReadableStream<string>({
+		const encoder = new TextEncoder();
+		const stream = new ReadableStream<Uint8Array>({
 			async start(controller) {
 				try {
 					await streamResponse({
 						message: userInput,
 						conversationId,
-						controller
+						send: (event) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
 					});
 					controller.close();
 				} catch (err) {
@@ -188,7 +189,7 @@ export async function POST(event) {
 		return new Response(stream, {
 			status: 200,
 			headers: {
-				'Content-Type': 'text/event-stream',
+				'Content-Type': 'application/x-ndjson; charset=utf-8',
 				Connection: 'keep-alive',
 				'Cache-Control': 'no-cache'
 			}
@@ -203,11 +204,16 @@ export async function POST(event) {
 async function streamResponse({
 	message,
 	conversationId,
-	controller
+	send
 }: {
 	message: string;
 	conversationId?: string;
-	controller: ReadableStreamDefaultController<string>;
+	send: (
+		event:
+			| { type: 'text'; text: string }
+			| { type: 'conversation'; id: string }
+			| { type: 'tool'; name: string; args: Record<string, unknown> }
+	) => void;
 }) {
 	let activeConversationId = conversationId ?? '';
 	let announcedConversationId = conversationId ?? '';
@@ -235,7 +241,7 @@ async function streamResponse({
 		announcedConversationId = id;
 		activeConversationId = id;
 		console.log('[API] Conversation updated:', id);
-		controller.enqueue(`conv_run ${id} end_conv`);
+		send({ type: 'conversation', id });
 	};
 
 	const runModel = async (input: ResponseInput) => {
@@ -262,7 +268,7 @@ async function streamResponse({
 
 		responseStream
 			.on('response.output_text.delta', (event) => {
-				controller.enqueue(event.delta);
+				send({ type: 'text', text: event.delta });
 			})
 			.on('response.completed', (event) => {
 				console.log('[API] response.completed conversation payload:', event.response.conversation);
@@ -304,7 +310,7 @@ async function streamResponse({
 			const args = parseFunctionArgs(call);
 			const result = await maybeSendEmail(call.name, args);
 			if (result.status === 'success') {
-				controller.enqueue(`func_run ${call.name} ${JSON.stringify(args)} end_run`);
+				send({ type: 'tool', name: call.name, args });
 			}
 			toolOutputs.push(buildFunctionOutput(call, result));
 		}

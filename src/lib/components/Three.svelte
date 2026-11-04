@@ -1,12 +1,12 @@
 <script lang="ts">
-	import GalleryScene from './GalleryScene.svelte';
 	import ThreeScene from './ThreeScene.svelte';
 	import RiveScene from './RiveScene.svelte';
+	import GalleryGhost from './GalleryGhost.svelte';
 	import type { PageData } from '../../routes/(site)/$types';
 	let { data, preferImageThumbnails = false }: { data: PageData; preferImageThumbnails?: boolean } =
 		$props();
 	import { Canvas } from '@threlte/core';
-	import { WebGLRenderer } from 'three';
+	import { PerspectiveCamera, WebGLRenderer } from 'three';
 	import { page } from '$app/state';
 	import { untrack, onMount, onDestroy, type SvelteComponent } from 'svelte';
 	import PostFXManager from '#lib/components/PostFXManager.svelte';
@@ -20,12 +20,20 @@
 	let riveSceneInstance: SvelteComponent | undefined = $state();
 	let isTouchDevice = $state(false);
 	let hasPointerPosition = $state(false);
+	let galleryGhostAllowed = $state(false);
 
 	const relativeMousePos = { x: 0, y: 0 };
 	const mouse = $state({ x: 0, y: 0 });
 	let size = $state({ width: 0, height: 0 });
-	let galleryLoaded = $state(false);
+	const cursorCamera = new PerspectiveCamera(45, 1, 0.1, 1000);
+	cursorCamera.position.z = 600;
 	const cursorVisible = $derived(!(isTouchDevice && loadStore.loaded));
+	$effect(() => {
+		if (!size.width || !size.height) return;
+		cursorCamera.aspect = size.width / size.height;
+		cursorCamera.fov = 2 * Math.atan(size.height / 1200) * (180 / Math.PI);
+		cursorCamera.updateProjectionMatrix();
+	});
 	$effect(() => {
 		const unsubscribe = threlteSize.subscribe((v) => {
 			size = v;
@@ -82,12 +90,17 @@
 	// $inspect(mouse)
 
 	onMount(() => {
+		const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+		const updateMotionPreference = () => (galleryGhostAllowed = !reducedMotion.matches);
+		updateMotionPreference();
+		reducedMotion.addEventListener('change', updateMotionPreference);
 		isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 		if (!isTouchDevice) {
 			document.addEventListener('mousemove', onMouseMove);
 		}
 		window.addEventListener('pointermove', onPointerMoveForCursorRestore);
 		return () => {
+			reducedMotion.removeEventListener('change', updateMotionPreference);
 			document.removeEventListener('mousemove', onMouseMove);
 			window.removeEventListener('pointermove', onPointerMoveForCursorRestore);
 		};
@@ -107,16 +120,21 @@
 		untrack(() => {
 			// If switching between gallery and non-gallery, delay the transition
 			const isGallery = page.route.id?.includes('gallery') && data.gallery;
+			if (transitionTimeout) {
+				clearTimeout(transitionTimeout);
+				transitionTimeout = null;
+			}
 			if (isGallery !== showGallery) {
 				// Optionally trigger transition-out animation here
 				showGallery = false;
 				showCanvas = false;
-				galleryLoaded = false;
-				if (transitionTimeout) clearTimeout(transitionTimeout);
 				transitionTimeout = setTimeout(() => {
 					showGallery = isGallery;
 					showCanvas = !isGallery;
+					transitionTimeout = null;
 				}, 1000); // 1 second delay
+			} else {
+				showCanvas = !isGallery;
 			}
 		});
 	});
@@ -161,6 +179,7 @@
 </script>
 
 <Canvas
+	autoRender={false}
 	createRenderer={(canvas) =>
 		new WebGLRenderer({
 			canvas,
@@ -172,22 +191,25 @@
 		})}
 >
 	<ThrelteSizeProvider />
-	<PostFXManager {mouse}>
-		{#if showGallery}
-			{#key `gallery-${optionsStore.dark}`}
-				<PostFXScene enabled={true}>
-					<GalleryScene data={data.gallery![0]} bind:galleryLoaded />
-				</PostFXScene>
-			{/key}
-		{:else if showCanvas}
+	<PostFXManager
+		{mouse}
+		pixelRatioCap={page.url.pathname === '/gallery' && loadStore.loaded ? 0.5 : 2}
+		galleryTrails={page.url.pathname === '/gallery' && loadStore.loaded && galleryGhostAllowed}
+	>
+		{#if showCanvas}
 			{#key `canvas-${optionsStore.dark}`}
 				<PostFXScene enabled={true}>
 					<ThreeScene {data} {preferImageThumbnails} {mouse} />
 				</PostFXScene>
 			{/key}
 		{/if}
+		{#if page.url.pathname === '/gallery' && loadStore.loaded && galleryGhostAllowed}
+			<GalleryGhost />
+		{/if}
 		<PostFXScene
 			enabled={true}
+			overlay={true}
+			camera={cursorCamera}
 			beforeRender={(delta: number) => {
 				// Custom rendering logic for this scene
 				riveSceneInstance!.beforeRender(delta);

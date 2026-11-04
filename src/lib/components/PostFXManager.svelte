@@ -8,7 +8,10 @@
 		Mesh,
 		Object3D,
 		OrthographicCamera,
-		Scene
+		NoBlending,
+		NormalBlending,
+		Scene,
+		type Camera
 	} from 'three';
 	import { setContext, untrack, onDestroy } from 'svelte';
 	import { writable } from 'svelte/store';
@@ -19,7 +22,14 @@
 	import { isMobileSafari, isSafari } from '#lib/utils/device.js';
 	import { perfStore } from '#lib/stores/perf.svelte.js';
 
-	let { children, mouse } = $props();
+	let {
+		children,
+		mouse,
+		pixelRatioCap = 2,
+		maxFps = 0,
+		shouldRender = () => true,
+		galleryTrails = false
+	} = $props();
 	let orthoCamera = $state<OrthographicCamera>();
 	const { size, camera, renderer, scene } = useThrelte();
 	const mouseEuler = $derived({ x: mouse.x / $size.width, y: mouse.y / $size.width });
@@ -34,8 +44,8 @@
 	$effect(() => {
 		uniforms.noiseFactor.value = optionsStore.noiseFactor;
 		uniforms.noiseScale.value = optionsStore.noiseScale;
-		uniforms.rgbPersistFactor.value = optionsStore.rgbPersistFactor;
-		uniforms.alphaPersistFactor.value = optionsStore.alphaPersistFactor;
+		uniforms.rgbPersistFactor.value = galleryTrails ? 0.85 : optionsStore.rgbPersistFactor;
+		uniforms.alphaPersistFactor.value = galleryTrails ? 0.85 : optionsStore.alphaPersistFactor;
 		uniforms.mousePos.value = [mouseEuler.x, mouseEuler.y];
 	});
 
@@ -51,6 +61,7 @@
 			vertexShader,
 			fragmentShader: blitFragmentShader,
 			transparent: true,
+			blending: galleryTrails ? NoBlending : NormalBlending,
 			depthTest: false,
 			depthWrite: false
 		});
@@ -90,7 +101,12 @@
 		{ passive: false }
 	);
 
-	type SceneEntry = { scene: any; render: (delta: number) => void };
+	type SceneEntry = {
+		scene: any;
+		render: (delta: number) => void;
+		camera?: Camera;
+		overlay?: boolean;
+	};
 
 	// Store for scenes to register themselves
 	const registeredScenes = writable<SceneEntry[]>([]);
@@ -100,9 +116,15 @@
 		registerScene: (
 			scene: any,
 			renderFn: (delta: number) => void,
-			options: { overlay?: boolean } = {}
+			options: { overlay?: boolean; camera?: Camera } = {}
 		) => {
-			registeredScenes.update((scenes) => [...scenes, { scene, render: renderFn }]);
+			registeredScenes.update((scenes) =>
+				[
+					...scenes,
+					{ scene, render: renderFn, camera: options.camera, overlay: options.overlay }
+				].sort((first, second) => Number(!!first.overlay) - Number(!!second.overlay))
+			);
+			let cancelled = false;
 			// Pre-warm all Metal PSOs on Safari to prevent first-render pipeline stall.
 			// renderer.compile() internally uses traverseVisible(), so it skips meshes
 			// with visible=false (cards start hidden). We temporarily un-hide all
@@ -111,14 +133,13 @@
 			// Skip expensive PSO pre-warm on mobile Safari: the iOS GPU handles first-draw
 			// compilation efficiently, and the 5-RAF shader compile is a significant source
 			// of jank during the card-loading phase on older iPhones.
-			if (isSafari && !isMobileSafari && typeof window !== 'undefined') {
+			if (isSafari && !isMobileSafari && !options.camera && typeof window !== 'undefined') {
 				// Defer compile until all child components (Cards, IntroGridScene etc.)
 				// have mounted their meshes and materials into the scene graph.
 				// Svelte renders synchronously but Threlte's T.* bindings and onMount
 				// callbacks fire over several microtask/RAF cycles. 5 RAFs gives enough
 				// runway for a typical scene with many Cards children.
 				let rafCount = 0;
-				let cancelled = false;
 				const waitAndCompile = () => {
 					if (cancelled) return;
 					if (++rafCount < 5) {
@@ -159,7 +180,7 @@
 								compileScene.add(new Mesh(obj.geometry, mat));
 							});
 						});
-						renderer.compile(compileScene, $camera);
+						renderer.compile(compileScene, options.camera ?? $camera);
 					} catch (_) {
 						// Non-fatal: scene may have been destroyed or camera unavailable
 					}
@@ -169,17 +190,18 @@
 					compileScene.clear();
 				};
 				window.requestAnimationFrame(waitAndCompile);
-				return () => {
-					cancelled = true;
-					registeredScenes.update((scenes) => scenes.filter((s) => s.scene !== scene));
-				};
 			}
+			return () => {
+				cancelled = true;
+				registeredScenes.update((scenes) => scenes.filter((s) => s.scene !== scene));
+			};
 		},
 		getRenderTarget: () => renderBufferA
 	});
 
 	$effect(() => {
 		$size;
+		const cap = pixelRatioCap;
 		untrack(() => {
 			if ($size.width && $size.height) {
 				// Always disable auto-clear so multiple registered scenes composite
@@ -190,7 +212,7 @@
 				// — desktop Safari Metal is fill-rate limited, 1.5→2 saves ~44%.
 				const dpr = Math.min(
 					typeof devicePixelRatio !== 'undefined' ? devicePixelRatio : 1,
-					isMobileSafari ? 1 : isSafari ? 1.5 : 2
+					isMobileSafari ? Math.min(1, cap) : isSafari ? Math.min(1.5, cap) : cap
 				);
 				renderer.setPixelRatio(dpr);
 
@@ -272,7 +294,7 @@
 	});
 
 	function renderSceneEntries(entries: SceneEntry[], delta: number) {
-		entries.forEach(({ scene, render }, i) => {
+		entries.forEach(({ scene, render, camera: sceneCamera }, i) => {
 			// Sub-phase: beforeRender callback (animation/update CPU work for this scene)
 			perfStore.measureSync(`scene${i}:update`, gl, () => {
 				render(delta);
@@ -280,7 +302,7 @@
 			// Sub-phase: actual WebGL draw for this scene (Three.js traverse + state + draw calls)
 			if (isSafari) {
 				perfStore.measureSync(`scene${i}:draw`, gl, () => {
-					renderer.render(scene, $camera);
+					renderer.render(scene, sceneCamera ?? $camera);
 				});
 				return;
 			}
@@ -302,7 +324,7 @@
 				}
 			});
 			perfStore.measureSync(`scene${i}:draw`, gl, () => {
-				renderer.render(scene, $camera);
+				renderer.render(scene, sceneCamera ?? $camera);
 			});
 			hidden.forEach(({ obj, visible }) => {
 				obj.visible = visible;
@@ -318,7 +340,18 @@
 		perfStore.triangles = renderer.info.render.triangles;
 	}
 
+	let elapsed = 0;
 	useTask((delta) => {
+		if (!shouldRender()) {
+			elapsed = 0;
+			return;
+		}
+		if (maxFps > 0) {
+			elapsed += delta;
+			if (elapsed < 1 / maxFps) return;
+			delta = elapsed;
+			elapsed = 0;
+		}
 		perfStore.tick(delta);
 		// Disable Three.js auto-reset so info.render accumulates across all
 		// renderer.render() calls this frame. We reset manually once at the start.

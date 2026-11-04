@@ -1,6 +1,7 @@
 <script lang="ts">
 	import logo from '#lib/images/logo.svg';
 	import ScrambleText from '#lib/components/ScrambleText.svelte';
+	import Wave from '#lib/components/Wave.svelte';
 	import { theme } from '#lib/utils/theme.js';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { dev } from '$app/env';
@@ -8,6 +9,8 @@
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
 	import { ambient } from '#lib/utils/ambient.svelte.js';
+	import { page } from '$app/state';
+	import { homeNav } from '#lib/stores/homeNav.js';
 
 	let { revealed = loadStore.loaded }: { revealed?: boolean } = $props();
 </script>
@@ -20,6 +23,12 @@
 >
 	<a
 		href="/"
+		onclick={(event) => {
+			if (page.url.pathname !== '/') return;
+			event.preventDefault();
+			if (homeNav.top) homeNav.top();
+			else window.scrollTo({ top: 0, behavior: 'smooth' });
+		}}
 		class="block h-8 aspect-45/51.5 shrink-0 group"
 		transition:fly={{ y: 200, duration: 500, easing: cubicInOut, delay: 900 }}
 	>
@@ -39,9 +48,7 @@
 			class:opacity-0={optionsStore.fullscreen}
 			class:invisible={optionsStore.fullscreen}
 		>
-			<span class="wave" class:wave--on={ambient.on} aria-hidden="true">
-				<i></i><i></i><i></i><i></i><i></i>
-			</span>
+			<Wave active={ambient.on} />
 			<span><ScrambleText text={ambient.on ? 'MUSIC ON' : 'MUSIC OFF'} /></span>
 		</button>
 		<button
@@ -73,51 +80,5 @@
 	.footer-live :global(a),
 	.footer-live :global(button) {
 		pointer-events: auto;
-	}
-
-	.wave {
-		display: inline-flex;
-		align-items: center;
-		gap: 2px;
-		height: 0.9rem;
-	}
-
-	.wave i {
-		display: block;
-		width: 2px;
-		height: 100%;
-		background: currentColor;
-		transform: scaleY(0.1);
-		transition: transform 0.4s ease;
-	}
-
-	.wave--on i {
-		animation: wave 1.6s ease-in-out infinite;
-	}
-
-	.wave--on i:nth-child(2) {
-		animation-delay: -0.3s;
-	}
-
-	.wave--on i:nth-child(3) {
-		animation-delay: -0.6s;
-	}
-
-	.wave--on i:nth-child(4) {
-		animation-delay: -0.9s;
-	}
-
-	.wave--on i:nth-child(5) {
-		animation-delay: -1.2s;
-	}
-
-	@keyframes wave {
-		0%,
-		100% {
-			transform: scaleY(0.2);
-		}
-		50% {
-			transform: scaleY(1);
-		}
 	}
 </style>

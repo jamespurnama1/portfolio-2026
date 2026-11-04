@@ -100,10 +100,24 @@
 
 	// Same pixels as the WebGL cursor, drawn on a DOM canvas so it can sit above the media viewer.
 	let viewerCursorCanvas: HTMLCanvasElement | undefined;
+	let galleryPointer: { x: number; y: number } | null = null;
+	const galleryPointerActive = () =>
+		page.url.pathname === '/gallery' &&
+		loadStore.loaded &&
+		introGateStore.phase === 'done' &&
+		!animationStore.isAnimating &&
+		!focusCursor.active;
 
 	function drawViewerCursor() {
 		if (typeof document === 'undefined') return;
-		if (!viewerStore.active || !showCursor || !riveCanvas || riveCanvas.width <= 0) {
+		if (
+			(!viewerStore.active &&
+				!galleryPointerActive() &&
+				!(page.url.pathname === '/gallery' && focusCursor.active)) ||
+			!showCursor ||
+			!riveCanvas ||
+			riveCanvas.width <= 0
+		) {
 			if (viewerCursorCanvas && viewerCursorCanvas.style.display !== 'none') {
 				viewerCursorCanvas.style.display = 'none';
 			}
@@ -130,7 +144,8 @@
 			el.style.height = `${h}px`;
 		}
 		// The arrow is drawn in the top-right corner of the cursor plane.
-		el.style.transform = `translate3d(${arrowScreen.x - w}px, ${arrowScreen.y}px, 0)`;
+		const position = galleryPointerActive() && galleryPointer ? galleryPointer : arrowScreen;
+		el.style.transform = `translate3d(${position.x - w}px, ${position.y}px, 0)`;
 		el.style.display = 'block';
 		const ctx = el.getContext('2d');
 		ctx?.clearRect(0, 0, pw, ph);
@@ -182,7 +197,16 @@
 
 	onMount(() => {
 		ensureCaretTexture();
+		const trackGalleryPointer = (event: PointerEvent) => {
+			if (event.pointerType === 'touch') return;
+			galleryPointer = { x: event.clientX, y: event.clientY };
+			if (galleryPointerActive() && viewerCursorCanvas) {
+				viewerCursorCanvas.style.transform = `translate3d(${event.clientX - viewerCursorCanvas.clientWidth}px, ${event.clientY}px, 0)`;
+			}
+		};
+		window.addEventListener('pointermove', trackGalleryPointer);
 		return () => {
+			window.removeEventListener('pointermove', trackGalleryPointer);
 			viewerCursorCanvas?.remove();
 			viewerCursorCanvas = undefined;
 			loadingTimeline?.kill();
@@ -221,6 +245,7 @@
 	});
 
 	let meshOpacityTarget = $derived.by(() => {
+		if (page.url.pathname === '/gallery' && loadStore.loaded) return showCursor ? 1 : 0;
 		// Normal cursor while waiting on the intro button; it hides while snapped to it.
 		if (introGateStore.phase === 'waiting') {
 			if (!showCursor) return 0;
@@ -514,6 +539,20 @@
 					caretPos.rotation += (snapRotation - caretPos.rotation) * mouseSpeed;
 					caretPos.rotationX += (0 - caretPos.rotationX) * mouseSpeed;
 					caretPos.rotationY += (0 - caretPos.rotationY) * mouseSpeed;
+				} else if (galleryPointerActive() && galleryPointer) {
+					const target = getClientCursorTarget(
+						galleryPointer.x,
+						galleryPointer.y,
+						DEFAULT_CURSOR_SCALE
+					);
+					caretPos.x = target.x;
+					caretPos.y = target.y;
+					caretPos.z = 0;
+					caretPos.scaleX = DEFAULT_CURSOR_SCALE;
+					caretPos.scaleY = DEFAULT_CURSOR_SCALE;
+					caretPos.rotation = 0;
+					caretPos.rotationX = 0;
+					caretPos.rotationY = 0;
 				} else {
 					introPlacementComplete = false;
 					introAutoPositioning = false;

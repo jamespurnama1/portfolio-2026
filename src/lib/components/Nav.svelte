@@ -7,11 +7,20 @@
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
 	import { track } from '#lib/utils/analytics.js';
+	import { flip } from 'svelte/animate';
 
 	let { revealed = loadStore.loaded }: { revealed?: boolean } = $props();
 
 	let resumeLabel = $state('résumé');
 	let resumeScramble = $state(false);
+	const links = $derived([
+		...(page.url.pathname !== '/about' ? ['about'] : []),
+		...(page.url.pathname !== '/gallery' ? ['gallery'] : []),
+		'email',
+		'resume',
+		...(page.url.pathname !== '/' || viewerStore.active ? ['back'] : [])
+	]);
+	const mobileLinks = $derived(links.filter((link) => link !== 'email'));
 
 	function onResumeClick() {
 		track('resume_download', { source: 'nav' });
@@ -27,59 +36,64 @@
 >
 	<nav
 		class="nav-bar flex justify-between items-start fixed w-full p-4 top-0 left-0 pointer-events-none"
+		class:three={mobileLinks.length === 3}
 	>
 		{#if revealed}
-			<a
-				transition:fly={{ y: -200, duration: 500, easing: cubicInOut }}
-				href="/about"
-				aria-current={page.url.pathname === '/about' ? 'page' : undefined}
-				><p><ScrambleText text="about" /></p></a
-			>
-			<a
-				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 100 }}
-				class="block max-md:hidden"
-				href="mailto:hello@jameshenry.site"
-				onclick={() => track('email_click', { source: 'nav' })}
-				><p><ScrambleText text="hello@jameshenry.site" /></p></a
-			>
-			<a
-				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 150 }}
-				href="/Resume_James%20Henry.pdf"
-				download="Resume_James Henry.pdf"
-				target="_blank"
-				rel="noopener noreferrer"
-				onclick={onResumeClick}
-				><p>
-					<ScrambleText
-						text={resumeLabel}
-						reserveText="sending"
-						active={resumeScramble}
-						durationMs={750}
-					/>
-				</p></a
-			>
-			<!-- <button
-				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 100 }}
-				on:click={() => gptStore.opened = true}>
-				<p class="uppercase">ask me anything</p></button
-			> -->
-			<!-- temporarily disabled gallery -->
-			<!-- <a href="/gallery"><p>gallery</p></a> -->
-			<a
-				transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: 200 }}
-				class="goback"
-				class:invisible={page.url.pathname === '/' && !viewerStore.active}
-				href="/"
-				onclick={(e) => {
-					// When a lightbox is open, close it instead of navigating home.
-					// The click still bubbles to document where Cards.svelte's
-					// escapeListener will call updateFullscreen(false).
-					if (optionsStore.fullscreen) {
-						e.preventDefault();
-						window.dispatchEvent(new CustomEvent('close-viewer'));
-					}
-				}}><p><ScrambleText text="go back" /></p></a
-			>
+			{#each links as link, index (link)}
+				<div
+					animate:flip={{ duration: 500, easing: cubicInOut }}
+					class:hidden-email={link === 'email'}
+					data-pos={mobileLinks.indexOf(link)}
+				>
+					{#if link === 'about' || link === 'gallery'}
+						<a
+							transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: index * 50 }}
+							href="/{link}"><p><ScrambleText text={link} /></p></a
+						>
+					{:else if link === 'email'}
+						<a
+							transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: index * 50 }}
+							href="mailto:hello@jameshenry.site"
+							onclick={() => track('email_click', { source: 'nav' })}
+							><p><ScrambleText text="hello@jameshenry.site" /></p></a
+						>
+					{:else if link === 'resume'}
+						<a
+							transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: index * 50 }}
+							href="/Resume_James%20Henry.pdf"
+							download="Resume_James Henry.pdf"
+							target="_blank"
+							rel="noopener noreferrer"
+							onclick={onResumeClick}
+							><p>
+								<ScrambleText
+									text={resumeLabel}
+									reserveText="sending"
+									active={resumeScramble}
+									durationMs={750}
+								/>
+							</p></a
+						>
+					{:else}
+						<a
+							transition:fly={{ y: -200, duration: 500, easing: cubicInOut, delay: index * 50 }}
+							class="goback"
+							href="/"
+							onclick={(event) => {
+								if (
+									page.url.pathname === '/gallery' &&
+									!window.dispatchEvent(new Event('close-gallery-viewer', { cancelable: true }))
+								) {
+									event.preventDefault();
+								} else if (optionsStore.fullscreen) {
+									event.preventDefault();
+									window.dispatchEvent(new CustomEvent('close-viewer'));
+								}
+							}}><p><ScrambleText text="go back" /></p></a
+						>
+					{/if}
+				</div>
+			{/each}
 		{/if}
 	</nav>
 	<aside
@@ -125,5 +139,20 @@
 <style>
 	.nav-bar :global(a) {
 		pointer-events: auto;
+	}
+	@media (max-width: 767px) {
+		.hidden-email {
+			display: none;
+		}
+		.nav-bar.three {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+		}
+		.nav-bar.three > [data-pos='1'] {
+			justify-self: center;
+		}
+		.nav-bar.three > [data-pos='2'] {
+			justify-self: end;
+		}
 	}
 </style>

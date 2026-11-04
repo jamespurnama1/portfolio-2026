@@ -433,8 +433,13 @@
 		window.addEventListener('touchmove', onTouchMove, { passive: false });
 		window.addEventListener('touchend', onTouchEnd, { passive: true });
 		homeNav.step = keyStep;
+		homeNav.top = () => {
+			targetStep = 0;
+			tweenToY(0, 1);
+		};
 		return () => {
 			homeNav.step = null;
+			homeNav.top = null;
 			gsap.killTweensOf(tweenState);
 			holdNativeScroll(false);
 			window.removeEventListener('wheel', onWheel);

@@ -151,7 +151,7 @@
 		}
 		// Easter egg
 		namnam(e.key);
-		if (page.url.pathname === '/about') return;
+		if (page.url.pathname === '/about' || page.url.pathname === '/gallery') return;
 		if (page.params.slug || page.url.hash) return;
 		if (onControl && e.key === 'Enter') return;
 		const arrowDir: Record<string, 1 | -1> = {
@@ -342,6 +342,7 @@
 	// Calculate Loading
 	let loadedMediaIndices = new Set<number>();
 	const expectedMediaCount = $derived.by(() => {
+		if (page.url.pathname === '/gallery') return 0;
 		if (!data.projects?.length) return 0;
 		return data.projects.reduce((count, project) => {
 			const usesImageThumbnail = preferImageThumbnails && !!project.thumbnailImage?.asset?.url;
@@ -673,7 +674,8 @@
 		page.url.pathname;
 		return untrack(() => {
 			if (!wheelHandler || !touchStartHandler || !touchMoveHandler) return;
-			const useVirtualScroll = !page.url.pathname.includes('work');
+			const useVirtualScroll =
+				!page.url.pathname.includes('work') && page.url.pathname !== '/gallery';
 			if (useVirtualScroll) {
 				document.addEventListener('wheel', wheelHandler, { passive: false });
 				document.addEventListener('touchstart', touchStartHandler, { passive: true });
@@ -776,7 +778,7 @@
 			if (!el.matches?.(':focus-visible')) return;
 			focusCursor.set(el);
 		};
-		const onFocusOut = () => focusCursor.clear();
+		const onFocusOut = () => untrack(() => focusCursor.clear());
 		document.addEventListener('mousemove', onRealMouseMove, { passive: true });
 		document.addEventListener('wheel', releaseKeyboardFocus, { passive: true });
 		document.addEventListener('touchstart', releaseKeyboardFocus, { passive: true });
@@ -823,14 +825,22 @@
 
 <svelte:window bind:innerWidth bind:innerHeight on:keydown={onKeyDown} />
 
-<div class="app min-h-svh w-screen overflow-x-hidden overflow-y-hidden">
+<div
+	class="app min-h-svh w-screen {page.url.pathname === '/about'
+		? 'overflow-x-clip overflow-y-visible'
+		: 'overflow-x-hidden overflow-y-hidden'}"
+>
 	<!-- Header -->
 	<Nav bind:this={navComponent} revealed={showSiteChrome} />
 
 	<!-- Main -->
 	<main
-		class="w-full overscroll-none z-10 relative flex flex-col items-center justify-center transition-opacity duration-500"
-		class:mix-blend-difference={page.url.pathname !== '/branch' && page.url.pathname !== '/about'}
+		class="w-full overscroll-none {page.url.pathname === '/gallery' && loadStore.loaded
+			? 'z-16'
+			: 'z-10'} relative flex flex-col items-center justify-center transition-opacity duration-500"
+		class:mix-blend-difference={page.url.pathname !== '/branch' &&
+			page.url.pathname !== '/about' &&
+			page.url.pathname !== '/gallery'}
 		class:pointer-events-none={page.url.pathname === '/' || page.url.pathname.includes('work')}
 		class:opacity-0={gptStore.opened}
 	>
@@ -876,10 +886,19 @@
 	<MediaViewer />
 	<IntroStack />
 	<!-- BG -->
+	{#if page.url.pathname === '/gallery' && loadStore.loaded}
+		<div
+			class="fixed inset-0 z-0 pointer-events-none"
+			style:background={optionsStore.dark ? '#080808' : '#fff'}
+		></div>
+	{/if}
 	<div
-		class="fixed w-screen h-lvh z-0 top-0 left-0 canvas-container transition-opacity duration-500 bg-black"
-		class:invert={!optionsStore.dark}
-		class:invert-0={optionsStore.dark}
+		class="fixed w-screen h-lvh top-0 left-0 canvas-container transition-opacity duration-500 {page
+			.url.pathname === '/gallery' && loadStore.loaded
+			? 'z-15 pointer-events-none'
+			: 'z-0 bg-black'}"
+		class:invert={!optionsStore.dark && page.url.pathname !== '/gallery'}
+		class:invert-0={optionsStore.dark || page.url.pathname === '/gallery'}
 		class:opacity-0={gptStore.opened &&
 			page.url.pathname === '/' &&
 			($introSectionStore.active || $introSectionStore.progress < 1)}
@@ -896,7 +915,7 @@
 
 	<!-- Video Elements -->
 	<div class="absolute top-0 w-52 pointer-events-none {showSource}">
-		{#if data.projects}
+		{#if data.projects && page.url.pathname !== '/gallery'}
 			{#each data.projects as project, i}
 				{#if project.thumbnail?.asset?.url && !(preferImageThumbnails && project.thumbnailImage?.asset?.url)}
 					<video

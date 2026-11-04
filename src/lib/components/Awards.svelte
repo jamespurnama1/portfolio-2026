@@ -79,7 +79,9 @@
 					{#if award.gold}
 						{#each award.gold as gold}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-gold"
+								class="{compact
+									? ''
+									: 'invert dark:invert-0'} w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-gold"
 								aria-label={gold}
 								onclick={() => (currAward = gold)}
 								onfocus={() => (currAward = gold)}
@@ -95,7 +97,9 @@
 					{#if award.silver}
 						{#each award.silver as silver}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-silver"
+								class="{compact
+									? ''
+									: 'invert dark:invert-0'} w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-silver"
 								aria-label={silver}
 								onclick={() => (currAward = silver)}
 								onfocus={() => (currAward = silver)}
@@ -111,7 +115,9 @@
 					{#if award.bronze}
 						{#each award.bronze as bronze}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-bronze"
+								class="{compact
+									? ''
+									: 'invert dark:invert-0'} w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-bronze"
 								aria-label={bronze}
 								onclick={() => (currAward = bronze)}
 								onfocus={() => (currAward = bronze)}
@@ -127,7 +133,9 @@
 					{#if award.crystal}
 						{#each award.crystal as crystal}
 							<button
-								class="invert dark:invert-0 w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-crystal"
+								class="{compact
+									? ''
+									: 'invert dark:invert-0'} w-5 h-5 transition-transform hover:scale-150 focus-visible:scale-150 bg-crystal"
 								aria-label={crystal}
 								onclick={() => (currAward = crystal)}
 								onfocus={() => (currAward = crystal)}
@@ -172,20 +180,18 @@
 	}
 
 	.compact img {
-		width: 2rem;
-		height: 2rem;
+		width: 2.5rem;
+		height: 2.5rem;
 	}
 
 	.compact > div > div {
-		display: flex;
-		flex-wrap: nowrap;
-		min-width: 0;
-		gap: 2px;
+		min-width: 2.5rem;
+		gap: 0.25rem;
 	}
 
 	.compact button {
-		width: 0.75rem;
-		height: 0.2rem;
+		width: 1.25rem;
+		height: 1.25rem;
 	}
 
 	.award-label.compact {
