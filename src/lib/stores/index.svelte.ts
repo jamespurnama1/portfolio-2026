@@ -489,11 +489,26 @@ export const easterEggStore = {
 };
 
 let gptOpened = $state(false);
+// Shown expanded at the bottom without hiding or locking anything; any interaction promotes it to `opened`.
+let gptPeek = $state(false);
+// True while the landing page's last section is in view; closing the chat there returns to peek.
+let gptPeekZone = false;
 export const gptStore = {
 	get opened(): boolean {
 		return gptOpened;
 	},
 	set opened(newVal: boolean) {
 		gptOpened = newVal;
+		gptPeek = newVal ? false : gptPeekZone;
+	},
+	get peek(): boolean {
+		return gptPeek;
+	},
+	set peek(newVal: boolean) {
+		gptPeek = newVal && !gptOpened;
+	},
+	set peekZone(newVal: boolean) {
+		gptPeekZone = newVal;
+		gptPeek = newVal && !gptOpened;
 	}
 };

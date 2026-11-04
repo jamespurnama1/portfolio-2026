@@ -394,6 +394,26 @@
 	});
 
 	let wasOpened = false;
+	// On mobile the keyboard shrinks only the visual viewport, so centre the opened modal in that instead.
+	let vv = $state({ top: 0, height: 0 });
+	$effect(() => {
+		if (!gptStore.opened || !window.visualViewport) return;
+		if (!window.matchMedia('(max-width: 767px)').matches) return;
+		const viewport = window.visualViewport;
+		const update = () => (vv = { top: viewport.offsetTop, height: viewport.height });
+		update();
+		viewport.addEventListener('resize', update);
+		viewport.addEventListener('scroll', update);
+		return () => {
+			viewport.removeEventListener('resize', update);
+			viewport.removeEventListener('scroll', update);
+			vv = { top: 0, height: 0 };
+		};
+	});
+	$effect(() => {
+		if (!gptStore.peek) return;
+		untrack(() => scroller?.scrollTo({ top: scroller.scrollHeight }));
+	});
 	$effect(() => {
 		const opened = gptStore.opened;
 		untrack(() => {
@@ -409,6 +429,17 @@
 			loadConversationHistory(restoredId);
 		}
 		changePlaceholder();
+
+		// While peeking, a printable keystroke goes straight into the input (focusin then opens the modal).
+		const typeToChat = (e: KeyboardEvent) => {
+			if (!gptStore.peek || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+			if (e.key.length !== 1) return;
+			const target = e.target as Element | null;
+			if (target?.closest('input, textarea, select, [contenteditable]')) return;
+			input?.focus();
+		};
+		window.addEventListener('keydown', typeToChat);
+		return () => window.removeEventListener('keydown', typeToChat);
 	});
 </script>
 
@@ -418,37 +449,47 @@
 	onclick={() => {
 		gptStore.opened = true;
 	}}
+	onfocusin={(e) => {
+		if (gptStore.peek && e.target === input) gptStore.opened = true;
+	}}
 	aria-modal="true"
 	transition:fly={{ y: '46vh', duration: 500, easing: quintOut }}
 	id="gpt"
+	style:top={gptStore.opened && vv.height ? `${vv.top + vv.height / 2}px` : undefined}
 	class:opacity-0={!loadStore.loaded ||
 		introGateStore.phase !== 'done' ||
 		(notificationStore.opened && !gptStore.opened)}
 	class:pointer-events-none={introGateStore.phase !== 'done'}
 	class="{gptStore.opened
 		? '-translate-y-1/2! md:-translate-x-1/2! max-md:-translate-x-1/2! max-md:w-[90vw] max-md:left-1/2'
-		: optionsStore.fullscreen
-			? 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[150svh] max-md:w-[50vw] max-md:left-auto max-md:right-0 pointer-events-none'
-			: 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh-3.5rem)] max-md:w-[50vw] max-md:left-auto max-md:right-0'} fixed min-h-24 max-md:min-h-0 top-1/2 flex flex-col p-3 pt-0 {gptStore.opened
+		: gptStore.peek
+			? 'translate-y-[calc(50svh-100%-4.5rem)]! max-md:translate-y-[calc(50svh-100%-8rem)]! md:-translate-x-1/2! max-md:-translate-x-1/2! max-md:w-[90vw] max-md:left-1/2'
+			: optionsStore.fullscreen
+				? 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[150svh] max-md:w-[50vw] max-md:left-auto max-md:right-0 pointer-events-none'
+				: 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh-3.5rem)] max-md:w-[50vw] max-md:left-auto max-md:right-0'} fixed min-h-24 max-md:min-h-0 top-1/2 flex flex-col p-3 pt-0 {gptStore.opened ||
+	gptStore.peek
 		? ''
-		: 'max-md:pb-0'} md:left-1/2 hover:translate-y-[calc(50svh-5rem)] focus-within:translate-y-[calc(50svh-5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[translate,transform,opacity] gpt-glow"
+		: 'max-md:pb-0'} md:left-1/2 hover:translate-y-[calc(50svh-5rem)] focus-within:translate-y-[calc(50svh-5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[translate,transform,opacity,top] gpt-glow"
 >
 	<div class="flex flex-col w-full justify-center items-center">
 		<div
-			class="w-full p-5 max-md:text-xs flex justify-between items-center {gptStore.opened
+			class="w-full p-5 max-md:text-xs flex justify-between items-center {gptStore.opened ||
+			gptStore.peek
 				? ''
 				: 'max-md:flex-row-reverse'}"
 		>
 			<p class="font-mono gpt-text">Ask me anything</p>
 			<button
 				class="relative z-30"
+				class:invisible={gptStore.peek}
+				tabindex={gptStore.peek ? -1 : 0}
 				onclick={(e) => {
 					e.stopPropagation();
 					gptStore.opened = false;
 				}}
 				><img
-					src={gptStore.opened ? x_img : caret}
-					alt={gptStore.opened ? 'Close Modal' : 'Open Modal'}
+					src={gptStore.opened || gptStore.peek ? x_img : caret}
+					alt={gptStore.opened || gptStore.peek ? 'Close Modal' : 'Open Modal'}
 					class="w-4 h-auto pointer-events-none rotate-180 {optionsStore.dark
 						? 'invert-0'
 						: 'invert'}"
@@ -461,8 +502,13 @@
 			class:mask={chatIsOverflowing}
 			class:mask-top={chatScrolledBottom}
 			class:mask-bottom={chatScrolledTop}
+			style:max-height={gptStore.opened && vv.height
+				? `${Math.max(80, Math.min(window.innerHeight * 0.65, vv.height - 230))}px`
+				: undefined}
 			onscroll={onChatScroll}
-			class="mask flex flex-col items-start max-h-[65vh] w-full overflow-y-scroll px-3 sm:px-6 md:px-12"
+			class="mask flex flex-col items-start {gptStore.peek
+				? 'max-h-[22svh]'
+				: 'max-h-[65vh]'} transition-[max-height] duration-500 w-full overflow-y-scroll px-3 sm:px-6 md:px-12"
 		>
 			{#each logs as log, index}
 				<p
@@ -487,7 +533,8 @@
 		</span>
 	</div>
 	<div
-		class="flex w-full relative items-center p-3 sm:p-5 gap-2 sm:gap-3 {gptStore.opened
+		class="flex w-full relative items-center p-3 sm:p-5 gap-2 sm:gap-3 {gptStore.opened ||
+		gptStore.peek
 			? ''
 			: 'max-md:hidden'}"
 	>

@@ -25,14 +25,15 @@
 	const { data }: { data: Required<PageData> } = $props();
 	const introBodyText =
 		'<h1>Get to know James Henry.</h1> A tech creative who loves to build things that look and feel&nbsp;great.<br><mono>Creative Direction・Motion・Design・Web</mono><br>Browse his projects below or simply start chatting with his&nbsp;clone.';
-	const finalHeadlineText = "Let's make your project happen";
+	const finalHeadlineText = "Let's make your project\u00A0happen";
 	const finalBodyText =
-		'Creative direction, motion systems, interactive builds, and production-ready frontend implementation for teams that need both a point of view and the technical depth to ship it.';
+		'Creative direction, motion systems, interactive builds, and production-ready frontend implementation for teams that need both a point of view and the technical depth to\u00A0ship\u00A0it.';
 	const introBodyReserve = buildStaticFormattedText(introBodyText);
 	const projectsLength = $derived(data.projectsLength ?? data.projects?.length ?? 0);
 	const projectsPinPercent = $derived(Math.max(0, projectsLength * 10));
 	let introSection: HTMLElement | null = null;
 	let categorySection: HTMLElement | null = null;
+	let finalSection: HTMLElement | null = null;
 	let projectListHostEl: HTMLElement | null = null;
 	let categoryTriggerRef: ScrollTriggerInstance | null = null;
 	let introTriggerRef: ScrollTriggerInstance | null = null;
@@ -517,6 +518,17 @@
 		let cleanup: (() => void) | undefined;
 		let removeCategoryGate: (() => void) | undefined;
 
+		// The GPT bar slides up as the last section settles in view and returns when it leaves.
+		const peekObserver = new IntersectionObserver(
+			([entry]) => {
+				if (!entry) return;
+				const inView = entry.isIntersecting && page.url.pathname === '/';
+				if (inView && introGateStore.phase === 'done') gptStore.peekZone = true;
+				else if (!inView) gptStore.peekZone = false;
+			},
+			{ threshold: 0.6 }
+		);
+		if (finalSection) peekObserver.observe(finalSection);
 		void (async () => {
 			if (!browser) return;
 			const scrollTriggerModule = await import('gsap/ScrollTrigger');
@@ -805,7 +817,11 @@
 			};
 		})();
 
-		return () => cleanup?.();
+		return () => {
+			peekObserver.disconnect();
+			gptStore.peekZone = false;
+			cleanup?.();
+		};
 	});
 </script>
 
@@ -879,14 +895,17 @@
 </section>
 <section
 	class="final-section"
+	bind:this={finalSection}
 	class:opacity-0={animationStore.isTransitioning || page.url.pathname !== '/'}
 	class:invisible={animationStore.isTransitioning || page.url.pathname !== '/'}
 >
 	<div class="final-copy text-white mix-blend-difference">
-		<h3 class="font-sans text-4xl md:text-5xl lg:text-6xl leading-[0.92] font-bold mb-6 text-left">
+		<h3
+			class="font-sans text-4xl md:text-5xl lg:text-6xl leading-[0.92] font-bold mb-6 text-center"
+		>
 			{finalHeadlineText}
 		</h3>
-		<p class="font-sans text-xs md:text-sm leading-relaxed opacity-80 text-left">
+		<p class="font-sans text-xs md:text-sm leading-relaxed opacity-80 text-center">
 			{finalBodyText}
 		</p>
 	</div>
@@ -935,13 +954,23 @@
 	}
 
 	.final-section {
-		justify-content: flex-start;
+		justify-content: center;
+		padding-bottom: calc(22svh + 15rem);
 	}
 
 	.final-copy {
-		width: min(100%, 84rem);
-		margin-right: auto;
-		padding: 0 min(30vw, 30rem) 0 clamp(2rem, 5vw, 4rem);
+		width: min(100%, 56rem);
+		margin-inline: auto;
+		padding: 0 clamp(1rem, 5vw, 4rem);
+		text-align: center;
+	}
+
+	.final-copy h3 {
+		text-wrap: balance;
+	}
+
+	.final-copy p {
+		text-wrap: pretty;
 	}
 
 	@media (max-width: 767px) {
@@ -952,11 +981,22 @@
 			padding: 6rem 1rem 7.5rem;
 		}
 
+		.final-section {
+			padding-bottom: calc(22svh + 17.5rem);
+			align-items: center;
+			justify-content: center;
+		}
+
 		.intro-copy,
 		.final-copy {
 			padding: 0;
 			max-width: 80%;
 			width: 18em;
+		}
+
+		.final-copy {
+			max-width: 100%;
+			width: 100%;
 		}
 	}
 
