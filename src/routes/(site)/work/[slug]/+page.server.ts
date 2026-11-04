@@ -1,5 +1,14 @@
 import { error } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
+import { client } from '#lib/utils/sanityClient.js';
+import type { EntryGenerator, PageServerLoad } from './$types';
+
+// Prerender every project linked from a landing category.
+export const entries: EntryGenerator = async () => {
+	const slugs: string[] = await client.fetch(
+		`array::unique(*[_type == "landing"].items[]->slug.current)`
+	);
+	return slugs.filter(Boolean).map((slug) => ({ slug }));
+};
 
 export const load: PageServerLoad = async ({ params, parent }) => {
 	const { projects } = await parent();

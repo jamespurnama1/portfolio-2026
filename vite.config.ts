@@ -20,20 +20,7 @@ export default defineConfig({
 
 			prerender: {
 				// default: false,
-				entries: [
-					'/',
-					'/about',
-					'/branch',
-					'/gallery',
-					'/work/yellow-canteen',
-					'/work/anti-hate-keyboard',
-					'/work/lakra',
-					'/work/creaid',
-					'/work/arcteryx',
-					'/work/tremors',
-					'/work/jack-the-clipper',
-					'/work/creta-black'
-				]
+				entries: ['/', '/about', '/branch', '/gallery', '/sitemap.xml']
 			}
 		}),
 		mkcert(),
