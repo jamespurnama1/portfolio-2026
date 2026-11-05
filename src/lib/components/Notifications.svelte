@@ -14,6 +14,7 @@
 		untrack(() => {
 			// Also covers a new message replacing one that is already showing.
 			if (opened && (!wasNotifying || message !== lastMessage)) sfx.notify();
+			if (!opened) notificationStore.hint = false;
 			wasNotifying = opened;
 			lastMessage = message;
 		});
@@ -44,7 +45,7 @@
 {#if notificationStore.opened}
 	<div
 		onclick={() => {
-			gptStore.opened = true;
+			if (!notificationStore.hint) gptStore.opened = true;
 			notificationStore.opened = false;
 		}}
 		onkeydown={() => {}}

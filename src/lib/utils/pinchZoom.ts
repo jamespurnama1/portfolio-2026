@@ -1,6 +1,5 @@
 const MAX_SCALE = 5;
-const SPRING_MS = 450;
-const SPRING = `${SPRING_MS}ms cubic-bezier(0.34, 1.3, 0.64, 1)`;
+const SPRING_MS = 320;
 
 // Instagram-style zoom: the media floats unclipped while pinched, then springs back on release.
 // Uses the independent `scale`/`translate` properties so GSAP's `transform` tweens are unaffected.
@@ -14,6 +13,8 @@ export function pinchZoom(node: HTMLElement, _selection?: unknown) {
 	let gestureStart = 1;
 	let wheelTimer: ReturnType<typeof setTimeout> | undefined;
 	let settleTimer: ReturnType<typeof setTimeout> | undefined;
+	let springFrame = 0;
+	let springing = false;
 	const pointers = new Map<number, { x: number; y: number }>();
 
 	const stage = () => node.querySelector<HTMLElement>('.feature-media');
@@ -31,6 +32,8 @@ export function pinchZoom(node: HTMLElement, _selection?: unknown) {
 	function reset() {
 		clearTimeout(wheelTimer);
 		clearTimeout(settleTimer);
+		cancelAnimationFrame(springFrame);
+		springing = false;
 		scale = 1;
 		x = 0;
 		y = 0;
@@ -42,6 +45,8 @@ export function pinchZoom(node: HTMLElement, _selection?: unknown) {
 		const stageEl = stage();
 		if (!el || !stageEl) return;
 		clearTimeout(settleTimer);
+		cancelAnimationFrame(springFrame);
+		springing = false;
 		el.style.removeProperty('transition');
 		el.style.setProperty('scale', String(scale));
 		el.style.setProperty('translate', `${x}px ${y}px`);
@@ -50,16 +55,32 @@ export function pinchZoom(node: HTMLElement, _selection?: unknown) {
 
 	function springBack() {
 		clearTimeout(wheelTimer);
+		// iOS fires pointer and gesture events for one pinch; a second call must not cut the spring short.
+		if (springing) return;
 		const el = media();
 		if (!el || scale === 1) return reset();
+		const from = { scale, x, y };
 		scale = 1;
 		x = 0;
 		y = 0;
-		el.style.setProperty('transition', `scale ${SPRING}, translate ${SPRING}`);
-		el.style.setProperty('scale', '1');
-		el.style.setProperty('translate', '0px 0px');
-		clearTimeout(settleTimer);
-		settleTimer = setTimeout(clear, SPRING_MS + 50);
+		springing = true;
+		cancelAnimationFrame(springFrame);
+		const start = performance.now();
+		// Driven from JS: Safari doesn't reliably transition the independent scale/translate properties.
+		const step = (now: number) => {
+			if (!springing) return;
+			const t = Math.min(1, (now - start) / SPRING_MS);
+			const k = 1 - Math.pow(1 - t, 3);
+			el.style.setProperty('scale', String(from.scale + (1 - from.scale) * k));
+			el.style.setProperty('translate', `${from.x * (1 - k)}px ${from.y * (1 - k)}px`);
+			if (t < 1) {
+				springFrame = requestAnimationFrame(step);
+			} else {
+				springing = false;
+				clear();
+			}
+		};
+		springFrame = requestAnimationFrame(step);
 	}
 
 	function zoomAt(clientX: number, clientY: number, next: number) {
@@ -178,6 +199,7 @@ export function pinchZoom(node: HTMLElement, _selection?: unknown) {
 		destroy() {
 			clearTimeout(wheelTimer);
 			clearTimeout(settleTimer);
+			cancelAnimationFrame(springFrame);
 			node.removeEventListener('wheel', onWheel, true);
 			node.removeEventListener('pointerdown', onPointerDown);
 			node.removeEventListener('pointermove', onPointerMove);

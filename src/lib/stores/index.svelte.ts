@@ -342,7 +342,15 @@ let notifOpened = $state(false);
 let message = $state('');
 let sub = $state('');
 let notifPersistent = $state(false);
+let notifHint = $state(false);
 export const notificationStore = {
+	// A hint is informational: clicking it dismisses instead of opening the chat.
+	get hint(): boolean {
+		return notifHint;
+	},
+	set hint(newVal: boolean) {
+		notifHint = newVal;
+	},
 	get opened(): boolean {
 		return notifOpened;
 	},

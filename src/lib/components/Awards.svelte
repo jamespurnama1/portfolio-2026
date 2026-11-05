@@ -58,7 +58,7 @@
 		out:fade
 		class="awards-list pointer-events-auto relative z-10 flex w-full max-w-full flex-wrap items-start justify-start {alignAsLanding
 			? 'max-md:justify-center max-md:origin-left'
-			: 'max-md:origin-left'} gap-4 origin-left {horizontal ? '' : 'scale-100'} md:gap-5 {stacked
+			: 'max-md:origin-left'} gap-2.5 origin-left {horizontal ? '' : 'scale-100'} md:gap-5 {stacked
 			? 'md:grid md:grid-cols-[repeat(2,max-content)] md:justify-start md:gap-x-4'
 			: ''} {className}"
 		class:compact
@@ -74,7 +74,11 @@
 					src={award.icon.asset.url}
 					alt={award.issuer}
 				/>
-				<div class="grid grid-cols-[repeat(2,1.25rem)] max-md:grid-cols-[repeat(2,1rem)] gap-2 flex-wrap min-w-12">
+				<div
+					class="grid grid-cols-[repeat(2,1.25rem)] {compact
+						? ''
+						: 'max-md:grid-cols-[repeat(2,1rem)]'} gap-2 flex-wrap min-w-12"
+				>
 					<!-- TODO: Make this into component & less reptitive -->
 					{#if award.gold}
 						{#each award.gold as gold}
@@ -156,7 +160,7 @@
 		bind:this={awardsEl[1]}
 		class="award-label w-full text-left {alignAsLanding
 			? 'max-md:text-center'
-			: ''} text-[0.45em] max-md:text-xs md:text-xs md:h-6 md:my-2 font-mono font-light {className}"
+			: ''} text-[0.45em] max-md:text-xs max-md:mt-2 md:text-xs md:h-6 md:my-2 font-mono font-light {className}"
 		transition:fly={{ x: isTouch ? 0 : 200, duration: 500, easing: cubicInOut, delay: 100 }}
 		class:compact
 	>

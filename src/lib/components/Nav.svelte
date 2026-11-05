@@ -131,7 +131,7 @@
 				? 'max-md:opacity-0 max-md:pointer-events-none delay-300'
 				: 'delay-300'}"
 	>
-		{#if revealed && !(isMobile && optionsStore.galleryViewer)}
+		{#if revealed && !optionsStore.fullscreen && !(isMobile && optionsStore.galleryViewer)}
 			<a
 				href="https://instagram.com/jamespurnama1"
 				target="_blank"

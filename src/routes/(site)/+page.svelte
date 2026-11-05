@@ -24,7 +24,7 @@
 
 	const { data }: { data: Required<PageData> } = $props();
 	const introBodyText =
-		'<h1>Get to know James Henry.</h1> A tech creative who loves to build things that look and feel&nbsp;great.<br><mono>Creative Direction・Motion・Design・Web</mono><br>Browse his projects below or simply start chatting with his&nbsp;clone.';
+		'<h1>Get to know James&nbsp;Henry.</h1> A tech creative who loves to build things that look and feel&nbsp;great.<br><mono>Creative Direction・Motion・Design・Web</mono><br>Browse his projects below or simply start chatting with his&nbsp;clone.';
 	const finalHeadlineText = "Let's make your project\u00A0happen";
 	const finalBodyText =
 		'Creative direction, motion systems, interactive builds, and production-ready frontend implementation for teams that need both a point of view and the technical depth to\u00A0ship\u00A0it.';
@@ -871,7 +871,7 @@
 		class:intro-copy--shown={introGateStore.phase === 'revealing' ||
 			introGateStore.phase === 'done'}
 	>
-		<div class="font-sans text-xs md:text-sm leading-relaxed text-left intro-body">
+		<div class="font-sans text-xs md:text-sm leading-relaxed text-left intro-body md:whitespace-pre">
 			{@html introBodyReserve}
 		</div>
 	</div>

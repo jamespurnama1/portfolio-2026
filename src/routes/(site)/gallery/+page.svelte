@@ -11,6 +11,8 @@
 	import { sfx } from '#lib/utils/sfx.js';
 	import { createGalleryVideoThumbnails } from '#lib/utils/galleryVideoThumbnails.js';
 	import { pinchZoom } from '#lib/utils/pinchZoom.js';
+	import { schedulePinchHint } from '#lib/utils/pinchHint.js';
+	import LoadingSquare from '#lib/components/LoadingSquare.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const media = $derived(
@@ -65,6 +67,11 @@
 	let thumbnailCache: ReturnType<typeof createGalleryVideoThumbnails> | undefined;
 	let ratio = $state(1);
 	let closing = false;
+	let loadedUrl = $state('');
+	$effect(() => {
+		if (selected === null) return;
+		return schedulePinchHint();
+	});
 	let closingView = $state(false);
 	$effect(() => {
 		optionsStore.galleryViewer = selected !== null && !closingView;
@@ -87,6 +94,15 @@
 		element.crossOrigin = null;
 		if (element instanceof HTMLVideoElement) element.load();
 		else element.src = element.src;
+	}
+	// Tiles stay empty until their media has loaded, then fade in.
+	function fadeIn(node: HTMLImageElement | HTMLVideoElement) {
+		const isVideoEl = node instanceof HTMLVideoElement;
+		const show = () => node.classList.add('loaded');
+		if (isVideoEl ? node.readyState >= 2 : node.complete && node.naturalWidth > 0) show();
+		const event = isVideoEl ? 'loadeddata' : 'load';
+		node.addEventListener(event, show);
+		return { destroy: () => node.removeEventListener(event, show) };
 	}
 	function videoThumbnail(node: HTMLElement, url: string) {
 		thumbnailCache ??= createGalleryVideoThumbnails(
@@ -771,6 +787,7 @@
 					{#if isVideo(item) && !failedThumbnails[item.url]}
 						<img
 							use:videoThumbnail={item.url}
+							use:fadeIn
 							data-gallery-ghost
 							src={videoThumbnails[item.url]}
 							alt=""
@@ -779,6 +796,7 @@
 						/>
 					{:else if isVideo(item)}
 						<video
+							use:fadeIn
 							data-gallery-ghost
 							crossorigin="anonymous"
 							onerror={retryWithoutCors}
@@ -789,6 +807,7 @@
 						></video>
 					{:else}
 						<img
+							use:fadeIn
 							data-gallery-ghost
 							crossorigin="anonymous"
 							onerror={retryWithoutCors}
@@ -831,6 +850,7 @@
 							onloadedmetadata={(event) => {
 								ratio = mediaRatio(event.currentTarget);
 							}}
+							onloadeddata={() => (loadedUrl = active.url)}
 							onplay={() => (paused = false)}
 							onpause={() => (paused = true)}
 							onclick={togglePlayback}
@@ -854,8 +874,12 @@
 							decoding="async"
 							onload={(event) => {
 								ratio = mediaRatio(event.currentTarget);
+								loadedUrl = active.url;
 							}}
 						/>
+					{/if}
+					{#if loadedUrl !== active.url}
+						<div class="loading-indicator"><LoadingSquare /></div>
 					{/if}
 				</div>
 				<div class="viewer-content" bind:this={viewerContent}>
@@ -968,7 +992,7 @@
 		width: 100%;
 		height: 100%;
 		overflow: hidden;
-		background: #1b1b1b;
+		background: transparent;
 		transition: transform 0.35s ease;
 		will-change: transform;
 	}
@@ -989,6 +1013,16 @@
 		height: 100%;
 		object-fit: cover;
 		pointer-events: none;
+		opacity: 0;
+		filter: blur(12px);
+		transition:
+			opacity 0.5s ease,
+			filter 0.5s ease;
+	}
+	.grid-item img:global(.loaded),
+	.grid-item video:global(.loaded) {
+		opacity: 1;
+		filter: blur(0);
 	}
 	.grid-item span {
 		position: absolute;
@@ -1053,6 +1087,14 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+	.loading-indicator {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		pointer-events: none;
 	}
 	.mute {
 		position: absolute;

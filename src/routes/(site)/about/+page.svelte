@@ -48,6 +48,20 @@
 	const description =
 		'Learn about James Henry, a creative director, designer and frontend developer, his experience, awards and skills.';
 
+	// The pinned column scrolls itself only while it has overflow left in that direction; otherwise the page scrolls.
+	function forwardWheel(node: HTMLElement) {
+		const onWheel = (event: WheelEvent) => {
+			if (event.ctrlKey || !event.deltaY) return;
+			const max = node.scrollHeight - node.clientHeight;
+			const canScroll = event.deltaY < 0 ? node.scrollTop > 0 : node.scrollTop < max - 1;
+			if (canScroll) return;
+			event.preventDefault();
+			window.scrollBy({ top: event.deltaY, left: 0, behavior: 'auto' });
+		};
+		node.addEventListener('wheel', onWheel, { passive: false });
+		return { destroy: () => node.removeEventListener('wheel', onWheel) };
+	}
+
 	function reveal(node: HTMLElement) {
 		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 		node.classList.add('will-reveal');
@@ -90,12 +104,12 @@
 		class:light={!optionsStore.dark}
 		aria-label="About James Henry"
 	>
-		<div class="portrait-column">
+		<div class="portrait-column" use:forwardWheel>
 			<h1 class="intro-name">James Henry</h1>
 			{#if about.image?.url}
 				<img class="portrait" src={about.image.url} alt="James Henry" />
 			{/if}
-			{#if about.bio}<p class="bio intro-bio">{about.bio}</p>{/if}
+			{#if about.bio}<p class="bio intro-bio">{about.bio.replace(/ (?=[^ ]*$)/, '\u00A0')}</p>{/if}
 		</div>
 
 		<div class="details">

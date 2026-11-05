@@ -466,7 +466,7 @@
 			? 'translate-y-[calc(50svh-100%-4.5rem)]! max-md:translate-y-[calc(50svh-100%-8rem)]! md:-translate-x-1/2! max-md:-translate-x-1/2! max-md:w-[90vw] max-md:left-1/2'
 			: optionsStore.fullscreen
 				? 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[150svh] max-md:w-[50vw] max-md:left-auto max-md:right-0 pointer-events-none'
-				: 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh-3.5rem)] max-md:w-[50vw] max-md:left-auto max-md:right-0'} fixed min-h-24 max-md:min-h-0 top-1/2 flex flex-col p-3 pt-0 {gptStore.opened ||
+				: 'max-md:translate-x-0 md:-translate-x-1/2 translate-y-[calc(50svh-3.5rem)] max-md:w-[50vw] max-md:left-auto max-md:right-0'} fixed min-h-24 max-md:min-h-0 top-[50svh] md:top-1/2 flex flex-col p-3 pt-0 {gptStore.opened ||
 	gptStore.peek
 		? ''
 		: 'max-md:pb-0'} md:left-1/2 hover:translate-y-[calc(50svh-5rem)] focus-within:translate-y-[calc(50svh-5rem)] md:w-[70vw] lg:w-[60vw] duration-500 z-30 transition-[translate,transform,opacity,top] gpt-glow"

@@ -341,6 +341,24 @@
 	}
 
 	let elapsed = 0;
+
+	// A history buffer that no longer matches the drawing buffer stops being refreshed and would
+	// replay a frozen ghost, so trails are muted and the buffer is rebuilt at the real size.
+	function scheduleHistoryRebuild() {
+		if (safariResizeTimer !== null) return;
+		safariResizeTimer = setTimeout(() => {
+			safariResizeTimer = null;
+			safariHistoryBuffer?.dispose();
+			safariHistoryBuffer = new WebGLRenderTarget(gl.drawingBufferWidth, gl.drawingBufferHeight, {
+				depthBuffer: false,
+				stencilBuffer: false
+			});
+			renderer.setRenderTarget(safariHistoryBuffer);
+			renderer.clear(true, true, true);
+			renderer.setRenderTarget(null);
+		}, 150);
+	}
+
 	useTask((delta) => {
 		if (!shouldRender()) {
 			elapsed = 0;
@@ -386,6 +404,20 @@
 				if (!postFXMeshMaterial || !orthoCamera || !safariHistoryBuffer) return;
 				postFXMeshMaterial!.uniforms.sampler.value = safariHistoryBuffer!.texture;
 				postFXMeshMaterial!.uniforms.time.value += delta;
+				const historySynced =
+					safariHistoryBuffer.width === gl.drawingBufferWidth &&
+					safariHistoryBuffer.height === gl.drawingBufferHeight;
+				postFXMeshMaterial!.uniforms.rgbPersistFactor.value = historySynced
+					? galleryTrails
+						? 0.85
+						: optionsStore.rgbPersistFactor
+					: 0;
+				postFXMeshMaterial!.uniforms.alphaPersistFactor.value = historySynced
+					? galleryTrails
+						? 0.85
+						: optionsStore.alphaPersistFactor
+					: 0;
+				if (!historySynced) scheduleHistoryRebuild();
 				renderer.setRenderTarget(null);
 				renderer.clear(true, true, true);
 				// Sub-phase: ghost quad (noise shader, reads last frame's history)

@@ -5,7 +5,7 @@
 	import { theme } from '#lib/utils/theme.js';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { dev } from '$app/env';
-	import { loadStore } from '#lib/stores/index.svelte.js';
+	import { loadStore, gptStore } from '#lib/stores/index.svelte.js';
 	import { cubicInOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
 	import { ambient } from '#lib/utils/ambient.svelte.js';
@@ -38,7 +38,11 @@
 			src={logo}
 		/>
 	</a>
-	<span class="flex flex-col max-md:mb-16">
+	<span
+		class="flex flex-col transition-[margin] duration-500 {gptStore.opened
+			? 'max-md:mb-0'
+			: 'max-md:mb-24'}"
+	>
 		<button
 			onclick={() => ambient.toggle()}
 			aria-pressed={ambient.on}

@@ -6,6 +6,8 @@
 	import { ambient } from '#lib/utils/ambient.svelte.js';
 	import { placeholderStyle } from '#lib/utils/placeholder.js';
 	import { pinchZoom } from '#lib/utils/pinchZoom.js';
+	import { schedulePinchHint } from '#lib/utils/pinchHint.js';
+	import LoadingSquare from '#lib/components/LoadingSquare.svelte';
 	import { Canvas } from '@threlte/core';
 	import { beforeNavigate } from '$app/navigation';
 	import ReelViewerScene from './ReelViewerScene.svelte';
@@ -286,6 +288,11 @@
 
 	beforeNavigate(() => close(true));
 
+	$effect(() => {
+		if (!viewerStore.active) return;
+		return schedulePinchHint();
+	});
+
 	onMount(() => {
 		const onCloseEvent = () => close();
 		const onLinkClick = (event: MouseEvent) => {
@@ -350,6 +357,13 @@
 						loop
 						playsinline
 					></video>
+					{#if !reelFrameReady}
+						<div
+							class="pointer-events-none absolute inset-0 flex items-center justify-center text-white"
+						>
+							<LoadingSquare />
+						</div>
+					{/if}
 					{#if paused}
 						<div class="pointer-events-none absolute inset-0 flex items-center justify-center">
 							<svg viewBox="0 0 24 24" fill="white" class="h-14 w-14 opacity-80">
@@ -385,6 +399,13 @@
 						class="h-full w-full object-contain"
 						style={loadedId === media.id ? '' : placeholderStyle(media.url, media.lqip)}
 					/>
+					{#if loadedId !== media.id}
+						<div
+							class="pointer-events-none absolute inset-0 flex items-center justify-center text-white"
+						>
+							<LoadingSquare />
+						</div>
+					{/if}
 					{#if media.caption}
 						<p
 							class="pointer-events-none absolute top-full left-0 mt-2 w-full font-mono text-xs text-white"
