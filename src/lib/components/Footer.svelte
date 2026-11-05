@@ -16,7 +16,7 @@
 </script>
 
 <footer
-	class="fixed bottom-0 mix-blend-difference text-white text-xs flex justify-between
+	class="fixed bottom-0 max-md:bottom-auto max-md:top-0 max-md:h-dvh mix-blend-difference text-white text-xs flex justify-between
 		uppercase font-mono w-full items-end p-4 z-20 overflow-hidden transition-opacity duration-300 pointer-events-none"
 	class:opacity-0={!revealed}
 	class:footer-live={revealed}
@@ -39,9 +39,9 @@
 		/>
 	</a>
 	<span
-		class="flex flex-col transition-[margin] duration-500 {gptStore.opened
+		class="flex flex-col transition-[margin] duration-500 {gptStore.opened || gptStore.peek
 			? 'max-md:mb-0'
-			: 'max-md:mb-24'}"
+			: 'max-md:mb-[calc(100dvh-100svh+3rem)]'}"
 	>
 		<button
 			onclick={() => ambient.toggle()}
