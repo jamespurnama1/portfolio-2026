@@ -355,7 +355,15 @@
 	});
 
 	// Calculate Loading
-	let loadedMediaIndices = new Set<number>();
+	const loadedMediaIndices = new Set<number>();
+	const mediaProgress: number[] = [];
+	function reportMediaProgress(i: number, fraction: number) {
+		const next = Math.min(1, Math.max(fraction, mediaProgress[i] ?? 0));
+		if (next === (mediaProgress[i] ?? 0)) return;
+		mediaProgress[i] = next;
+		if (next >= 1) loadedMediaIndices.add(i);
+		onMediaLoad();
+	}
 	const expectedMediaCount = $derived.by(() => {
 		if (page.url.pathname === '/gallery') return 0;
 		if (!data.projects?.length) return 0;
@@ -378,15 +386,21 @@
 			}
 
 			const attachVideoListeners = (el: HTMLVideoElement, i: number) => {
-				const onMediaLoadForIndex = () => {
-					if (loadedMediaIndices.has(i)) return;
-					loadedMediaIndices.add(i);
-					onMediaLoad();
+				const onMediaLoadForIndex = () => reportMediaProgress(i, 1);
+				const onBufferProgress = () => {
+					const duration = el.duration;
+					if (!Number.isFinite(duration) || !duration || !el.buffered.length) return;
+					// Stay under 1 until the browser has enough data to play.
+					reportMediaProgress(
+						i,
+						Math.min(0.99, el.buffered.end(el.buffered.length - 1) / duration)
+					);
 				};
 
-				// console.log(
-				// 	`[video:load] attachVideoListeners el[${i}] readyState:${el.readyState} src:${el.src?.slice(-40)}`
-				// );
+				// Videos have no src until now, so the app bundle gets the connection first.
+				const stillUsed = liteStore.slow && !!data.projects?.[i]?.thumbnailImage?.asset?.url;
+				if (!el.getAttribute('src') && el.dataset.src && !stillUsed) el.src = el.dataset.src;
+
 				const playPromise = el.play();
 				if (playPromise?.catch) {
 					playPromise.catch((error: unknown) => {
@@ -397,19 +411,20 @@
 					});
 				}
 
-				if (el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+				if (el.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
 					onMediaLoadForIndex();
 					return;
 				}
 
-				el.addEventListener('canplay', onMediaLoadForIndex, { once: true });
-				el.addEventListener('loadeddata', onMediaLoadForIndex, { once: true });
-				// iOS Safari may never fire canplay/loadeddata for stalled videos; don't block loading
-				el.addEventListener('loadedmetadata', onMediaLoadForIndex, { once: true });
-				setTimeout(onMediaLoadForIndex, 4000);
+				el.addEventListener('progress', onBufferProgress);
+				el.addEventListener('loadedmetadata', onBufferProgress);
+				el.addEventListener('canplaythrough', onMediaLoadForIndex, { once: true });
+				// Last resort so a stalled video cannot block the site forever.
+				setTimeout(onMediaLoadForIndex, 30000);
 				el.addEventListener(
 					'error',
 					() => {
+						if (!el.getAttribute('src')) return;
 						console.error('Video error for media index', i);
 						onMediaLoadForIndex();
 					},
@@ -418,11 +433,7 @@
 			};
 
 			const attachImageListeners = (el: HTMLImageElement, i: number) => {
-				const onMediaLoadForIndex = () => {
-					if (loadedMediaIndices.has(i)) return;
-					loadedMediaIndices.add(i);
-					onMediaLoad();
-				};
+				const onMediaLoadForIndex = () => reportMediaProgress(i, 1);
 
 				if (el.complete) {
 					onMediaLoadForIndex();
@@ -503,7 +514,8 @@
 			return;
 		}
 
-		const percentLoaded = Math.min(loadedMediaIndices.size / expectedMediaCount, 1);
+		const loaded = mediaProgress.reduce((sum, fraction) => sum + (fraction ?? 0), 0);
+		const percentLoaded = Math.min(loaded / expectedMediaCount, 1);
 		loadStore.load = percentLoaded * 90 + 10;
 		// SAFARI: can't pause here, video needs to play for a bit
 	}
@@ -873,23 +885,27 @@
 				</div>
 			{/if}
 			{#if data.projectsLength && (!browser || !showLoadingScreen)}
-				{@render children()}
-				{#if showProjectList}
-					<div
-						class="project-list-fallback relative w-full h-full"
-						class:pointer-events-none={true}
-						bind:this={projectListFallback}
-					>
+				<!-- Server-rendered content stays hidden until the loader finishes. -->
+				<div class="contents" class:invisible={showLoadingScreen}>
+					{@render children()}
+					{#if showProjectList}
 						<div
-							bind:this={projectListWrapper}
-							class:pointer-events-auto={page.url.pathname.includes('work') ||
-								(page.url.pathname === '/' && $projectSectionStore.pinned)}
-							class:pointer-events-none={page.url.pathname === '/' && !$projectSectionStore.pinned}
+							class="project-list-fallback relative w-full h-full"
+							class:pointer-events-none={true}
+							bind:this={projectListFallback}
 						>
-							<ProjectList data={data as Required<PageData>} />
+							<div
+								bind:this={projectListWrapper}
+								class:pointer-events-auto={page.url.pathname.includes('work') ||
+									(page.url.pathname === '/' && $projectSectionStore.pinned)}
+								class:pointer-events-none={page.url.pathname === '/' &&
+									!$projectSectionStore.pinned}
+							>
+								<ProjectList data={data as Required<PageData>} />
+							</div>
 						</div>
-					</div>
-				{/if}
+					{/if}
+				</div>
 				<!-- inactivity -->
 				<!-- {#if !page.params.slug && activityStore.inactive}
 				<p
@@ -946,7 +962,7 @@
 							playsinline={true}
 							autoplay
 							controls={false}
-							src={process.env.NODE_ENV === 'production'
+							data-src={process.env.NODE_ENV === 'production'
 								? project.thumbnail.asset.url
 								: project.thumbnail.asset.url.replace(
 										'https://cdn.sanity.io/files/rdnxsacz/production/',

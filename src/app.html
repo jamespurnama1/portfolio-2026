@@ -66,14 +66,12 @@
 					// Thumbnail videos with a still-image fallback start downloading before the app runs; stop them.
 					for (const video of document.querySelectorAll('video[data-has-still]'))
 					{
-						{
-							video.pause();
-							video.removeAttribute('src');
-							video.load();
-						}
-					};
-					setTimeout(showPrompt, slowLink ? 0 : Math.max(0, 6000 - performance.now()));
-				}
+						video.pause();
+						video.removeAttribute('src');
+						video.load();
+					}
+				};
+				setTimeout(showPrompt, slowLink ? 0 : Math.max(0, 6000 - performance.now()));
 			}
 		</script>
 	</head>

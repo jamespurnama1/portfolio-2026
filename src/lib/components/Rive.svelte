@@ -198,6 +198,8 @@
 		});
 	});
 
+	const fetchAbort = new AbortController();
+
 	onMount(async () => {
 		isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
@@ -210,13 +212,26 @@
 		resizeRiveSurface($size.width, $size.height);
 		riveCanvas.className = 'riveCanvas';
 		canvasContainer.appendChild(riveCanvas);
+		// Fetched here rather than by the loader so lite mode can cancel the download.
+		let wasmBinary: ArrayBuffer;
+		try {
+			wasmBinary = await (await fetch(riveWasmUrl, { signal: fetchAbort.signal })).arrayBuffer();
+		} catch {
+			return;
+		}
 		const rive = await RiveCanvas({
-			// Loads Wasm bundle
+			wasmBinary,
 			locateFile: () => riveWasmUrl
-		});
+		} as Parameters<typeof RiveCanvas>[0]);
+		if (fetchAbort.signal.aborted) return;
 		riveRef = rive;
 		riveRenderer = rive.makeRenderer(riveCanvas);
-		const bytes = await (await fetch(new Request('/cursor.riv'))).arrayBuffer();
+		let bytes: ArrayBuffer;
+		try {
+			bytes = await (await fetch('/cursor.riv', { signal: fetchAbort.signal })).arrayBuffer();
+		} catch {
+			return;
+		}
 		const file = await rive.load(new Uint8Array(bytes));
 		const artboard = file.artboardByName('Cursor');
 		artboardRef = artboard;
@@ -275,6 +290,7 @@
 	});
 
 	onDestroy(() => {
+		fetchAbort.abort();
 		riveRenderer?.delete?.();
 		if (canvasContainer && canvasContainer.parentNode) {
 			canvasContainer.parentNode.removeChild(canvasContainer);

@@ -32,6 +32,26 @@ export const client = createClient({
 	useCdn: process.env.NODE_ENV === 'production'
 });
 
+export function loadAbout() {
+	return client.fetch(`*[_type == "about"][0]{
+		title,
+		bio,
+		"image": image.asset->{url},
+		awards[]{
+			index,
+			year,
+			issuer,
+			"icon": {"asset": icon.asset->{url}},
+			gold,
+			silver,
+			bronze,
+			crystal
+		},
+		languages[]{_key, language, percentage},
+		skills[]{_key, skill, type, percentage}
+	}`);
+}
+
 export async function sanityLoad() {
 	if (dev && process.env.SANITY_LIVE !== 'true') {
 		try {

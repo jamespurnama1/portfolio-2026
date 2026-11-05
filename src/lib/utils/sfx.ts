@@ -4,6 +4,7 @@ import welcomeUrl from '#lib/sound/welcome.mp3';
 import notifyUrl from '#lib/sound/notify.mp3';
 import chatUrl from '#lib/sound/chat.mp3';
 import closeUrl from '#lib/sound/close.mp3';
+import { liteStore } from '#lib/stores/lite.svelte.js';
 
 const SAMPLE_URLS = {
 	tink: tinkUrl,
@@ -23,6 +24,8 @@ const buffers: Partial<Record<SampleName, AudioBuffer>> = {};
 
 function getContext() {
 	if (typeof window === 'undefined') return null;
+	// No audio (and no sample downloads) on slow connections or in lite mode.
+	if (liteStore.active || liteStore.slow) return null;
 	if (!ctx) {
 		const AudioCtor =
 			window.AudioContext ||
