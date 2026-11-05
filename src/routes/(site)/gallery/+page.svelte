@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import type { GalleryMedia } from '#lib/types/index.js';
+	import { galleryGraph, jsonLdScript } from '#lib/utils/jsonLd.js';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { loadStore } from '#lib/stores/index.svelte.js';
 	import { ambient } from '#lib/utils/ambient.svelte.js';
@@ -747,6 +748,7 @@
 	<title>Gallery | James Henry</title>
 	<meta name="description" content="A gallery of images and video by James Henry." />
 	<link rel="canonical" href="https://jameshenry.site/gallery" />
+	{@html jsonLdScript(galleryGraph())}
 </svelte:head>
 
 {#if media.length === 0}

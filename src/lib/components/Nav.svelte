@@ -8,6 +8,7 @@
 	import { fly } from 'svelte/transition';
 	import { track } from '#lib/utils/analytics.js';
 	import { flip } from 'svelte/animate';
+	import { SOCIAL_LINKS } from '#lib/utils/jsonLd.js';
 
 	let { revealed = loadStore.loaded }: { revealed?: boolean } = $props();
 
@@ -133,28 +134,28 @@
 	>
 		{#if revealed && !optionsStore.fullscreen && !(isMobile && optionsStore.galleryViewer)}
 			<a
-				href="https://instagram.com/jamespurnama1"
+				href={SOCIAL_LINKS.instagram}
 				target="_blank"
 				rel="noopener noreferrer"
 				transition:fly={{ x: 200, duration: 500, easing: cubicInOut, delay: 300 }}
 				><p><ScrambleText text="IG" /></p></a
 			>
 			<a
-				href="https://github.com/jamespurnama1"
+				href={SOCIAL_LINKS.github}
 				target="_blank"
 				rel="noopener noreferrer"
 				transition:fly={{ x: 200, duration: 500, easing: cubicInOut, delay: 400 }}
 				><p><ScrambleText text="GH" /></p></a
 			>
 			<a
-				href="https://behance.com/jamespurnama"
+				href={SOCIAL_LINKS.behance}
 				target="_blank"
 				rel="noopener noreferrer"
 				transition:fly={{ x: 200, duration: 500, easing: cubicInOut, delay: 500 }}
 				><p><ScrambleText text="BE" /></p></a
 			>
 			<a
-				href="https://www.linkedin.com/in/jamespurnama"
+				href={SOCIAL_LINKS.linkedin}
 				target="_blank"
 				rel="noopener noreferrer"
 				transition:fly={{ x: 200, duration: 500, easing: cubicInOut, delay: 600 }}

@@ -20,6 +20,7 @@
 	import { projectSectionStore } from '#lib/stores/projectSection.js';
 	import { introSectionStore } from '#lib/stores/introSection.js';
 	import type { PageData } from './$types';
+	import { homeGraph, jsonLdScript } from '#lib/utils/jsonLd.js';
 	import type { ScrollTrigger as ScrollTriggerInstance } from 'gsap/ScrollTrigger';
 
 	const { data }: { data: Required<PageData> } = $props();
@@ -858,6 +859,7 @@
 		<meta property="og:image" content={image} />
 		<meta name="twitter:image" content={image} />
 	{/if}
+	{@html jsonLdScript(homeGraph(data.projects ?? []))}
 </svelte:head>
 
 <section
@@ -871,7 +873,9 @@
 		class:intro-copy--shown={introGateStore.phase === 'revealing' ||
 			introGateStore.phase === 'done'}
 	>
-		<div class="font-sans text-xs md:text-sm leading-relaxed text-left intro-body md:whitespace-pre">
+		<div
+			class="font-sans text-xs md:text-sm leading-relaxed text-left intro-body md:whitespace-pre"
+		>
 			{@html introBodyReserve}
 		</div>
 	</div>

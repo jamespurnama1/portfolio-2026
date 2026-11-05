@@ -18,6 +18,7 @@
 	import { viewerStore, type ViewerMedia } from '#lib/stores/viewer.svelte.js';
 	import caret from '#lib/images/caret.svg';
 	import chroma from 'chroma-js';
+	import { workGraph, jsonLdScript } from '#lib/utils/jsonLd.js';
 	import { browser } from '$app/env';
 	import type { ScrollTrigger as ScrollTriggerInstance } from 'gsap/ScrollTrigger';
 
@@ -890,6 +891,9 @@
 	{#if seoImage}
 		<meta property="og:image" content={seoImage} />
 		<meta name="twitter:image" content={seoImage} />
+	{/if}
+	{#if current}
+		{@html jsonLdScript(workGraph(current))}
 	{/if}
 </svelte:head>
 

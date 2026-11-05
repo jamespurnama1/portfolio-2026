@@ -48,7 +48,8 @@ export function loadAbout() {
 			crystal
 		},
 		languages[]{_key, language, percentage},
-		skills[]{_key, skill, type, percentage}
+		skills[]{_key, skill, type, percentage},
+		socials[]{media, link}
 	}`);
 }
 

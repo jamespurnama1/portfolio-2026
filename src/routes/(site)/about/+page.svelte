@@ -5,6 +5,7 @@
 	import type { Award } from '#lib/types/index.js';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import type { PageData } from './$types.js';
+	import { aboutGraph, jsonLdScript } from '#lib/utils/jsonLd.js';
 
 	type Skill = { _key: string; skill: string; type: string; percentage?: number | null };
 	type Language = { _key: string; language: string; percentage?: number | null };
@@ -95,6 +96,7 @@
 		<meta property="og:image" content={about.image.url} />
 		<meta name="twitter:image" content={about.image.url} />
 	{/if}
+	{@html jsonLdScript(aboutGraph(about))}
 </svelte:head>
 
 {#if about}
