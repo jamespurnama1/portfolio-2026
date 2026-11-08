@@ -21,6 +21,8 @@
 		imageLight,
 		video,
 		nextAttached = false,
+		grouped = false,
+		gridSpan,
 		forceVisibleMedia = false,
 		awardsItem,
 		onOpen
@@ -34,6 +36,8 @@
 		imageLight?: MediaAsset;
 		video?: MediaAsset;
 		nextAttached?: boolean;
+		grouped?: boolean;
+		gridSpan?: 1 | 2;
 		forceVisibleMedia?: boolean;
 		awardsItem?: Post;
 		onOpen?: (media: { url: string; isVideo: boolean; alt: string; source: HTMLElement }) => void;
@@ -102,9 +106,11 @@
 	const mediaSizing = $derived(
 		isHeroSection
 			? 'w-full max-w-full mx-auto max-md:w-[calc(100vw-4rem)] md:w-auto md:max-w-[48vw] md:max-h-[46vh] md:min-w-0'
-			: hasText
-				? 'mx-auto max-w-full w-[calc(100vw-4rem)] md:w-auto md:max-w-[min(60vw,600px)]'
-				: 'mx-auto w-full max-w-full md:w-auto md:max-w-[min(85vw,1200px)]'
+			: grouped
+				? 'mx-auto max-w-full w-[calc(100vw-4rem)] md:w-full'
+				: hasText
+					? 'mx-auto max-w-full w-[calc(100vw-4rem)] md:w-auto md:max-w-[min(60vw,600px)]'
+					: 'mx-auto w-full max-w-full md:w-auto md:max-w-[min(85vw,1200px)]'
 	);
 
 	onMount(() => {
@@ -140,7 +146,13 @@
 		? 'items-start justify-center translate-y-0 opacity-100 mt-12 md:mt-[12svh]'
 		: `items-start ${hasText ? 'justify-end' : 'justify-center'} translate-y-full opacity-0`} {!nextAttached
 		? 'mb-16 md:mb-[25svh]'
-		: ''} gap-4 md:gap-8 relative"
+		: gridSpan
+			? ''
+			: 'md:mb-24'} {gridSpan === 2
+		? 'md:col-span-2'
+		: gridSpan === 1
+			? 'md:col-span-1'
+			: ''} gap-4 md:gap-8 relative"
 >
 	{#if isHeroSection && heading}
 		<div class="order-1 w-full min-w-0 md:col-span-2">
@@ -194,9 +206,9 @@
 
 	{#if !isHeroSection && hasText}
 		<div
-			class="min-h-0 min-w-0 md:min-w-[25vw] flex flex-col gap-2 {index % 2 === 0
-				? 'md:mr-4'
-				: 'md:ml-4'}"
+			class="min-h-0 min-w-0 md:min-w-[25vw] flex flex-col gap-2 {grouped
+				? 'md:w-1/3 md:shrink-0'
+				: ''} {index % 2 === 0 ? 'md:mr-4' : 'md:ml-4'}"
 		>
 			{#if heading}
 				<h2
@@ -218,7 +230,7 @@
 			? 'order-2 md:col-start-2 md:row-start-2'
 			: ''}"
 	>
-		<figure class="relative w-fit max-w-full">
+		<figure class="relative max-w-full {grouped && !isHeroSection ? 'md:w-full' : 'w-fit'}">
 			{#if displayImageSrc}
 				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 				<img

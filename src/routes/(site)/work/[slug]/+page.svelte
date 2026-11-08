@@ -32,6 +32,39 @@
 	const current = $derived(
 		data.projects.find((project) => project.slug.current === page.params.slug)
 	);
+	type ContentItem = NonNullable<typeof current>['content'][number];
+	type ContentEntry = { item: ContentItem; index: number; span: 1 | 2 };
+	// Items flagged attachToTop join the previous item; groups of 3+ lay out as a two-column grid on desktop.
+	const contentGroups = $derived.by(() => {
+		const groups: { key: number; grid: boolean; entries: ContentEntry[] }[] = [];
+		(current?.content ?? []).forEach((item, index) => {
+			const entry: ContentEntry = { item, index, span: 2 };
+			const last = groups[groups.length - 1];
+			if (item.attachToTop && last) last.entries.push(entry);
+			else groups.push({ key: index, grid: false, entries: [entry] });
+		});
+		for (const group of groups) {
+			if (group.entries.length < 3) continue;
+			group.grid = true;
+			let lone: ContentEntry | null = null;
+			for (const entry of group.entries) {
+				const hasText = !!(entry.item.headline?.trim() || entry.item.body?.trim());
+				if (hasText) {
+					if (lone) lone.span = 2;
+					lone = null;
+					entry.span = 2;
+				} else if (lone) {
+					lone.span = 1;
+					entry.span = 1;
+					lone = null;
+				} else {
+					entry.span = 2;
+					lone = entry;
+				}
+			}
+		}
+		return groups;
+	});
 	const seoTitle = $derived(current ? `${current.title} | James Henry` : 'Project | James Henry');
 	const seoDescription = $derived(
 		current?.description?.replace(/\s+/g, ' ').trim() ||
@@ -940,19 +973,32 @@
 			awardsItem={current}
 			onOpen={(media) => openViewer(media.source)}
 		/>
-		{#each current.content as item, index (`${currentSlug}-${index}`)}
-			<Section
-				index={index + 1}
-				body={item.body}
-				heading={item.headline}
-				bottom={item.caption}
-				image={item.image}
-				video={item.video}
-				imageLight={item.imageLight}
-				nextAttached={!!current.content[index + 1]?.attachToTop}
-				forceVisibleMedia={true}
-				onOpen={(media) => openViewer(media.source)}
-			/>
+		{#each contentGroups as group (group.key)}
+			{#snippet sections()}
+				{#each group.entries as entry, i (`${currentSlug}-${entry.index}`)}
+					<Section
+						index={entry.index + 1}
+						body={entry.item.body}
+						heading={entry.item.headline}
+						bottom={entry.item.caption}
+						image={entry.item.image}
+						video={entry.item.video}
+						imageLight={entry.item.imageLight}
+						nextAttached={group.entries.length > 1 && i < group.entries.length - 1}
+						grouped={group.entries.length > 1}
+						gridSpan={group.grid ? entry.span : undefined}
+						forceVisibleMedia={true}
+						onOpen={(media) => openViewer(media.source)}
+					/>
+				{/each}
+			{/snippet}
+			{#if group.grid}
+				<div class="w-full flex flex-col md:grid md:grid-cols-2 md:gap-x-8 md:gap-y-24 mb-16 md:mb-[25svh]">
+					{@render sections()}
+				</div>
+			{:else}
+				{@render sections()}
+			{/if}
 		{/each}
 	{/if}
 </article>

@@ -18,6 +18,9 @@ export default defineConfig({
 			// See https://kit.svelte.dev/docs/adapters for more information about adapters.
 			adapter: adapter(),
 
+			// Inlines the ~36 KiB of CSS into the HTML so it no longer blocks render as separate requests.
+			inlineStyleThreshold: 40000,
+
 			prerender: {
 				// default: false,
 				entries: [

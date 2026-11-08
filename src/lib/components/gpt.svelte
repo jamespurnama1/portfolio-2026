@@ -445,14 +445,15 @@
 
 <!-- {#key gptStore.opened} -->
 <div
-	role={gptStore.opened ? 'modal' : 'button'}
+	role={gptStore.opened ? 'dialog' : 'button'}
 	onclick={() => {
 		gptStore.opened = true;
 	}}
 	onfocusin={(e) => {
 		if (gptStore.peek && e.target === input) gptStore.opened = true;
 	}}
-	aria-modal={gptStore.opened}
+	aria-modal={gptStore.opened ? 'true' : undefined}
+	aria-label="Ask me anything"
 	transition:fly={{ y: '46vh', duration: 500, easing: quintOut }}
 	id="gpt"
 	style:top={gptStore.opened && vv.height ? `${vv.top + vv.height / 2}px` : undefined}
@@ -573,17 +574,14 @@
 	</div>
 </div>
 <div
-	role="button"
-	aria-expanded="true"
-	aria-controls="gpt"
-	tabindex="0"
+	role="presentation"
+	aria-hidden="true"
 	class="button fixed z-29 w-screen h-screen top-0 left-0"
 	class:hidden={!gptStore.opened}
 	onclick={(e) => {
 		e.stopPropagation();
 		gptStore.opened = false;
 	}}
-	onkeydown={(e) => {}}
 ></div>
 
 <!-- {/key} -->
