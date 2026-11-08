@@ -19,14 +19,14 @@
 	import blitFragmentShader from '../shaders/blitFragment.glsl?raw';
 	import vertexShader from '../shaders/vertex.glsl?raw';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
-	import { isMobileSafari, isSafari } from '#lib/utils/device.js';
+	import { isMobileSafari, isSafari, isLowPower } from '#lib/utils/device.js';
 	import { perfStore } from '#lib/stores/perf.svelte.js';
 
 	let {
 		children,
 		mouse,
 		pixelRatioCap = 2,
-		maxFps = 0,
+		maxFps = isLowPower ? 20 : 0,
 		shouldRender = () => true,
 		galleryTrails = false
 	} = $props();
@@ -212,7 +212,7 @@
 				// — desktop Safari Metal is fill-rate limited, 1.5→2 saves ~44%.
 				const dpr = Math.min(
 					typeof devicePixelRatio !== 'undefined' ? devicePixelRatio : 1,
-					isMobileSafari ? Math.min(1, cap) : isSafari ? Math.min(1.5, cap) : cap
+					isMobileSafari || isLowPower ? Math.min(1, cap) : isSafari ? Math.min(1.5, cap) : cap
 				);
 				renderer.setPixelRatio(dpr);
 

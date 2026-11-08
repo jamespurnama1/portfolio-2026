@@ -65,7 +65,7 @@
 		>
 		<a
 			class="max-md:hidden"
-			href="https://github.com/jamespurnama1/new-portfolio"
+			href="https://github.com/jamespurnama1/portfolio-2026"
 			target="_blank"
 			rel="noopener noreferrer"
 			transition:fly={{ y: 200, duration: 700, easing: cubicInOut, delay: 700 }}

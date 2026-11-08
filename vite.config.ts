@@ -20,7 +20,15 @@ export default defineConfig({
 
 			prerender: {
 				// default: false,
-				entries: ['/', '/about', '/branch', '/gallery', '/sitemap.xml', '/api/lite-about']
+				entries: [
+					'/',
+					'/about',
+					'/branch',
+					'/gallery',
+					'/sitemap.xml',
+					'/.well-known/ard.json',
+					'/api/lite-about'
+				]
 			}
 		}),
 		mkcert(),

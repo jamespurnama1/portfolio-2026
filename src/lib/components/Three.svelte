@@ -15,7 +15,7 @@
 	import { threlteSize } from '#lib/stores/threlteSize.js';
 	import { optionsStore } from '#lib/stores/options.svelte.js';
 	import { loadStore } from '#lib/stores/index.svelte.js';
-	import { isMobileSafari } from '#lib/utils/device.js';
+	import { isMobileSafari, isLowPower } from '#lib/utils/device.js';
 
 	let riveSceneInstance: SvelteComponent | undefined = $state();
 	let isTouchDevice = $state(false);
@@ -185,7 +185,7 @@
 			canvas,
 			// Disable MSAA on mobile Safari — ~30-50% fragment cost reduction.
 			// Desktop keeps antialias for sharp edges on high-DPI screens.
-			antialias: !isMobileSafari,
+			antialias: !isMobileSafari && !isLowPower,
 			alpha: true,
 			powerPreference: 'high-performance'
 		})}

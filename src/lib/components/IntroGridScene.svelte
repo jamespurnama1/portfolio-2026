@@ -16,11 +16,11 @@
 	import { loadStore, homeTransitionStore, introGateStore } from '#lib/stores/index.svelte.js';
 	import { page } from '$app/state';
 	import { onMount, onDestroy } from 'svelte';
-	import { isMobile } from '#lib/utils/device.js';
+	import { isMobile, isLowPower } from '#lib/utils/device.js';
 	import { sfx } from '#lib/utils/sfx.js';
 
 	// Transmission forces an extra full-scene render pass; skip it on mobile.
-	const lite = isMobile;
+	const lite = isMobile || isLowPower;
 
 	let { mouse = { x: 0, y: 0 } }: { mouse?: { x: number; y: number } } = $props();
 

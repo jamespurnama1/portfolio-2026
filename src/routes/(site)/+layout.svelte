@@ -44,7 +44,7 @@
 	import Notifications from '#lib/components/Notifications.svelte';
 	import GPT from '#lib/components/gpt.svelte';
 	import { browser, dev } from '$app/env';
-	import { isSafariUserAgent, isMobile } from '#lib/utils/device.js';
+	import { isSafariUserAgent, isMobile, isLowPower } from '#lib/utils/device.js';
 	import { initAnalytics } from '#lib/utils/analytics.js';
 	import { ambient } from '#lib/utils/ambient.svelte.js';
 
@@ -755,6 +755,7 @@
 			currentProjectListHost = host;
 			relocateProjectList(host);
 		});
+		if (isLowPower) preferImageThumbnails = true;
 		if (browser && typeof navigator !== 'undefined' && isSafariUserAgent(navigator.userAgent)) {
 			// Mobile Safari video textures stay blank until playback is allowed, so use
 			// static thumbnails on all Safari.

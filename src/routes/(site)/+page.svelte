@@ -905,11 +905,11 @@
 	class:invisible={animationStore.isTransitioning || page.url.pathname !== '/'}
 >
 	<div class="final-copy text-white mix-blend-difference">
-		<h3
+		<h2
 			class="font-sans text-4xl md:text-5xl lg:text-6xl leading-[0.92] font-bold mb-6 text-center"
 		>
 			{finalHeadlineText}
-		</h3>
+		</h2>
 		<p class="font-sans text-xs md:text-sm leading-relaxed opacity-80 text-center">
 			{finalBodyText}
 		</p>
@@ -970,7 +970,7 @@
 		text-align: center;
 	}
 
-	.final-copy h3 {
+	.final-copy h2 {
 		text-wrap: balance;
 	}
 

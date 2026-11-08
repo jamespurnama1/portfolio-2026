@@ -452,7 +452,7 @@
 	onfocusin={(e) => {
 		if (gptStore.peek && e.target === input) gptStore.opened = true;
 	}}
-	aria-modal="true"
+	aria-modal={gptStore.opened}
 	transition:fly={{ y: '46vh', duration: 500, easing: quintOut }}
 	id="gpt"
 	style:top={gptStore.opened && vv.height ? `${vv.top + vv.height / 2}px` : undefined}
@@ -548,6 +548,7 @@
 			contenteditable="true"
 			role="textbox"
 			tabindex="0"
+			aria-label="Prompt"
 			bind:this={input}
 			bind:innerText={prompt}
 			class:gpt-mask={inputIsOverflowing}
