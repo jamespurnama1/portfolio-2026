@@ -20,7 +20,7 @@
 		{ label: 'v1.0.12', href: 'https://portfolio-brown-seven.vercel.app/' },
 		// { label: 'v2.0.7', href: 'https://example.com/v2' },
 		{ label: 'v2.2.11', href: 'https://new-portfolio-ruby.vercel.app/' },
-		{ label: 'v3.0.4', href: '/', current: true }
+		{ label: 'v3.0.5', href: '/', current: true }
 	];
 	const SNAP_RADIUS = 140;
 	let activeSnapId = $state('');
