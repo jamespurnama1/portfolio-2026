@@ -435,6 +435,11 @@
 		window.addEventListener('touchmove', onTouchMove, { passive: false });
 		window.addEventListener('touchend', onTouchEnd, { passive: true });
 		homeNav.step = keyStep;
+		homeNav.goTo = (i) => {
+			if (inRange(1)) return false;
+			goToStep(i);
+			return true;
+		};
 		homeNav.top = () => {
 			targetStep = 0;
 			const viewportDistance = window.scrollY / window.innerHeight;
@@ -442,6 +447,7 @@
 		};
 		return () => {
 			homeNav.step = null;
+			homeNav.goTo = null;
 			homeNav.top = null;
 			gsap.killTweensOf(tweenState);
 			holdNativeScroll(false);

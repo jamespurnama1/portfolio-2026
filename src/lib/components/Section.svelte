@@ -169,6 +169,15 @@
 								onblur={() => (tip = null)}>{meta.text}</span
 							>{:else}<span>{meta.text}</span>{/if}{/each}
 				</p>
+				{#if awardsItem.link && /^https?:\/\//.test(awardsItem.link)}
+					<a
+						href={awardsItem.link}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="pointer-events-auto mt-4 inline-block font-mono text-xs text-white mix-blend-difference uppercase underline"
+						>Open external link ↗</a
+					>
+				{/if}
 				{#if awardsItem.description}
 					<p class="mt-4 whitespace-pre-wrap text-white mix-blend-difference md:text-sm">
 						{awardsItem.description}

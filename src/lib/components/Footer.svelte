@@ -41,7 +41,7 @@
 	<span
 		class="flex flex-col transition-[margin] duration-500 {gptStore.opened || gptStore.peek
 			? 'max-md:mb-0'
-			: 'max-md:mb-[calc(100dvh-100svh+3rem)]'}"
+			: 'max-md:mb-12'}"
 	>
 		<button
 			onclick={() => ambient.toggle()}

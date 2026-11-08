@@ -47,6 +47,7 @@
 	} from '#lib/utils/cardMotion.js';
 	import { type PageData } from '../../routes/(site)/$types';
 	import { introSectionStore } from '#lib/stores/introSection.js';
+	import { homeNav } from '#lib/stores/homeNav.js';
 
 	let easeFactor = 0.02;
 	// Debounced timer that re-evaluates homePos() 250ms after scrolling stops.
@@ -994,6 +995,7 @@
 			else updateFullscreen(true);
 		} else if (!page.params.slug) {
 			if (countStore.activeIndex !== index) {
+				if (homeNav.goTo?.(index)) return;
 				countStore.inertiaIndex = index;
 				return;
 			}

@@ -15,6 +15,7 @@
 	import { reelViewer } from '#lib/stores/viewer.svelte.js';
 	import { page } from '$app/state';
 	import caret from '#lib/images/caret.svg';
+	import { homeNav } from '#lib/stores/homeNav.js';
 
 	const {
 		item,
@@ -135,6 +136,7 @@
 				onclick={(e) => {
 					const targetIndex = (item as Post).index as number;
 					if (countStore.activeIndex !== targetIndex) {
+						if (homeNav.goTo?.(targetIndex)) return;
 						countStore.inertiaIndex = targetIndex;
 						return;
 					}
