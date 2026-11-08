@@ -68,6 +68,7 @@
 		"react-dom": "^19.3.1",
 		"sanity": "^6.21.0",
 		"sanity-plugin-markdown": "^9.0.18",
+		"sanity-plugin-media": "^6.6.2",
 		"sharp": "^0.35.5",
 		"styled-components": "^6.6.0",
 		"three": "^0.186.1",

@@ -3,6 +3,7 @@ import { structureTool } from 'sanity/structure';
 import { visionTool } from '@sanity/vision';
 import { colorInput } from '@sanity/color-input';
 import { markdownSchema } from 'sanity-plugin-markdown';
+import { media } from 'sanity-plugin-media';
 import { schemaTypes } from './schemaTypes';
 
 export default defineConfig({
@@ -11,6 +12,6 @@ export default defineConfig({
 	basePath: '/studio',
 	projectId: 'rdnxsacz',
 	dataset: 'production',
-	plugins: [structureTool(), visionTool(), colorInput(), markdownSchema()],
+	plugins: [structureTool(), visionTool(), colorInput(), markdownSchema(), media()],
 	schema: { types: schemaTypes }
 });
