@@ -40,14 +40,16 @@ export function createGalleryVideoThumbnails(
 			video.addEventListener(
 				'loadedmetadata',
 				() => {
-					if (video.readyState < 2 && Number.isFinite(video.duration) && video.duration > 0) {
-						video.currentTime = Math.min(0.1, video.duration / 2);
+					// Frame 0 is often black, so grab a frame from inside the clip.
+					const { duration } = video;
+					if (Number.isFinite(duration) && duration > 0) {
+						video.currentTime = Math.min(1, duration / 4);
 					}
 				},
 				{ once: true }
 			);
 			video.addEventListener(
-				'loadeddata',
+				'seeked',
 				() => {
 					try {
 						const scale = Math.min(1, 512 / Math.max(video.videoWidth, video.videoHeight));

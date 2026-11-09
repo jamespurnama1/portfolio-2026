@@ -16,9 +16,15 @@
 	import LoadingSquare from '#lib/components/LoadingSquare.svelte';
 
 	let { data }: { data: PageData } = $props();
-	const media = $derived(
-		(data.gallery ?? []).flatMap((gallery) => gallery.media ?? []).filter((item) => item.url)
-	);
+	// 0 keeps the server order for SSR; onMount picks a random seed so each visit starts at a different item.
+	let seed = $state(0);
+	const media = $derived.by(() => {
+		const items = (data.gallery ?? [])
+			.flatMap((gallery) => gallery.media ?? [])
+			.filter((item) => item.url);
+		const shift = items.length ? seed % items.length : 0;
+		return shift ? [...items.slice(shift), ...items.slice(0, shift)] : items;
+	});
 	let selected = $state<number | null>(null);
 	let width = $state(1200);
 	let height = $state(800);
@@ -112,9 +118,11 @@
 		);
 		return thumbnailCache.observe(node, url);
 	}
-	// Gallery items are Sanity file assets (no ?w= support), so thumbnails come from /api/thumb.
+	// Image assets resize via ?w=; file assets (no ?w= support) go through /api/thumb.
 	const gridSrc = (url: string, w = 480) => {
-		const file = url.split('?')[0].split('/').pop() ?? '';
+		const clean = url.split('?')[0];
+		if (clean.includes('cdn.sanity.io/images/')) return `${clean}?w=${w}&q=70&auto=format`;
+		const file = clean.split('/').pop() ?? '';
 		return /\.(png|jpe?g|webp|gif|avif)$/i.test(file) ? `/api/thumb?f=${file}&w=${w}` : url;
 	};
 	const mod = (value: number, divisor: number) => ((value % divisor) + divisor) % divisor;
@@ -700,6 +708,7 @@
 		else video.pause();
 	}
 	onMount(() => {
+		seed = Math.floor(Math.random() * 0xffffffff) + 1;
 		loadStore.galleryTransitioning = true;
 		const revealTimer = setTimeout(() => {
 			entered = true;

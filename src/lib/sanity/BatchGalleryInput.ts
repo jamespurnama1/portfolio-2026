@@ -1,5 +1,6 @@
 import { createElement, useRef, useState } from 'react';
 import { insert, setIfMissing, useClient, type ArrayOfObjectsInputProps } from 'sanity';
+import { LibraryDialog, type LibraryAsset } from './LibraryDialog';
 
 export function BatchGalleryInput(props: ArrayOfObjectsInputProps) {
 	const client = useClient({ apiVersion: '2025-02-19' });
@@ -7,6 +8,24 @@ export function BatchGalleryInput(props: ArrayOfObjectsInputProps) {
 	const [text, setText] = useState('');
 	const [status, setStatus] = useState('');
 	const [uploading, setUploading] = useState(false);
+	const [libraryOpen, setLibraryOpen] = useState(false);
+
+	function addFromLibrary(assets: LibraryAsset[]) {
+		props.onChange([
+			setIfMissing([]),
+			insert(
+				assets.map((asset) => ({
+					_key: crypto.randomUUID(),
+					_type: asset._type === 'sanity.imageAsset' ? 'mediaImage' : 'media',
+					asset: { _type: 'reference', _ref: asset._id },
+					...(text.trim() ? { alt: text.trim() } : {})
+				})),
+				'after',
+				[-1]
+			)
+		]);
+		setLibraryOpen(false);
+	}
 
 	async function upload(files: FileList | null) {
 		if (!files?.length) return;
@@ -80,8 +99,23 @@ export function BatchGalleryInput(props: ArrayOfObjectsInputProps) {
 					style: { padding: '0.5rem 1rem' }
 				},
 				uploading ? 'Uploading...' : 'Upload media'
+			),
+			createElement(
+				'button',
+				{
+					type: 'button',
+					disabled: uploading || props.readOnly,
+					onClick: () => setLibraryOpen(true),
+					style: { padding: '0.5rem 1rem' }
+				},
+				'Add from library'
 			)
 		),
+		libraryOpen &&
+			createElement(LibraryDialog, {
+				onClose: () => setLibraryOpen(false),
+				onAdd: addFromLibrary
+			}),
 		status && createElement('p', { role: 'status' }, status),
 		props.renderDefault(props)
 	);
