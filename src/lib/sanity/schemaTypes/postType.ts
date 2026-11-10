@@ -44,6 +44,8 @@ export const postType = defineType({
 							{ title: 'Davinci Resolve', value: 'Davinci Resolve' },
 							{ title: 'Vue.js', value: 'Vue.js' },
 							{ title: 'Nuxt', value: 'Nuxt' },
+							{ title: 'React', value: 'React' },
+							{ title: 'Next', value: 'Next' },
 							{ title: 'Svelte', value: 'Svelte' },
 							{ title: 'Three.js', value: 'Three.js' }
 						]
