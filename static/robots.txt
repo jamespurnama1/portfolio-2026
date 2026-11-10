@@ -3,4 +3,3 @@ User-agent: *
 Disallow:
 
 Sitemap: https://jameshenry.site/sitemap.xml
-Agentmap: https://jameshenry.site/.well-known/ard.json
