@@ -7,6 +7,7 @@
 	import { placeholderStyle } from '#lib/utils/placeholder.js';
 	import { pinchZoom } from '#lib/utils/pinchZoom.js';
 	import { schedulePinchHint } from '#lib/utils/pinchHint.js';
+	import { watchVideoAudio } from '#lib/utils/videoAudio.js';
 	import LoadingSquare from '#lib/components/LoadingSquare.svelte';
 	import { Canvas } from '@threlte/core';
 	import { beforeNavigate } from '$app/navigation';
@@ -17,6 +18,7 @@
 	let videoEl = $state<HTMLVideoElement>();
 	let box = $state({ w: 0, h: 0 });
 	let muted = $state(true);
+	let hasAudio = $state(false);
 	let paused = $state(false);
 	let userMuted = false;
 	let closing = false;
@@ -175,9 +177,12 @@
 		node.addEventListener('play', onPlay);
 		node.addEventListener('pause', onPause);
 		node.addEventListener('loadeddata', onFrameReady);
+		const stopAudioWatch = watchVideoAudio(node, (has) => (hasAudio = has));
 		void node.play().catch(() => {});
 		return {
 			destroy() {
+				stopAudioWatch();
+				hasAudio = false;
 				gsap.killTweensOf(node);
 				node.removeEventListener('playing', onPlaying);
 				node.removeEventListener('volumechange', onVolume);
@@ -371,12 +376,14 @@
 							</svg>
 						</div>
 					{/if}
-					<button
-						data-viewer-mute
-						class="absolute -top-7 left-0 font-mono text-xs uppercase text-white"
-					>
-						{muted ? 'Unmute' : 'Mute'}
-					</button>
+					{#if hasAudio}
+						<button
+							data-viewer-mute
+							class="absolute -top-7 left-0 font-mono text-xs uppercase text-white"
+						>
+							{muted ? 'Unmute' : 'Mute'}
+						</button>
+					{/if}
 					{#if media.caption}
 						<p
 							class="pointer-events-none absolute top-full left-0 mt-2 w-full font-mono text-xs text-white"

@@ -16,6 +16,7 @@
 		arrowScreen,
 		cursorSnapStore,
 		focusCursor,
+		gptStore,
 		homeTransitionStore,
 		introGateStore,
 		loadStore
@@ -102,7 +103,7 @@
 	let viewerCursorCanvas: HTMLCanvasElement | undefined;
 	let galleryPointer: { x: number; y: number } | null = null;
 	const galleryPointerActive = () =>
-		page.url.pathname === '/gallery' &&
+		(page.url.pathname === '/gallery' || page.url.pathname === '/about' || gptStore.opened) &&
 		loadStore.loaded &&
 		introGateStore.phase === 'done' &&
 		!animationStore.isAnimating &&
@@ -113,7 +114,10 @@
 		if (
 			(!viewerStore.active &&
 				!galleryPointerActive() &&
-				!(page.url.pathname === '/gallery' && focusCursor.active)) ||
+				!(
+					(page.url.pathname === '/gallery' || page.url.pathname === '/about' || gptStore.opened) &&
+					focusCursor.active
+				)) ||
 			!showCursor ||
 			!riveCanvas ||
 			riveCanvas.width <= 0
@@ -246,6 +250,11 @@
 
 	let meshOpacityTarget = $derived.by(() => {
 		if (page.url.pathname === '/gallery' && loadStore.loaded) return showCursor ? 1 : 0;
+		// The ghost trail keeps rendering behind the modal; a DOM copy of the cursor is drawn above it.
+		if (gptStore.opened) return showCursor ? 1 : 0;
+		// About keeps the WebGL cursor for the ghost trail behind the page; a DOM copy is drawn above content.
+		if (page.url.pathname === '/about' && loadStore.loaded && introGateStore.phase === 'done')
+			return showCursor ? 1 : 0;
 		// Normal cursor while waiting on the intro button; it hides while snapped to it.
 		if (introGateStore.phase === 'waiting') {
 			if (!showCursor) return 0;

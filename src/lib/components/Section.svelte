@@ -62,6 +62,18 @@
 		return { destroy: () => io.disconnect() };
 	}
 	const isHeroSection = $derived(index === 0);
+	// Off-screen videos stay paused so they stop buffering.
+	function playInView(node: HTMLVideoElement) {
+		const io = new IntersectionObserver(
+			([entry]) => {
+				if (entry.isIntersecting) void node.play().catch(() => {});
+				else node.pause();
+			},
+			{ threshold: 0.1 }
+		);
+		io.observe(node);
+		return { destroy: () => io.disconnect() };
+	}
 	// The tooltip is moved to <body> so the page's difference blend doesn't invert it.
 	let tip = $state<{ text: string; x: number; y: number } | null>(null);
 	function showTip(event: MouseEvent | FocusEvent, text: string) {
@@ -107,10 +119,10 @@
 		isHeroSection
 			? 'w-full max-w-full mx-auto max-md:w-[calc(100vw-4rem)] md:w-auto md:max-w-[48vw] md:max-h-[46vh] md:min-w-0'
 			: grouped
-				? 'mx-auto max-w-full w-[calc(100vw-4rem)] md:w-full'
+				? 'mx-auto md:mx-0 max-w-full w-[calc(100vw-4rem)] md:w-full md:max-h-[80vh] md:object-left'
 				: hasText
-					? 'mx-auto max-w-full w-[calc(100vw-4rem)] md:w-auto md:max-w-[min(60vw,600px)]'
-					: 'mx-auto w-full max-w-full md:w-auto md:max-w-[min(85vw,1200px)]'
+					? 'mx-auto md:mx-0 max-w-full w-[calc(100vw-4rem)] md:w-auto md:max-w-[min(60vw,600px)] md:max-h-[80vh] md:object-left'
+					: 'mx-auto md:mx-0 w-full max-w-full md:w-auto md:max-w-[min(85vw,1200px)] md:max-h-[80vh] md:object-left'
 	);
 
 	onMount(() => {
@@ -224,7 +236,9 @@
 	{/if}
 
 	<div
-		class="flex w-full flex-col items-center justify-center gap-5 max-w-full transition-opacity duration-300 {interactive
+		class="flex w-full flex-col items-center {isHeroSection
+			? ''
+			: 'md:items-start'} justify-center gap-5 max-w-full transition-opacity duration-300 {interactive
 			? ''
 			: 'pointer-events-none'} {forceVisibleMedia ? 'opacity-100' : 'opacity-0'} {isHeroSection
 			? 'order-2 md:col-start-2 md:row-start-2'
@@ -270,11 +284,11 @@
 					class="h-auto object-contain max-h-[80vh] select-none {mediaSizing} {optionsStore.dark
 						? ''
 						: 'invert'} {interactive ? 'pointer-events-auto' : ''}"
-					autoplay
 					loop
 					muted
 					playsinline
 					preload="metadata"
+					use:playInView
 					onclick={(e) =>
 						interactive
 							? onOpen?.({

@@ -14,6 +14,7 @@
 	import { pinchZoom } from '#lib/utils/pinchZoom.js';
 	import { schedulePinchHint } from '#lib/utils/pinchHint.js';
 	import LoadingSquare from '#lib/components/LoadingSquare.svelte';
+	import { watchVideoAudio } from '#lib/utils/videoAudio.js';
 
 	let { data }: { data: PageData } = $props();
 	// 0 keeps the server order for SSR; onMount picks a random seed so each visit starts at a different item.
@@ -42,6 +43,7 @@
 	let pendingPanY = 0;
 	let video: HTMLVideoElement | undefined = $state();
 	let muted = $state(true);
+	let hasAudio = $state(false);
 	let paused = $state(false);
 	let entered = $state(false);
 	let sourceKey = $state<string | null>(null);
@@ -75,6 +77,17 @@
 	let ratio = $state(1);
 	let closing = false;
 	let loadedUrl = $state('');
+	$effect(() => {
+		if (!video) {
+			hasAudio = false;
+			return;
+		}
+		const stop = watchVideoAudio(video, (has) => (hasAudio = has));
+		return () => {
+			stop();
+			hasAudio = false;
+		};
+	});
 	$effect(() => {
 		if (selected === null) return;
 		return schedulePinchHint();
@@ -894,7 +907,7 @@
 					{/if}
 				</div>
 				<div class="viewer-content" bind:this={viewerContent}>
-					{#if isVideo(active)}<button class="mute" onclick={() => (muted = !muted)}
+					{#if isVideo(active) && hasAudio}<button class="mute" onclick={() => (muted = !muted)}
 							>{muted ? 'UNMUTE' : 'MUTE'}</button
 						>{/if}
 					{#if active.alt || active.caption}<p class="caption">

@@ -191,7 +191,8 @@ export async function POST(event) {
 			headers: {
 				'Content-Type': 'application/x-ndjson; charset=utf-8',
 				Connection: 'keep-alive',
-				'Cache-Control': 'no-cache'
+				'Cache-Control': 'no-cache, no-transform',
+				'X-Accel-Buffering': 'no'
 			}
 		});
 	} catch (err) {

@@ -19,7 +19,7 @@
 	import { marked } from 'marked';
 	import { sfx } from '#lib/utils/sfx.js';
 	import { track } from '#lib/utils/analytics.js';
-	import LoadingSquare from '#lib/components/LoadingSquare.svelte';
+	import LoadingBar from '#lib/components/LoadingBar.svelte';
 
 	let userMessageCount = 0;
 	let highIntentSent = false;
@@ -525,7 +525,7 @@
 						: 'text-right self-end'}"
 				>
 					{#if fetching && index === logs.length - 1 && log.speaker === 'James Henry' && !log.message}
-						<LoadingSquare />
+						<LoadingBar />
 					{:else}
 						{@html marked.parse(log.message)}
 					{/if}
