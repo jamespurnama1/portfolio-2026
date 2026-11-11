@@ -5,6 +5,7 @@ import notifyUrl from '#lib/sound/notify.mp3';
 import chatUrl from '#lib/sound/chat.mp3';
 import closeUrl from '#lib/sound/close.mp3';
 import { liteStore } from '#lib/stores/lite.svelte.js';
+import { loadStore } from '#lib/stores/index.svelte.js';
 
 const SAMPLE_URLS = {
 	tink: tinkUrl,
@@ -24,8 +25,8 @@ const buffers: Partial<Record<SampleName, AudioBuffer>> = {};
 
 function getContext() {
 	if (typeof window === 'undefined') return null;
-	// No audio (and no sample downloads) on slow connections or in lite mode.
-	if (liteStore.active || liteStore.slow) return null;
+	// No audio in lite mode; the slow flag only defers sample downloads, it must not silence audio for good.
+	if (liteStore.active) return null;
 	if (!ctx) {
 		const AudioCtor =
 			window.AudioContext ||
@@ -70,6 +71,8 @@ function whenRunning(play: (audio: AudioContext) => void) {
 
 function sample(name: SampleName, gain = 0.9) {
 	whenRunning((audio) => {
+		// Sample downloads wait until the site has finished loading.
+		if (!loadStore.loaded && !buffers[name]) return;
 		void loadBuffers(audio).then(() => {
 			const buffer = buffers[name];
 			if (!buffer) return;
