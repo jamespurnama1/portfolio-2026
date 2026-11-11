@@ -19,7 +19,8 @@ export function initAnalytics() {
 			posthog.init(key, {
 				api_host: PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
 				capture_pageview: 'history_change',
-				person_profiles: 'identified_only'
+				person_profiles: 'identified_only',
+				defaults: '2026-05-30'
 			});
 			client = posthog;
 		});
